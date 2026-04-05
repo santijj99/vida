@@ -2,9 +2,11 @@ package com.vida.apirest.model.articulo;
 
 
 import jakarta.persistence.*;
+import lombok.Data;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
+@Data
 @Entity
 @Table(
         name = "color",
@@ -19,10 +21,4 @@ public class Color {
 
     @Column(length = 60, nullable = false)
     private String nombre;
-
-    // getters/setters
-    public Long getId() { return id; }
-
-    public String getNombre() { return nombre; }
-    public void setNombre(String nombre) { this.nombre = nombre; }
 }

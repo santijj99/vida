@@ -1,6 +1,7 @@
-package com.vida.apirest.model;
+package com.vida.apirest.model.auth;
 
 
+import com.vida.apirest.model.persona.Empleado;
 import jakarta.persistence.*;
 import lombok.Data;
 import org.springframework.security.core.GrantedAuthority;

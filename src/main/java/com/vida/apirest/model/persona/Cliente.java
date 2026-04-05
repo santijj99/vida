@@ -1,4 +1,4 @@
-package com.vida.apirest.model;
+package com.vida.apirest.model.persona;
 
 import jakarta.persistence.*;
 import lombok.Data;

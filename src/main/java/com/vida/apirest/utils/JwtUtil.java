@@ -1,6 +1,6 @@
 package com.vida.apirest.utils;
 
-import com.vida.apirest.model.Usuario;
+import com.vida.apirest.model.auth.Usuario;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;

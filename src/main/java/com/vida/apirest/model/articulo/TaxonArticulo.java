@@ -1,11 +1,13 @@
 package com.vida.apirest.model.articulo;
 
 import jakarta.persistence.*;
+import lombok.Data;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
 import java.time.LocalDateTime;
 
+@Data
 @Entity
 @Table(
     name = "taxon_articulo",
@@ -42,41 +44,4 @@ public class TaxonArticulo {
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
-
-    // Getters y Setters
-    public Long getId() {
-        return id;
-    }
-
-    public void setId(Long id) {
-        this.id = id;
-    }
-
-    public Long getArticuloId() {
-        return articuloId;
-    }
-
-    public void setArticuloId(Long articuloId) {
-        this.articuloId = articuloId;
-    }
-
-    public Articulo getArticulo() {
-        return articulo;
-    }
-
-    public Long getTaxonId() {
-        return taxonId;
-    }
-
-    public void setTaxonId(Long taxonId) {
-        this.taxonId = taxonId;
-    }
-
-    public Taxon getTaxon() {
-        return taxon;
-    }
-
-    public LocalDateTime getCreatedAt() {
-        return createdAt;
-    }
 }

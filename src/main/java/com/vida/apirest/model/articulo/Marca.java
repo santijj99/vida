@@ -1,9 +1,17 @@
 package com.vida.apirest.model.articulo;
 
 import jakarta.persistence.*;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
+import java.time.LocalDateTime;
+
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
 @Entity
 @Table(
         name = "marca",
@@ -19,9 +27,17 @@ public class Marca {
     @Column(length = 120, nullable = false)
     private String nombre;
 
-    // getters/setters
-    public Long getId() { return id; }
+    @Column(name = "descripcion", columnDefinition = "TEXT")
+    private String descripcion;
 
-    public String getNombre() { return nombre; }
-    public void setNombre(String nombre) { this.nombre = nombre; }
+    @Column(name = "activo", nullable = false)
+    private Boolean activo = true;
+
+    @CreationTimestamp
+    @Column(name = "created_at", nullable = false, updatable = false)
+    private LocalDateTime createdAt;
+
+    @UpdateTimestamp
+    @Column(name = "updated_at", nullable = false)
+    private LocalDateTime updatedAt;
 }

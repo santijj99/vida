@@ -1,6 +1,6 @@
 package com.vida.apirest.model.afip;
 
-import com.vida.apirest.model.Cliente;
+import com.vida.apirest.model.persona.Cliente;
 import jakarta.persistence.*;
 
 @Entity

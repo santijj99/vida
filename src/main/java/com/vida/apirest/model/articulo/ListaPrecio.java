@@ -1,11 +1,14 @@
 package com.vida.apirest.model.articulo;
 
 import jakarta.persistence.*;
+import lombok.Data;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 import java.math.BigDecimal;
 
 
+
+@Data
 @Entity
 @Table(
         name = "lista_precio",
@@ -23,25 +26,4 @@ public class ListaPrecio {
 
     @Column(name = "costo", precision = 12, scale = 2)
     private BigDecimal costo;
-
-    // Getters y Setters
-    public Long getId() {
-        return id;
-    }
-
-    public BigDecimal getPrecio() {
-        return precio;
-    }
-
-    public void setPrecio(BigDecimal precio) {
-        this.precio = precio;
-    }
-
-    public BigDecimal getCosto() {
-        return costo;
-    }
-
-    public void setCosto(BigDecimal costo) {
-        this.costo = costo;
-    }
 }

@@ -2,8 +2,8 @@ package com.vida.apirest.servicies;
 
 import com.vida.apirest.dto.empleado.CreateEmpleadoRequest;
 import com.vida.apirest.dto.empleado.EmpleadoResponse;
-import com.vida.apirest.model.Empleado;
-import com.vida.apirest.model.Usuario;
+import com.vida.apirest.model.persona.Empleado;
+import com.vida.apirest.model.auth.Usuario;
 import com.vida.apirest.repositories.EmpleadoRepository;
 import com.vida.apirest.repositories.UsuarioRepository;
 import org.springframework.beans.factory.annotation.Autowired;

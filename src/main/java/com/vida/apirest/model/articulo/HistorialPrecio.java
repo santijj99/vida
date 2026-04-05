@@ -1,12 +1,14 @@
 package com.vida.apirest.model.articulo;
 
 import jakarta.persistence.*;
+import lombok.Data;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
+@Data
 @Entity
 @Table(
     name = "historial_precio",
@@ -50,77 +52,4 @@ public class HistorialPrecio {
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
-
-    // Getters y Setters
-    public Long getId() {
-        return id;
-    }
-
-    public void setId(Long id) {
-        this.id = id;
-    }
-
-    public Long getVarianteArticuloId() {
-        return varianteArticuloId;
-    }
-
-    public void setVarianteArticuloId(Long varianteArticuloId) {
-        this.varianteArticuloId = varianteArticuloId;
-    }
-
-    public VarianteArticulo getVarianteArticulo() {
-        return varianteArticulo;
-    }
-
-    public BigDecimal getPrecioAnterior() {
-        return precioAnterior;
-    }
-
-    public void setPrecioAnterior(BigDecimal precioAnterior) {
-        this.precioAnterior = precioAnterior;
-    }
-
-    public BigDecimal getPrecioNuevo() {
-        return precioNuevo;
-    }
-
-    public void setPrecioNuevo(BigDecimal precioNuevo) {
-        this.precioNuevo = precioNuevo;
-    }
-
-    public BigDecimal getCostoAnterior() {
-        return costoAnterior;
-    }
-
-    public void setCostoAnterior(BigDecimal costoAnterior) {
-        this.costoAnterior = costoAnterior;
-    }
-
-    public BigDecimal getCostoNuevo() {
-        return costoNuevo;
-    }
-
-    public void setCostoNuevo(BigDecimal costoNuevo) {
-        this.costoNuevo = costoNuevo;
-    }
-
-    public LocalDateTime getFecha() {
-        return fecha;
-    }
-
-    public void setFecha(LocalDateTime fecha) {
-        this.fecha = fecha;
-    }
-
-    public String getMotivo() {
-        return motivo;
-    }
-
-    public void setMotivo(String motivo) {
-        this.motivo = motivo;
-    }
-
-    public LocalDateTime getCreatedAt() {
-        return createdAt;
-    }
 }

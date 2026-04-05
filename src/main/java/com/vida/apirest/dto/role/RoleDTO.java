@@ -8,7 +8,7 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class RoleDTO {
-    private String id;
+    private Long id;
     private String nombre;
     private String image;
     private String route;

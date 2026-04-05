@@ -1,73 +1,65 @@
 package com.vida.apirest.model.venta;
 
+import com.vida.apirest.model.finanzas.CuentaFinanciera;
 import jakarta.persistence.*;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+import org.hibernate.annotations.CreationTimestamp;
 
 import java.math.BigDecimal;
-import java.util.Date;
+import java.time.LocalDateTime;
 
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
 @Entity
-@Table(name = "pago_venta")
+@Table(
+        name = "pago_venta",
+        indexes = {
+                @Index(name = "ix_pago_venta_venta", columnList = "venta_id"),
+                @Index(name = "ix_pago_venta_numero", columnList = "numero", unique = true)
+        }
+)
 public class PagoVenta {
+
+    public enum EstadoPago { PENDIENTE, RECIBIDO, DEVUELTO, RECHAZADO }
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(name = "id_pago_venta")
-    private Long idPagoVenta;
+    private Long id;
 
-    @ManyToOne
-    @JoinColumn(name = "id_venta", nullable = false)
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "venta_id", nullable = false)
     private Venta venta;
 
-    @Column(name = "monto", nullable = false, precision = 10, scale = 2)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "cuenta_id")
+    private CuentaFinanciera cuenta;
+
+    @Column(name = "numero", nullable = false, length = 50, unique = true)
+    private String numero;
+
+    @Column(name = "monto", nullable = false, precision = 15, scale = 2)
     private BigDecimal monto;
 
-    @Column(name = "metodo_pago", length = 50)
+    @Column(name = "metodo_pago", nullable = false, length = 50)
     private String metodoPago;
 
-    @Column(name = "fecha_pago")
-    @Temporal(TemporalType.TIMESTAMP)
-    private Date fechaPago;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "estado", nullable = false)
+    private EstadoPago estado = EstadoPago.PENDIENTE;
 
-    public PagoVenta() {
-        this.fechaPago = new Date();
-    }
+    @Column(name = "referencia", length = 255)
+    private String referencia;
 
-    public Long getIdPagoVenta() {
-        return idPagoVenta;
-    }
+    @Column(name = "numero_comprobante", length = 50)
+    private String numeroComprobante;
 
-    public void setIdPagoVenta(Long idPagoVenta) {
-        this.idPagoVenta = idPagoVenta;
-    }
+    @Column(name = "observaciones", columnDefinition = "TEXT")
+    private String observaciones;
 
-    public Venta getVenta() {
-        return venta;
-    }
-
-    public void setVenta(Venta venta) {
-        this.venta = venta;
-    }
-
-    public BigDecimal getMonto() {
-        return monto;
-    }
-
-    public void setMonto(BigDecimal monto) {
-        this.monto = monto;
-    }
-
-    public String getMetodoPago() {
-        return metodoPago;
-    }
-
-    public void setMetodoPago(String metodoPago) {
-        this.metodoPago = metodoPago;
-    }
-
-    public Date getFechaPago() {
-        return fechaPago;
-    }
-
-    public void setFechaPago(Date fechaPago) {
-        this.fechaPago = fechaPago;
-    }
+    @CreationTimestamp
+    @Column(name = "created_at", nullable = false, updatable = false)
+    private LocalDateTime createdAt;
 }

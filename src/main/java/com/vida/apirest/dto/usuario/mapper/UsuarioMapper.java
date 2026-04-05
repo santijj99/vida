@@ -3,8 +3,8 @@ package com.vida.apirest.dto.usuario.mapper;
 import com.vida.apirest.config.APIConfig;
 import com.vida.apirest.dto.role.RoleDTO;
 import com.vida.apirest.dto.usuario.UsuarioResponse;
-import com.vida.apirest.model.Role;
-import com.vida.apirest.model.Usuario;
+import com.vida.apirest.model.auth.Role;
+import com.vida.apirest.model.auth.Usuario;
 import org.springframework.stereotype.Component;
 
 import java.util.List;

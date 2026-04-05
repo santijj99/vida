@@ -1,4 +1,4 @@
-package com.vida.apirest.model;
+package com.vida.apirest.model.auth;
 
 import jakarta.persistence.*;
 import lombok.Data;
@@ -6,15 +6,15 @@ import lombok.Data;
 import java.time.LocalDate;
 import java.util.HashSet;
 import java.util.Set;
-import java.util.UUID;
 
 @Data
 @Entity
 @Table(name = "roles")
 public class Role {
     @Id
-    @Column(length = 36)
-    private  String id = UUID.randomUUID().toString();
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "id")
+    private Long id;
 
     @Column(length = 36, unique = true, nullable = false)
     private String nombre;

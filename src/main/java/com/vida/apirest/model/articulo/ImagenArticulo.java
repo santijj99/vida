@@ -1,8 +1,8 @@
 package com.vida.apirest.model.articulo;
 
 import jakarta.persistence.*;
+import lombok.Data;
 import org.hibernate.annotations.CreationTimestamp;
-import org.hibernate.annotations.UpdateTimestamp;
 
 import java.time.LocalDateTime;
 
@@ -15,6 +15,7 @@ import java.time.LocalDateTime;
         @Index(name = "ix_ia_orden", columnList = "orden")
     }
 )
+@Data
 public class ImagenArticulo {
 
     @Id
@@ -45,57 +46,4 @@ public class ImagenArticulo {
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
-
-    // Getters y Setters
-    public Long getId() {
-        return id;
-    }
-
-    public void setId(Long id) {
-        this.id = id;
-    }
-
-    public Long getArticuloId() {
-        return articuloId;
-    }
-
-    public void setArticuloId(Long articuloId) {
-        this.articuloId = articuloId;
-    }
-
-    public Articulo getArticulo() {
-        return articulo;
-    }
-
-    public Long getImagenId() {
-        return imagenId;
-    }
-
-    public void setImagenId(Long imagenId) {
-        this.imagenId = imagenId;
-    }
-
-    public Imagen getImagen() {
-        return imagen;
-    }
-
-    public Integer getOrden() {
-        return orden;
-    }
-
-    public void setOrden(Integer orden) {
-        this.orden = orden;
-    }
-
-    public Boolean getPrincipal() {
-        return principal;
-    }
-
-    public void setPrincipal(Boolean principal) {
-        this.principal = principal;
-    }
-
-    public LocalDateTime getCreatedAt() {
-        return createdAt;
-    }
 }

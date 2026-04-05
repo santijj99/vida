@@ -1,14 +1,13 @@
 package com.vida.apirest.servicies;
 
 import com.vida.apirest.dto.cliente.*;
-import com.vida.apirest.model.Cliente;
-import com.vida.apirest.model.Contacto;
+import com.vida.apirest.model.persona.Cliente;
+import com.vida.apirest.model.persona.Contacto;
 import com.vida.apirest.repositories.ClienteRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.HashSet;
 import java.util.List;
 import java.util.stream.Collectors;
 

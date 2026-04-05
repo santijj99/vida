@@ -1,11 +1,10 @@
 package com.vida.apirest.servicies;
 
-import com.vida.apirest.dto.role.RoleDTO;
 import com.vida.apirest.dto.usuario.*;
 import com.vida.apirest.dto.usuario.mapper.UsuarioMapper;
-import com.vida.apirest.model.Role;
-import com.vida.apirest.model.Usuario;
-import com.vida.apirest.model.UsuarioHasRoles;
+import com.vida.apirest.model.auth.Role;
+import com.vida.apirest.model.auth.Usuario;
+import com.vida.apirest.model.auth.UsuarioHasRoles;
 import com.vida.apirest.repositories.RoleRepository;
 import com.vida.apirest.repositories.UsuarioHasRoleRepository;
 import com.vida.apirest.repositories.UsuarioRepository;
@@ -59,7 +58,7 @@ public class UsuarioService {
         usuario.setPassword(encryptedPassword);
 
         Usuario savedUser = usuarioRepository.save(usuario);
-        Role clientRole = roleRepository.findById("CLIENTE").orElseThrow(
+        Role clientRole = roleRepository.findByNombre("CLIENTE").orElseThrow(
                 () -> new RuntimeException("El rol cliente no existe")
         );
 

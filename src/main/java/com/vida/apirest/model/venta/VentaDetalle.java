@@ -1,104 +1,73 @@
 package com.vida.apirest.model.venta;
 
 import com.vida.apirest.model.articulo.Articulo;
+import com.vida.apirest.model.articulo.VarianteArticulo;
 import jakarta.persistence.*;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+import org.hibernate.annotations.CreationTimestamp;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
 @Entity
-@Table(name = "venta_detalle")
+@Table(
+        name = "venta_detalle",
+        indexes = {
+                @Index(name = "ix_venta_det_venta", columnList = "venta_id"),
+                @Index(name = "ix_venta_det_articulo", columnList = "articulo_id")
+        }
+)
 public class VentaDetalle {
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
-    @Column(name = "id_detalle")
-    private Long idDetalle;
+    private Long id;
 
-    @ManyToOne
-    @JoinColumn(name = "id_venta", nullable = false)
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "venta_id", nullable = false)
     private Venta venta;
 
-    @ManyToOne
-    @JoinColumn(name = "id_articulo", nullable = false)
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "articulo_id", nullable = false)
     private Articulo articulo;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "variante_id")
+    private VarianteArticulo variante;
 
     @Column(name = "cantidad", nullable = false)
     private Integer cantidad;
 
-    @Column(name = "precio_unitario", nullable = false, precision = 10, scale = 2)
+    @Column(name = "precio_unitario", nullable = false, precision = 15, scale = 2)
     private BigDecimal precioUnitario;
 
-    @Column(name = "subtotal", nullable = false, precision = 10, scale = 2)
+    @Column(name = "descuento_porcentaje", precision = 5, scale = 2)
+    private BigDecimal descuentoPorcentaje = BigDecimal.ZERO;
+
+    @Column(name = "descuento_monto", precision = 15, scale = 2)
+    private BigDecimal descuentoMonto = BigDecimal.ZERO;
+
+    @Column(name = "subtotal", nullable = false, precision = 15, scale = 2)
     private BigDecimal subtotal;
 
-    // Constructores
-    public VentaDetalle() {
-    }
+    @Column(name = "impuesto", precision = 15, scale = 2)
+    private BigDecimal impuesto = BigDecimal.ZERO;
 
-    public VentaDetalle(Venta venta, Articulo articulo, Integer cantidad, BigDecimal precioUnitario) {
-        this.venta = venta;
-        this.articulo = articulo;
-        this.cantidad = cantidad;
-        this.precioUnitario = precioUnitario;
-        this.subtotal = precioUnitario.multiply(new BigDecimal(cantidad));
-    }
+    @Column(name = "total", precision = 15, scale = 2)
+    private BigDecimal total;
 
-    // Getters y Setters
-    public Long getIdDetalle() {
-        return idDetalle;
-    }
+    @Column(name = "lote", length = 100)
+    private String lote;
 
-    public void setIdDetalle(Long idDetalle) {
-        this.idDetalle = idDetalle;
-    }
+    @Column(name = "numero_serie", length = 100)
+    private String numeroSerie;
 
-    public Venta getVenta() {
-        return venta;
-    }
-
-    public void setVenta(Venta venta) {
-        this.venta = venta;
-    }
-
-    public Articulo getArticulo() {
-        return articulo;
-    }
-
-    public void setArticulo(Articulo articulo) {
-        this.articulo = articulo;
-    }
-
-    public Integer getCantidad() {
-        return cantidad;
-    }
-
-    public void setCantidad(Integer cantidad) {
-        this.cantidad = cantidad;
-        if (precioUnitario != null) {
-            this.subtotal = precioUnitario.multiply(new BigDecimal(cantidad));
-        }
-    }
-
-    public BigDecimal getPrecioUnitario() {
-        return precioUnitario;
-    }
-
-    public void setPrecioUnitario(BigDecimal precioUnitario) {
-        this.precioUnitario = precioUnitario;
-        if (cantidad != null) {
-            this.subtotal = precioUnitario.multiply(new BigDecimal(cantidad));
-        }
-    }
-
-    public BigDecimal getSubtotal() {
-        return subtotal;
-    }
-
-    public void setSubtotal(BigDecimal subtotal) {
-        this.subtotal = subtotal;
-    }
-
-    @Override
-    public String toString() {
-        return "DetalleVenta{" + "idDetalle=" + idDetalle + ", cantidad=" + cantidad + ", precioUnitario=" + precioUnitario + ", subtotal=" + subtotal + '}';
-    }
+    @CreationTimestamp
+    @Column(name = "created_at", nullable = false, updatable = false)
+    private LocalDateTime createdAt;
 }

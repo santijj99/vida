@@ -1,13 +1,14 @@
 package com.vida.apirest.model.articulo;
 
 import jakarta.persistence.*;
+import lombok.Data;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
 import java.time.LocalDateTime;
 import java.util.List;
 
-
+@Data
 @Entity
 @Table(
         name = "variante_articulo",
@@ -29,14 +30,6 @@ import java.util.List;
         }
 )
 public class VarianteArticulo {
-
-    public Long getListaPrecioId() {
-        return listaPrecioId;
-    }
-
-    public void setListaPrecioId(Long listaPrecioId) {
-        this.listaPrecioId = listaPrecioId;
-    }
 
     public enum EstadoVariante { ACTIVO, INACTIVO, PENDIENTE }
 
@@ -95,43 +88,4 @@ public class VarianteArticulo {
     @OneToMany(mappedBy = "varianteArticulo", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<HistorialPrecio> historialPrecios;
 
-    // getters/setters
-    public Long getId() { return id; }
-
-    public Long getArticuloId() { return articuloId; }
-    public void setArticuloId(Long articuloId) { this.articuloId = articuloId; }
-    public Articulo getArticulo() { return articulo; }
-
-    public Long getColorId() { return colorId; }
-    public void setColorId(Long colorId) { this.colorId = colorId; }
-    public Color getColor() { return color; }
-
-    public Long getTalleId() { return talleId; }
-    public void setTalleId(Long talleId) { this.talleId = talleId; }
-    public Talle getTalle() { return talle; }
-
-    public String getCodigoBarras() { return codigoBarras; }
-    public void setCodigoBarras(String codigoBarras) { this.codigoBarras = codigoBarras; }
-
-    public EstadoVariante getEstado() { return estado; }
-    public void setEstado(EstadoVariante estado) { this.estado = estado; }
-
-    public LocalDateTime getCreatedAt() { return createdAt; }
-    public LocalDateTime getUpdatedAt() { return updatedAt; }
-
-    public ListaPrecio getListaPrecio() {
-        return listaPrecio;
-    }
-
-    public void setListaPrecio(ListaPrecio listaPrecio) {
-        this.listaPrecio = listaPrecio;
-    }
-
-    public List<HistorialPrecio> getHistorialPrecios() {
-        return historialPrecios;
-    }
-
-    public void setHistorialPrecios(List<HistorialPrecio> historialPrecios) {
-        this.historialPrecios = historialPrecios;
-    }
 }

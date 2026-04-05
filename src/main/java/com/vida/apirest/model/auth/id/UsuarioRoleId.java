@@ -1,4 +1,4 @@
-package com.vida.apirest.model.id;
+package com.vida.apirest.model.auth.id;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Embeddable;
@@ -15,14 +15,14 @@ public class UsuarioRoleId implements Serializable {
     private Long usuarioId;
 
     @Column(name = "id_rol")
-    private String roleId;
+    private Long roleId;
 
    @Override
     public boolean equals(Object o){
         if (this == o) return true;
         if (!(o instanceof UsuarioRoleId)) return false;
         UsuarioRoleId usuarioRoleId = (UsuarioRoleId) o;
-        return Objects.equals(usuarioId, usuarioRoleId.usuarioId)&& Objects.equals(roleId, usuarioRoleId.roleId);
+        return Objects.equals(usuarioId, usuarioRoleId.usuarioId) && Objects.equals(roleId, usuarioRoleId.roleId);
     }
 
     @Override
@@ -32,9 +32,8 @@ public class UsuarioRoleId implements Serializable {
 
     public UsuarioRoleId(){}
 
-    public UsuarioRoleId(Long userId, String roleId){
+    public UsuarioRoleId(Long userId, Long roleId){
         this.usuarioId = userId;
-                this.roleId = roleId;
-
+        this.roleId = roleId;
     }
 }
