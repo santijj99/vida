@@ -26,7 +26,6 @@ public class UsuarioHasRoles {
     public UsuarioHasRoles(Usuario usuario, Role role) {
         this.usuario = usuario;
         this.role = role;
-        this.id = new UsuarioRoleId(usuario.getId(), role.getId());
     }
 
     public UsuarioHasRoles() {

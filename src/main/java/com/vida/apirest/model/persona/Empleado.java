@@ -26,11 +26,17 @@ public class Empleado {
     @Column(name = "dni", length = 20)
     private String dni;
 
+    @Column(name = "email", length = 100, unique = true, nullable = true)
+    private String email;
+
+    @Column(name = "celular", length = 100, unique = true, nullable = true)
+    private String celular;
+
     @Column(name = "activo", nullable = false)
     private Boolean activo = true;
 
-    // Relación con Usuario (uno a uno)
-    @OneToOne(cascade = CascadeType.ALL)
+    // Relación con Usuario (uno a uno) - sin cascade para evitar conflictos con entidades detached
+    @OneToOne
     @JoinColumn(name = "usuario_id", unique = true)
     private Usuario usuario;
 
