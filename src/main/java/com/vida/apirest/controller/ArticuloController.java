@@ -2,6 +2,7 @@ package com.vida.apirest.controller;
 
 import com.vida.apirest.dto.ariticulo.ArticuloCompactResponse;
 import com.vida.apirest.dto.ariticulo.ArticuloCreateRequest;
+import com.vida.apirest.dto.usuario.LoginResponse;
 import com.vida.apirest.model.almacen.Deposito;
 import com.vida.apirest.model.almacen.Sucursal;
 import com.vida.apirest.model.articulo.Articulo;
@@ -9,10 +10,12 @@ import com.vida.apirest.repositories.DepositoRepository;
 import com.vida.apirest.repositories.SucursalRepository;
 import com.vida.apirest.servicies.ArticuloService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/articulos")
@@ -23,10 +26,25 @@ public class ArticuloController {
     private final DepositoRepository depositoRepository;
     private final SucursalRepository sucursalRepository;
 
+//    @PostMapping
+//    public ResponseEntity<Articulo> createArticulo(@RequestBody ArticuloCreateRequest request) {
+//        Articulo articulo = articuloService.createArticulo(request);
+//        return ResponseEntity.ok(articulo);
+//    }
+
     @PostMapping
     public ResponseEntity<Articulo> createArticulo(@RequestBody ArticuloCreateRequest request) {
-        Articulo articulo = articuloService.createArticulo(request);
-        return ResponseEntity.ok(articulo);
+        try {
+            Articulo articulo = articuloService.createArticulo(request);
+            return  ResponseEntity.status(HttpStatus.CREATED).body(articulo);
+
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body((Articulo) Map.of(
+                    "message", e.getMessage(),
+                    "statusCode", HttpStatus.BAD_REQUEST.value()
+            ));
+        }
+
     }
 
     @GetMapping("/depositos")

@@ -19,9 +19,8 @@ public class Empleado {
     @Column(name = "apellido", nullable = true, length = 100)
     private String apellido;
 
-    @Column(length = 36, unique = true, nullable = true)
+    @Column(name = "image", length = 255, nullable = true)
     private String image;
-
 
     @Column(name = "dni", length = 20)
     private String dni;
