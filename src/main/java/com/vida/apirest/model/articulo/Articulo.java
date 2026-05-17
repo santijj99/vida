@@ -1,6 +1,8 @@
 package com.vida.apirest.model.articulo;
 
 import java.time.LocalDateTime;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonManagedReference;
 import java.util.List;
 
 import jakarta.persistence.*;
@@ -8,6 +10,7 @@ import lombok.Data;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
+@JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
 @Data
 @Entity
 @Table(
@@ -63,7 +66,8 @@ public class Articulo {
 
     // Relaciones bidireccionales
     @OneToMany(mappedBy = "articulo", cascade = CascadeType.ALL, orphanRemoval = true)
-    private List<VarianteArticulo> variantes;
+        @JsonManagedReference
+        private List<VarianteArticulo> variantes;
 
     @OneToMany(mappedBy = "articulo", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<ImagenArticulo> imagenes;

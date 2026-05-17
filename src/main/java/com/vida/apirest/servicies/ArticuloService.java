@@ -1,6 +1,8 @@
 package com.vida.apirest.servicies;
 
+import com.vida.apirest.dto.ariticulo.ArticuloCompactResponse;
 import com.vida.apirest.dto.ariticulo.ArticuloCreateRequest;
+import com.vida.apirest.dto.ariticulo.VarianteCompactResponse;
 import com.vida.apirest.model.almacen.Deposito;
 import com.vida.apirest.model.almacen.Stock;
 import com.vida.apirest.model.almacen.Sucursal;
@@ -12,7 +14,13 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Objects;
+import org.springframework.data.jpa.domain.Specification;
+import jakarta.persistence.criteria.Join;
+import jakarta.persistence.criteria.JoinType;
 
 @Service
 @RequiredArgsConstructor
@@ -69,13 +77,6 @@ public class ArticuloService {
                     return generoRepository.save(newGenero);
                 });
 
-        // Buscar Color
-        Color color = colorRepository.findByNombre(request.getColor())
-                .orElseGet(() -> {
-                    Color newColor = new Color();
-                    newColor.setNombre(request.getColor());
-                    return colorRepository.save(newColor);
-                });
 
         // Crear Articulo
         Articulo articulo = new Articulo();
@@ -136,10 +137,18 @@ public class ArticuloService {
                         return talleRepository.save(newTalle);
                     });
 
+            // Buscar o crear Color para esta variante
+            Color varianteColor = colorRepository.findByNombre(variantReq.getColor())
+                    .orElseGet(() -> {
+                        Color newColor = new Color();
+                        newColor.setNombre(variantReq.getColor());
+                        return colorRepository.save(newColor);
+                    });
+
             // Crear VarianteArticulo
             VarianteArticulo variante = new VarianteArticulo();
             variante.setArticuloId(articulo.getId());
-            variante.setColorId(color.getId());
+            variante.setColorId(varianteColor.getId());
             variante.setTalleId(talle.getId());
             variante = varianteArticuloRepository.save(variante);
 
@@ -162,5 +171,128 @@ public class ArticuloService {
         }
 
         return articulo;
+    }
+
+    public List<Articulo> searchArticulos(String codigo, String marca, String talleNumero, String color, String categoria, String modelo, String genero) {
+        Specification<Articulo> spec = (root, query, cb) -> {
+            List<jakarta.persistence.criteria.Predicate> predicates = new ArrayList<>();
+
+            if (codigo != null && !codigo.isBlank()) {
+                predicates.add(cb.equal(cb.lower(root.get("codigo")), codigo.toLowerCase()));
+            }
+
+            if (marca != null && !marca.isBlank()) {
+                Join<Object, Object> marcaJoin = root.join("marca", JoinType.LEFT);
+                predicates.add(cb.like(cb.lower(marcaJoin.get("nombre")), "%" + marca.toLowerCase() + "%"));
+            }
+
+            if (categoria != null && !categoria.isBlank()) {
+                Join<Object, Object> catJoin = root.join("categoria", JoinType.LEFT);
+                predicates.add(cb.like(cb.lower(catJoin.get("nombre")), "%" + categoria.toLowerCase() + "%"));
+            }
+
+            if (modelo != null && !modelo.isBlank()) {
+                predicates.add(cb.like(cb.lower(root.get("modelo")), "%" + modelo.toLowerCase() + "%"));
+            }
+
+            if (genero != null && !genero.isBlank()) {
+                Join<Object, Object> genJoin = root.join("genero", JoinType.LEFT);
+                predicates.add(cb.like(cb.lower(genJoin.get("nombre")), "%" + genero.toLowerCase() + "%"));
+            }
+
+            if ((talleNumero != null && !talleNumero.isBlank()) || (color != null && !color.isBlank())) {
+                // join variantes -> talle/color
+                Join<Object, Object> variantesJoin = root.join("variantes", JoinType.LEFT);
+                if (talleNumero != null && !talleNumero.isBlank()) {
+                    Join<Object, Object> talleJoin = variantesJoin.join("talle", JoinType.LEFT);
+                    predicates.add(cb.equal(talleJoin.get("numero"), talleNumero));
+                }
+                if (color != null && !color.isBlank()) {
+                    Join<Object, Object> colorJoin = variantesJoin.join("color", JoinType.LEFT);
+                    predicates.add(cb.like(cb.lower(colorJoin.get("nombre")), "%" + color.toLowerCase() + "%"));
+                }
+            }
+
+            return cb.and(predicates.toArray(new jakarta.persistence.criteria.Predicate[0]));
+        };
+
+        return articuloRepository.findAll(spec);
+    }
+
+    public Articulo getArticuloById(Long id) {
+        return articuloRepository.findById(id).orElseThrow(() -> new RuntimeException("Artículo no encontrado con id: " + id));
+    }
+
+    public Articulo getByCodigo(String codigo) {
+        return articuloRepository.findByCodigo(codigo)
+                .orElseThrow(() -> new RuntimeException("Artículo no encontrado con código: " + codigo));
+    }
+
+    @Transactional(readOnly = true)
+    public ArticuloCompactResponse getByCodigoCompact(String codigo) {
+        Articulo articulo = getByCodigo(codigo);
+        ArticuloCompactResponse response = new ArticuloCompactResponse();
+        response.setId(articulo.getId());
+        response.setCodigo(articulo.getCodigo());
+        response.setModelo(articulo.getModelo());
+        response.setDescripcion(articulo.getDescripcion());
+        response.setCategoria(articulo.getCategoria() != null ? articulo.getCategoria().getNombre() : null);
+        response.setGenero(articulo.getGenero() != null ? articulo.getGenero().getNombre() : null);
+        response.setMarca(articulo.getMarca() != null ? articulo.getMarca().getNombre() : null);
+
+        if (articulo.getTaxones() != null) {
+            articulo.getTaxones().stream()
+                    .map(TaxonArticulo::getTaxon)
+                    .filter(Objects::nonNull)
+                    .map(Taxon::getNombre)
+                    .findFirst()
+                    .ifPresent(response::setSubCategoria);
+        }
+
+        List<VarianteCompactResponse> variants = new ArrayList<>();
+        if (articulo.getVariantes() != null) {
+            for (VarianteArticulo variante : articulo.getVariantes()) {
+                VarianteCompactResponse variantDto = new VarianteCompactResponse();
+                variantDto.setId(variante.getId());
+                variantDto.setColor(variante.getColor() != null ? variante.getColor().getNombre() : null);
+                variantDto.setTalle(variante.getTalle() != null ? variante.getTalle().getNumero() : null);
+                variantDto.setCodigoBarras(variante.getCodigoBarras());
+                variantDto.setPrecio(getPrecioActual(variante));
+                variantDto.setCantidad(getCantidadDisponibleForVariante(articulo.getId(), variante.getId()));
+                variants.add(variantDto);
+            }
+        }
+        response.setVariantes(variants);
+        return response;
+    }
+
+    private BigDecimal getPrecioActual(VarianteArticulo variante) {
+        if (variante.getHistorialPrecios() == null || variante.getHistorialPrecios().isEmpty()) {
+            return null;
+        }
+        return variante.getHistorialPrecios().stream()
+                .max(Comparator.comparing(HistorialPrecio::getFecha))
+                .map(HistorialPrecio::getPrecioNuevo)
+                .orElse(null);
+    }
+
+    private Integer getCantidadDisponibleForVariante(Long articuloId, Long varianteId) {
+        List<Stock> stocks = stockRepository.findAllByArticulo_IdAndVariante_Id(articuloId, varianteId);
+        return stocks.stream()
+                .map(Stock::getCantidadDisponible)
+                .filter(Objects::nonNull)
+                .reduce(0, Integer::sum);
+    }
+
+    public List<Articulo> getByMarca(String marca) {
+        return articuloRepository.findAllByMarcaNombreContainingIgnoreCase(marca);
+    }
+
+    public List<Articulo> getByTalle(String talleNumero) {
+        return articuloRepository.findAllByTalleNumero(talleNumero);
+    }
+
+    public List<Articulo> getByColor(String color) {
+        return articuloRepository.findAllByColorNombreContaining(color);
     }
 }

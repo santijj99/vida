@@ -2,12 +2,16 @@ package com.vida.apirest.model.articulo;
 
 import jakarta.persistence.*;
 import lombok.Data;
+import com.fasterxml.jackson.annotation.JsonBackReference;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonManagedReference;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
 import java.time.LocalDateTime;
 import java.util.List;
 
+@JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
 @Data
 @Entity
 @Table(
@@ -42,7 +46,8 @@ public class VarianteArticulo {
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "articulo_id", insertable = false, updatable = false)
-    private Articulo articulo;
+        @JsonBackReference
+        private Articulo articulo;
 
     @Column(name = "color_id")
     private Long colorId;
@@ -86,6 +91,7 @@ public class VarianteArticulo {
 
     // Relación bidireccional con HistorialPrecio
     @OneToMany(mappedBy = "varianteArticulo", cascade = CascadeType.ALL, orphanRemoval = true)
+    @JsonManagedReference
     private List<HistorialPrecio> historialPrecios;
 
 }
