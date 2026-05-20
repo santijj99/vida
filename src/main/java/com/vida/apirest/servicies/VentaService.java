@@ -5,6 +5,7 @@ import com.vida.apirest.dto.venta.CajaMovimientoResponse;
 import com.vida.apirest.dto.venta.PagoVentaRequest;
 import com.vida.apirest.dto.venta.PagoVentaResponse;
 import com.vida.apirest.dto.venta.VentaCreateRequest;
+import com.vida.apirest.dto.venta.VentaCreditoPersonalRequest;
 import com.vida.apirest.dto.venta.VentaDetalleResponse;
 import com.vida.apirest.dto.venta.VentaResponse;
 import com.vida.apirest.model.almacen.Stock;
@@ -42,6 +43,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -132,8 +134,17 @@ public class VentaService {
                 throw new RuntimeException("La cantidad del detalle debe ser mayor a cero");
             }
 
-            if (detalleReq.getPrecioUnitario() == null || detalleReq.getPrecioUnitario().compareTo(BigDecimal.ZERO) < 0) {
-                throw new RuntimeException("El precio unitario del detalle debe ser un valor válido");
+            BigDecimal precioUnitario;
+            if (variante != null) {
+                precioUnitario = obtenerPrecioUnitarioDesdeVariante(variante);
+                if (precioUnitario == null || precioUnitario.compareTo(BigDecimal.ZERO) <= 0) {
+                    throw new RuntimeException("No existe precio unitario válido para la variante con ID: " + variante.getId());
+                }
+            } else {
+                if (detalleReq.getPrecioUnitario() == null || detalleReq.getPrecioUnitario().compareTo(BigDecimal.ZERO) < 0) {
+                    throw new RuntimeException("El precio unitario del detalle debe ser un valor válido");
+                }
+                precioUnitario = detalleReq.getPrecioUnitario();
             }
 
             Stock stock = variante != null
@@ -146,7 +157,7 @@ public class VentaService {
             detalle.setArticulo(articulo);
             detalle.setVariante(variante);
             detalle.setCantidad(detalleReq.getCantidad());
-            detalle.setPrecioUnitario(detalleReq.getPrecioUnitario());
+            detalle.setPrecioUnitario(precioUnitario);
             detalle.setDescuentoPorcentaje(detalleReq.getDescuentoPorcentaje() != null ? detalleReq.getDescuentoPorcentaje() : BigDecimal.ZERO);
             detalle.setDescuentoMonto(detalleReq.getDescuentoMonto() != null ? detalleReq.getDescuentoMonto() : BigDecimal.ZERO);
             detalle.setImpuesto(detalleReq.getImpuesto() != null ? detalleReq.getImpuesto() : BigDecimal.ZERO);
@@ -200,6 +211,7 @@ public class VentaService {
                     Credito credito = new Credito();
                     credito.setCliente(cliente);
                     credito.setSucursal(sucursal);
+                    credito.setVenta(ventaGuardada);
                     credito.setNumero("CR-" + cliente.getId() + "-" + sucursal.getId() + "-" + UUID.randomUUID().toString().replace("-", "").substring(0, 10).toUpperCase());
                     credito.setImporte(pago.getMonto());
                     credito.setSaldo(pago.getMonto());
@@ -248,6 +260,91 @@ public class VentaService {
                 .orElseThrow(() -> new RuntimeException("Error al recuperar la venta registrada")));
     }
 
+    @Transactional
+    public VentaResponse registrarVentaCreditoPersonal(VentaCreditoPersonalRequest request) {
+        if (request.getPagos() != null && !request.getPagos().isEmpty()) {
+            throw new RuntimeException("En venta con crédito personal no se deben enviar pagos directos");
+        }
+        if (request.getCreditoPlazoMeses() == null || request.getCreditoPlazoMeses() <= 0) {
+            throw new RuntimeException("Se requiere un plazo de crédito personal mayor a cero");
+        }
+
+        BigDecimal montoTotal = calcularTotalCreditoPersonal(request);
+
+        VentaCreateRequest internalRequest = new VentaCreateRequest();
+        internalRequest.setSucursalId(request.getSucursalId());
+        internalRequest.setEmpleadoId(request.getEmpleadoId());
+        internalRequest.setClienteDni(request.getClienteDni());
+        internalRequest.setNumeroFactura(request.getNumeroFactura());
+        internalRequest.setFechaVenta(request.getFechaVenta());
+        internalRequest.setObservaciones(request.getObservaciones());
+        internalRequest.setMetodoPago("CREDITO");
+        internalRequest.setDetalles(request.getDetalles());
+
+        PagoVentaRequest pago = new PagoVentaRequest();
+        pago.setMonto(montoTotal);
+        pago.setMetodoPago("CREDITO");
+        pago.setCreditoPlazoMeses(request.getCreditoPlazoMeses());
+        pago.setCreditoTasaInteres(request.getCreditoTasaInteres());
+        pago.setCreditoDescripcion(request.getCreditoDescripcion());
+        internalRequest.setPagos(List.of(pago));
+
+        return registrarVenta(internalRequest);
+    }
+
+    private BigDecimal calcularTotalCreditoPersonal(VentaCreditoPersonalRequest request) {
+        if (request.getDetalles() == null || request.getDetalles().isEmpty()) {
+            throw new RuntimeException("Debe incluir al menos un detalle de venta para crédito personal");
+        }
+
+        BigDecimal total = BigDecimal.ZERO;
+        for (var detalleReq : request.getDetalles()) {
+            VarianteArticulo variante = null;
+            Articulo articulo = null;
+
+            if (detalleReq.getVarianteId() != null) {
+                Long varianteId = detalleReq.getVarianteId();
+                variante = varianteArticuloRepository.findById(varianteId)
+                        .orElseThrow(() -> new RuntimeException("Variante no encontrada con ID: " + varianteId));
+                Long articuloId = variante.getArticuloId();
+                articulo = articuloRepository.findById(articuloId)
+                        .orElseThrow(() -> new RuntimeException("Artículo de la variante no encontrado con ID: " + articuloId));
+            } else {
+                if (detalleReq.getArticuloId() == null) {
+                    throw new RuntimeException("Cada detalle requiere articuloId o varianteId");
+                }
+                Long articuloId = detalleReq.getArticuloId();
+                articulo = articuloRepository.findById(articuloId)
+                        .orElseThrow(() -> new RuntimeException("Artículo no encontrado con ID: " + articuloId));
+            }
+
+            if (detalleReq.getCantidad() == null || detalleReq.getCantidad() <= 0) {
+                throw new RuntimeException("La cantidad del detalle debe ser mayor a cero");
+            }
+
+            BigDecimal precioUnitario;
+            if (variante != null) {
+                precioUnitario = obtenerPrecioUnitarioDesdeVariante(variante);
+                if (precioUnitario == null || precioUnitario.compareTo(BigDecimal.ZERO) <= 0) {
+                    throw new RuntimeException("No existe precio unitario válido para la variante con ID: " + variante.getId());
+                }
+            } else {
+                if (detalleReq.getPrecioUnitario() == null || detalleReq.getPrecioUnitario().compareTo(BigDecimal.ZERO) < 0) {
+                    throw new RuntimeException("El precio unitario del detalle debe ser un valor válido");
+                }
+                precioUnitario = detalleReq.getPrecioUnitario();
+            }
+
+            BigDecimal descuentoMonto = detalleReq.getDescuentoMonto() != null ? detalleReq.getDescuentoMonto() : BigDecimal.ZERO;
+            BigDecimal impuesto = detalleReq.getImpuesto() != null ? detalleReq.getImpuesto() : BigDecimal.ZERO;
+            BigDecimal detalleSubtotal = precioUnitario.multiply(BigDecimal.valueOf(detalleReq.getCantidad())).subtract(descuentoMonto);
+            BigDecimal detalleTotal = detalleSubtotal.add(impuesto);
+            total = total.add(detalleTotal);
+        }
+
+        return total;
+    }
+
     @Transactional(readOnly = true)
     public List<CajaCuentaResponse> listarCajas() {
         return cuentaRepository.findByTipoAndActivoTrue(CuentaFinanciera.TipoCuenta.CAJA)
@@ -275,6 +372,22 @@ public class VentaService {
     private Stock findStockByVariante(Long varianteId, Long sucursalId) {
         return stockRepository.findByVarianteIdAndSucursalId(varianteId, sucursalId)
                 .orElseThrow(() -> new RuntimeException("Stock no encontrado para la variante en la sucursal"));
+    }
+
+    private BigDecimal obtenerPrecioUnitarioDesdeVariante(VarianteArticulo variante) {
+        if (variante == null) {
+            return null;
+        }
+        if (variante.getHistorialPrecios() != null && !variante.getHistorialPrecios().isEmpty()) {
+            return variante.getHistorialPrecios().stream()
+                    .max((a, b) -> a.getFecha().compareTo(b.getFecha()))
+                    .map(historialPrecio -> historialPrecio.getPrecioNuevo())
+                    .orElse(null);
+        }
+        if (variante.getListaPrecio() != null && variante.getListaPrecio().getPrecio() != null) {
+            return variante.getListaPrecio().getPrecio();
+        }
+        return null;
     }
 
     private void ajustarStock(Stock stock, Integer cantidad, String referencia) {
@@ -338,8 +451,8 @@ public class VentaService {
                 });
     }
 
-    private Set<Cuota> crearCuotasParaCredito(Credito credito, BigDecimal importe, Integer plazoMeses, LocalDateTime fechaVenta) {
-        Set<Cuota> cuotas = new HashSet<>();
+    private List<Cuota> crearCuotasParaCredito(Credito credito, BigDecimal importe, Integer plazoMeses, LocalDateTime fechaVenta) {
+        List<Cuota> cuotas = new ArrayList<>();
         BigDecimal cuotaBase = importe.divide(BigDecimal.valueOf(plazoMeses), 2, RoundingMode.HALF_UP);
 
         for (int i = 1; i <= plazoMeses; i++) {

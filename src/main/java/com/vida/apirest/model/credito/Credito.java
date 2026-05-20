@@ -1,6 +1,7 @@
 package com.vida.apirest.model.credito;
 
 import com.vida.apirest.model.persona.Cliente;
+import com.vida.apirest.model.venta.Venta;
 import com.vida.apirest.model.almacen.Sucursal;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
@@ -12,8 +13,8 @@ import org.hibernate.annotations.UpdateTimestamp;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
-import java.util.HashSet;
-import java.util.Set;
+import java.util.ArrayList;
+import java.util.List;
 
 @Data
 @EqualsAndHashCode(onlyExplicitlyIncluded = true)
@@ -44,6 +45,10 @@ public class Credito {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "sucursal_id")
     private Sucursal sucursal;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "venta_id")
+    private Venta venta;
 
     @Column(name = "numero", nullable = false, length = 50, unique = true)
     private String numero;
@@ -76,6 +81,6 @@ public class Credito {
     private LocalDateTime updatedAt;
 
     @OneToMany(mappedBy = "credito", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
-    private Set<Cuota> cuotas = new HashSet<>();
+    private List<Cuota> cuotas = new ArrayList<>();
 }
 
