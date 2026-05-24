@@ -75,4 +75,17 @@ public class UsuarioController {
                     "statusCode", HttpStatus.INTERNAL_SERVER_ERROR.value()));
         }
     }
+
+    @PostMapping("/{usuarioId}/asignar-rol/{rolId}")
+    public ResponseEntity<?> asignarRol(@PathVariable Long usuarioId, @PathVariable Long rolId) {
+        try {
+            UsuarioResponse response = usuarioService.asignarRol(usuarioId, rolId);
+            return ResponseEntity.ok(response);
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
+                    "message", e.getMessage(),
+                    "statusCode", HttpStatus.BAD_REQUEST.value()
+            ));
+        }
+    }
 }

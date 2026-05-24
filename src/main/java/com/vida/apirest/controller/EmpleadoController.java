@@ -39,8 +39,8 @@ public class EmpleadoController {
     @PostMapping
     public ResponseEntity<?> create(@ModelAttribute CreateEmpleadoRequest request) {
         try {
-            Empleado empleado = empleadoService.create(request);
-            return ResponseEntity.status(HttpStatus.CREATED).body(empleado);
+            EmpleadoResponse response = empleadoService.create(request);
+            return ResponseEntity.status(HttpStatus.CREATED).body(response);
         } catch (RuntimeException | IOException e) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", e.getMessage(), "statusCode", HttpStatus.BAD_REQUEST.value()));
         }

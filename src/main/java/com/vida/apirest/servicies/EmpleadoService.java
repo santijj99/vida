@@ -50,7 +50,7 @@ public class EmpleadoService {
     }
 
     @Transactional
-    public Empleado create(CreateEmpleadoRequest request) throws IOException {
+    public EmpleadoResponse create(CreateEmpleadoRequest request) throws IOException {
         Empleado empleado = new Empleado();
         empleado.setNombre(request.getNombre());
         empleado.setApellido(request.getApellido());
@@ -70,7 +70,7 @@ public class EmpleadoService {
 
         }
 
-        return empleadoSaved;
+        return toEmpleadoResponse(empleadoSaved);
     }
 
     @Transactional

@@ -163,4 +163,24 @@ public class UsuarioService {
         return usuarioMapper.toUsuarioResponse(usuario, roles);
     }
 
+    @Transactional
+    public UsuarioResponse asignarRol(Long usuarioId, Long rolId) {
+        Usuario usuario = usuarioRepository.findById(usuarioId)
+                .orElseThrow(() -> new RuntimeException("El usuario no existe"));
+        
+        Role role = roleRepository.findById(rolId)
+                .orElseThrow(() -> new RuntimeException("El rol no existe"));
+        
+        boolean yaAsignado = usuarioHasRoleRepository.existsByUsuarioIdAndRoleId(usuarioId, rolId);
+        if (yaAsignado) {
+            throw new RuntimeException("El usuario ya tiene asignado este rol");
+        }
+        
+        UsuarioHasRoles usuarioHasRoles = new UsuarioHasRoles(usuario, role);
+        usuarioHasRoleRepository.save(usuarioHasRoles);
+        
+        List<Role> roles = roleRepository.findAllByUsuariosHasRoles_Usuario_Id(usuarioId);
+        return usuarioMapper.toUsuarioResponse(usuario, roles);
+    }
+
 }
