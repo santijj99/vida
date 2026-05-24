@@ -1,22 +1,36 @@
 package com.vida.apirest.model.auth;
 
-
-import com.vida.apirest.model.persona.Empleado;
-import jakarta.persistence.*;
-import lombok.Data;
-import org.springframework.security.core.GrantedAuthority;
-import org.springframework.security.core.userdetails.UserDetails;
-
 import java.time.LocalDate;
 import java.util.Collection;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Set;
+import java.util.stream.Collectors;
+
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.userdetails.UserDetails;
+
+import com.vida.apirest.model.persona.Empleado;
+
+import jakarta.persistence.CascadeType;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.OneToMany;
+import jakarta.persistence.OneToOne;
+import jakarta.persistence.Table;
+import lombok.Data;
+import lombok.EqualsAndHashCode;
+import lombok.ToString;
 
 @Data
 @Entity
 @Table(name = "usuario")
 public class Usuario implements UserDetails {
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "id")
@@ -58,14 +72,17 @@ public class Usuario implements UserDetails {
 //            inverseJoinColumns = @JoinColumn(name = "rol_id")
 //    )
 //    private List<Role> roles;
-
     //tabla con la cual me relaciono "usuario"
-    @OneToMany(mappedBy = "usuario", cascade = CascadeType.ALL, orphanRemoval = true)
+    @EqualsAndHashCode.Exclude
+    @ToString.Exclude
+    @OneToMany(mappedBy = "usuario", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
     private Set<UsuarioHasRoles> usuarioHasRoles = new HashSet<>();
 
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
-        return List.of();
+        return this.usuarioHasRoles.stream()
+                .map(uhr -> new SimpleGrantedAuthority("ROLE_" + uhr.getRole().getNombre()))
+                .collect(Collectors.toList());
     }
 
     @Override
@@ -77,6 +94,5 @@ public class Usuario implements UserDetails {
     public String getPassword() {
         return this.password;
     }
-
 
 }

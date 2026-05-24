@@ -1,6 +1,21 @@
 package com.vida.apirest.servicies;
 
-import com.vida.apirest.dto.usuario.*;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
+import java.util.List;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import com.vida.apirest.dto.usuario.CreateUsuarioRequest;
+import com.vida.apirest.dto.usuario.LoginRequest;
+import com.vida.apirest.dto.usuario.LoginResponse;
+import com.vida.apirest.dto.usuario.UpdateUsuarioRequest;
+import com.vida.apirest.dto.usuario.UsuarioResponse;
 import com.vida.apirest.dto.usuario.mapper.UsuarioMapper;
 import com.vida.apirest.model.auth.Role;
 import com.vida.apirest.model.auth.Usuario;
@@ -9,16 +24,6 @@ import com.vida.apirest.repositories.RoleRepository;
 import com.vida.apirest.repositories.UsuarioHasRoleRepository;
 import com.vida.apirest.repositories.UsuarioRepository;
 import com.vida.apirest.utils.JwtUtil;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Paths;
-import java.nio.file.StandardCopyOption;
-import java.util.List;
 
 @Service
 public class UsuarioService {
@@ -79,6 +84,34 @@ public class UsuarioService {
 
     }
 
+    @Transactional(readOnly = true)
+    public List<UsuarioResponse> findAll() {
+        return usuarioRepository.findAll().stream().map(usuario -> {
+            List<Role> roles = roleRepository.findAllByUsuariosHasRoles_Usuario_Id(usuario.getId());
+            return usuarioMapper.toUsuarioResponse(usuario, roles);
+        }).toList();
+    }
+
+   @Transactional
+    public UsuarioResponse createByAdmin(CreateUsuarioRequest request) {
+        if (usuarioRepository.existsByEmail(request.email)) {
+            throw new RuntimeException("El correo ya está en uso");
+        }
+        
+        Usuario usuario = new Usuario();
+        usuario.setUsuario(request.usuario);
+        usuario.setEmail(request.email);
+        usuario.setCelular(request.celular);
+        usuario.setActivo(true);
+        
+        String encryptedPassword = passwordEncoder.encode(request.password);
+        usuario.setPassword(encryptedPassword);
+        Usuario savedUser = usuarioRepository.save(usuario);
+        List<Role> rolesVacios = java.util.List.of();
+        
+        return usuarioMapper.toUsuarioResponse(savedUser, rolesVacios);
+    }
+
     @Transactional
     public LoginResponse login(LoginRequest request) {
         Usuario usuario = usuarioRepository.findByEmail(request.getEmail()).orElseThrow(() -> new RuntimeException("El email o password no son validos"));
@@ -87,13 +120,10 @@ public class UsuarioService {
         }
         String token = jwtUtil.generatToken(usuario);
         List<Role> roles = roleRepository.findAllByUsuariosHasRoles_Usuario_Id(usuario.getId());
-
         LoginResponse response = new LoginResponse();
         response.setToken("Bearer " + token);
         response.setUsuario(usuarioMapper.toUsuarioResponse(usuario, roles));
         return response;
-
-
     }
 
     @Transactional
