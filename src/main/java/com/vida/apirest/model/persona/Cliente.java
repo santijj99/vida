@@ -9,8 +9,8 @@ import java.util.HashSet;
 import java.util.Set;
 
 @Data
-@EqualsAndHashCode(exclude = {"garante", "garantizados", "contactos"})
-@ToString(exclude = {"garante", "garantizados", "contactos"})
+@EqualsAndHashCode(exclude = {"garante", "garantizados", "contactos", "direccion"})
+@ToString(exclude = {"garante", "garantizados", "contactos", "direccion"})
 @Entity
 @Table(name = "cliente")
 public class Cliente {
@@ -35,9 +35,10 @@ public class Cliente {
     @OneToMany(mappedBy = "cliente", cascade = CascadeType.ALL, orphanRemoval = true)
     private Set<Contacto> contactos = new HashSet<>();
 
+    @ManyToOne
+    @JoinColumn(name = "direccion_id")
+    private Direccion direccion;
+
     @Column(name = "dni", length = 20)
     private String dni;
-
-    @Column(length = 36, nullable = true)
-    private String image;
 }
