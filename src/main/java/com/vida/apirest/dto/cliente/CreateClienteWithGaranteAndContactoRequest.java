@@ -5,7 +5,7 @@ import lombok.Data;
 import java.util.List;
 
 @Data
-public class CreateClienteRequest {
+public class CreateClienteWithGaranteAndContactoRequest {
     private String nombre;
     private String apellido;
     private String dni;
