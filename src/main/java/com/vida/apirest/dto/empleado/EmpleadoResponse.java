@@ -1,5 +1,7 @@
 package com.vida.apirest.dto.empleado;
 
+import java.util.List;
+
 import lombok.Data;
 
 @Data
@@ -11,4 +13,6 @@ public class EmpleadoResponse {
     private String image;
     private Boolean activo;
     private Long usuarioId;
+    private String celular;
+    private List<String> roles;
 }

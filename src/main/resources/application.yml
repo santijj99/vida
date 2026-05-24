@@ -1,15 +1,15 @@
 server:
   port: 3000
-  address: 192.168.100.18
+  address: 192.168.1.14
 
 spring:
   application:
     name: apirest
 
   datasource:
-    url: jdbc:postgresql://localhost:5432/db_punto
+    url: jdbc:postgresql://localhost:5433/db_punto
     username: postgres
-    password: 1234
+    password:
     driver-class-name: org.postgresql.Driver
 
   jpa:
