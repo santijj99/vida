@@ -2,6 +2,8 @@ package com.vida.apirest.servicies;
 
 import com.vida.apirest.dto.ariticulo.ArticuloCompactResponse;
 import com.vida.apirest.dto.ariticulo.ArticuloCreateRequest;
+import com.vida.apirest.dto.ariticulo.ArticuloFiltrosResponse;
+import com.vida.apirest.dto.ariticulo.ArticuloTablaRowResponse;
 import com.vida.apirest.dto.ariticulo.VarianteCompactResponse;
 import com.vida.apirest.model.almacen.Deposito;
 import com.vida.apirest.model.almacen.Stock;
@@ -15,9 +17,9 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
+import java.util.stream.Collectors;
 import org.springframework.data.jpa.domain.Specification;
 import jakarta.persistence.criteria.Join;
 import jakarta.persistence.criteria.JoinType;
@@ -33,6 +35,7 @@ public class ArticuloService {
     private final ColorRepository colorRepository;
     private final TalleRepository talleRepository;
     private final TaxonRepository taxonRepository;
+    private final TaxonArticuloRepository taxonArticuloRepository;
     private final VarianteArticuloRepository varianteArticuloRepository;
     private final HistorialPrecioRepository historialPrecioRepository;
     private final StockRepository stockRepository;
@@ -41,8 +44,165 @@ public class ArticuloService {
 
     @Transactional(readOnly = true)
     public List<ArticuloCompactResponse> findAllCompact() {
-        return articuloRepository.findAll().stream()
+        return articuloRepository.findAllWithDetalle().stream()
                 .map(this::toCompactResponse)
+                .collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public List<ArticuloTablaRowResponse> findAllTabla(
+            String categoria,
+            String subCategoria,
+            String genero,
+            String marca
+    ) {
+        List<ArticuloTablaRowResponse> filas = new ArrayList<>();
+        for (Articulo articulo : articuloRepository.findAllWithDetalle()) {
+            String marcaNombre = articulo.getMarca() != null ? articulo.getMarca().getNombre() : null;
+            String categoriaNombre = articulo.getCategoria() != null ? articulo.getCategoria().getNombre() : null;
+            String generoNombre = articulo.getGenero() != null ? articulo.getGenero().getNombre() : null;
+            if (articulo.getVariantes() == null || articulo.getVariantes().isEmpty()) {
+                String subCategoriaNombre = obtenerSubCategoria(articulo);
+                ArticuloTablaRowResponse fila = new ArticuloTablaRowResponse(
+                        articulo.getId(), null,
+                        articulo.getCodigo(), marcaNombre, articulo.getModelo(),
+                        categoriaNombre, subCategoriaNombre, generoNombre,
+                        null, null, null, null, null);
+                if (coincideFiltros(fila, categoria, subCategoria, genero, marca)) {
+                    filas.add(fila);
+                }
+                continue;
+            }
+            for (VarianteArticulo variante : articulo.getVariantes()) {
+                ArticuloTablaRowResponse fila = new ArticuloTablaRowResponse(
+                        articulo.getId(),
+                        variante.getId(),
+                        articulo.getCodigo(),
+                        marcaNombre,
+                        articulo.getModelo(),
+                        categoriaNombre,
+                        obtenerSubCategoriaVariante(variante, articulo),
+                        generoNombre,
+                        variante.getTalle() != null ? variante.getTalle().getNumero() : null,
+                        variante.getColor() != null ? variante.getColor().getNombre() : null,
+                        variante.getCodigoBarras(),
+                        getPrecioActual(variante.getId()),
+                        getCantidadDisponibleForVariante(articulo.getId(), variante.getId()));
+                if (coincideFiltros(fila, categoria, subCategoria, genero, marca)) {
+                    filas.add(fila);
+                }
+            }
+        }
+        return filas;
+    }
+
+    @Transactional(readOnly = true)
+    public ArticuloFiltrosResponse obtenerFiltrosTabla() {
+        List<ArticuloTablaRowResponse> todas = findAllTabla(null, null, null, null);
+        return new ArticuloFiltrosResponse(
+                valoresUnicos(todas, ArticuloTablaRowResponse::getCategoria),
+                valoresUnicos(todas, ArticuloTablaRowResponse::getSubCategoria),
+                valoresUnicos(todas, ArticuloTablaRowResponse::getGenero),
+                valoresUnicos(todas, ArticuloTablaRowResponse::getMarca)
+        );
+    }
+
+    private String obtenerSubCategoria(Articulo articulo) {
+        if (articulo.getTaxones() == null || articulo.getTaxones().isEmpty()) {
+            return null;
+        }
+        return articulo.getTaxones().stream()
+                .map(TaxonArticulo::getTaxon)
+                .filter(Objects::nonNull)
+                .map(Taxon::getNombre)
+                .findFirst()
+                .orElse(null);
+    }
+
+    private String obtenerSubCategoriaVariante(VarianteArticulo variante, Articulo articulo) {
+        if (variante.getTaxon() != null) {
+            return variante.getTaxon().getNombre();
+        }
+        return obtenerSubCategoria(articulo);
+    }
+
+    private Taxon resolverTaxon(String nombre) {
+        if (nombre == null || nombre.isBlank()) {
+            return null;
+        }
+        String normalizado = nombre.trim();
+        return taxonRepository.findByNombre(normalizado)
+                .orElseGet(() -> {
+                    Taxon nuevo = new Taxon();
+                    nuevo.setNombre(normalizado);
+                    nuevo.setNivel(1);
+                    return taxonRepository.save(nuevo);
+                });
+    }
+
+    private void vincularTaxonArticulo(Long articuloId, Taxon taxon) {
+        if (taxon == null) {
+            return;
+        }
+        if (!taxonArticuloRepository.existsByArticuloIdAndTaxonId(articuloId, taxon.getId())) {
+            TaxonArticulo taxonArticulo = new TaxonArticulo();
+            taxonArticulo.setArticuloId(articuloId);
+            taxonArticulo.setTaxonId(taxon.getId());
+            taxonArticuloRepository.save(taxonArticulo);
+        }
+    }
+
+    private String resolverNombreSubCategoria(String varianteSub, String articuloSub) {
+        if (varianteSub != null && !varianteSub.isBlank()) {
+            return varianteSub.trim();
+        }
+        if (articuloSub != null && !articuloSub.isBlank()) {
+            return articuloSub.trim();
+        }
+        return null;
+    }
+
+    private boolean coincideFiltros(
+            ArticuloTablaRowResponse fila,
+            String categoria,
+            String subCategoria,
+            String genero,
+            String marca
+    ) {
+        if (categoria != null && !categoria.isBlank()
+                && !categoria.equalsIgnoreCase(nullToDash(fila.getCategoria()))) {
+            return false;
+        }
+        if (subCategoria != null && !subCategoria.isBlank()
+                && !subCategoria.equalsIgnoreCase(nullToDash(fila.getSubCategoria()))) {
+            return false;
+        }
+        if (genero != null && !genero.isBlank()
+                && !genero.equalsIgnoreCase(nullToDash(fila.getGenero()))) {
+            return false;
+        }
+        if (marca != null && !marca.isBlank()
+                && !marca.equalsIgnoreCase(nullToDash(fila.getMarca()))) {
+            return false;
+        }
+        return true;
+    }
+
+    private String nullToDash(String value) {
+        return value == null ? "" : value;
+    }
+
+    private List<String> valoresUnicos(
+            List<ArticuloTablaRowResponse> filas,
+            java.util.function.Function<ArticuloTablaRowResponse, String> extractor
+    ) {
+        return filas.stream()
+                .map(extractor)
+                .filter(Objects::nonNull)
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .distinct()
+                .sorted()
                 .collect(Collectors.toList());
     }
 
@@ -68,18 +228,6 @@ public class ArticuloService {
                     return categoriaRepository.save(newCategoria);
                 });
 
-        // Buscar o crear SubCategoria (Taxon)
-        Taxon subCategoria = null;
-        if (request.getSubCategoria() != null) {
-            subCategoria = taxonRepository.findByNombre(request.getSubCategoria())
-                    .orElseGet(() -> {
-                        Taxon newTaxon = new Taxon();
-                        newTaxon.setNombre(request.getSubCategoria());
-                        newTaxon.setNivel(1);
-                        return taxonRepository.save(newTaxon);
-                    });
-        }
-
         // Buscar o crear Genero
         Genero genero = generoRepository.findByNombre(request.getGenero())
                 .orElseGet(() -> {
@@ -99,14 +247,8 @@ public class ArticuloService {
         articulo.setDescripcion(request.getDescripcion());
         articulo = articuloRepository.save(articulo);
 
-        // Crear TaxonArticulo si hay subCategoria
-        if (subCategoria != null) {
-            TaxonArticulo taxonArticulo = new TaxonArticulo();
-            taxonArticulo.setArticuloId(articulo.getId());
-            taxonArticulo.setTaxonId(subCategoria.getId());
-            // Asumir que hay un repository para TaxonArticulo
-            // taxonArticuloRepository.save(taxonArticulo);
-        }
+        Taxon subCategoriaArticulo = resolverTaxon(request.getSubCategoria());
+        vincularTaxonArticulo(articulo.getId(), subCategoriaArticulo);
 
         // Obtener deposito y sucursal
         Deposito deposito;
@@ -156,11 +298,32 @@ public class ArticuloService {
                         return colorRepository.save(newColor);
                     });
 
+            String subCategoriaNombre = resolverNombreSubCategoria(
+                    variantReq.getSubCategoria(), request.getSubCategoria());
+            Taxon taxonVariante = resolverTaxon(subCategoriaNombre);
+            if (taxonVariante != null) {
+                vincularTaxonArticulo(articulo.getId(), taxonVariante);
+            }
+
+            if (variantReq.getCodigoBarras() != null && !variantReq.getCodigoBarras().isBlank()) {
+                String codigoBarras = variantReq.getCodigoBarras().trim();
+                if (varianteArticuloRepository.existsByCodigoBarras(codigoBarras)) {
+                    throw new RuntimeException(
+                            "El código de barras ya está registrado: " + codigoBarras);
+                }
+            }
+
             // Crear VarianteArticulo
             VarianteArticulo variante = new VarianteArticulo();
             variante.setArticuloId(articulo.getId());
             variante.setColorId(varianteColor.getId());
             variante.setTalleId(talle.getId());
+            if (taxonVariante != null) {
+                variante.setTaxonId(taxonVariante.getId());
+            }
+            if (variantReq.getCodigoBarras() != null && !variantReq.getCodigoBarras().isBlank()) {
+                variante.setCodigoBarras(variantReq.getCodigoBarras().trim());
+            }
             variante = varianteArticuloRepository.save(variante);
 
             // Crear HistorialPrecio
@@ -230,8 +393,16 @@ public class ArticuloService {
         return articuloRepository.findAll(spec);
     }
 
+    @Transactional(readOnly = true)
     public Articulo getArticuloById(Long id) {
         return articuloRepository.findById(id).orElseThrow(() -> new RuntimeException("Artículo no encontrado con id: " + id));
+    }
+
+    @Transactional(readOnly = true)
+    public ArticuloCompactResponse getCompactById(Long id) {
+        Articulo articulo = articuloRepository.findByIdWithDetalle(id)
+                .orElseThrow(() -> new RuntimeException("Artículo no encontrado con id: " + id));
+        return toCompactResponse(articulo);
     }
 
     public Articulo getByCodigo(String codigo) {
@@ -271,7 +442,7 @@ public class ArticuloService {
                 variantDto.setColor(variante.getColor() != null ? variante.getColor().getNombre() : null);
                 variantDto.setTalle(variante.getTalle() != null ? variante.getTalle().getNumero() : null);
                 variantDto.setCodigoBarras(variante.getCodigoBarras());
-                variantDto.setPrecio(getPrecioActual(variante));
+                variantDto.setPrecio(getPrecioActual(variante.getId()));
                 variantDto.setCantidad(getCantidadDisponibleForVariante(articulo.getId(), variante.getId()));
                 variants.add(variantDto);
             }
@@ -280,12 +451,11 @@ public class ArticuloService {
         return response;
     }
 
-    private BigDecimal getPrecioActual(VarianteArticulo variante) {
-        if (variante.getHistorialPrecios() == null || variante.getHistorialPrecios().isEmpty()) {
+    private BigDecimal getPrecioActual(Long varianteId) {
+        if (varianteId == null) {
             return null;
         }
-        return variante.getHistorialPrecios().stream()
-                .max(Comparator.comparing(HistorialPrecio::getFecha))
+        return historialPrecioRepository.findFirstByVarianteArticuloIdOrderByFechaDesc(varianteId)
                 .map(HistorialPrecio::getPrecioNuevo)
                 .orElse(null);
     }

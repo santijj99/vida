@@ -2,7 +2,8 @@ package com.vida.apirest.controller;
 
 import com.vida.apirest.dto.ariticulo.ArticuloCompactResponse;
 import com.vida.apirest.dto.ariticulo.ArticuloCreateRequest;
-import com.vida.apirest.dto.usuario.LoginResponse;
+import com.vida.apirest.dto.ariticulo.ArticuloFiltrosResponse;
+import com.vida.apirest.dto.ariticulo.ArticuloTablaRowResponse;
 import com.vida.apirest.model.almacen.Deposito;
 import com.vida.apirest.model.almacen.Sucursal;
 import com.vida.apirest.model.articulo.Articulo;
@@ -37,11 +38,27 @@ public class ArticuloController {
         return ResponseEntity.ok(articuloService.findAllCompact());
     }
 
+    @GetMapping("/tabla/filtros")
+    public ResponseEntity<ArticuloFiltrosResponse> filtrosTabla() {
+        return ResponseEntity.ok(articuloService.obtenerFiltrosTabla());
+    }
+
+    @GetMapping("/tabla")
+    public ResponseEntity<List<ArticuloTablaRowResponse>> listTabla(
+            @RequestParam(required = false) String categoria,
+            @RequestParam(required = false) String subCategoria,
+            @RequestParam(required = false) String genero,
+            @RequestParam(required = false) String marca
+    ) {
+        return ResponseEntity.ok(articuloService.findAllTabla(categoria, subCategoria, genero, marca));
+    }
+
     @PostMapping
     public ResponseEntity<?> createArticulo(@RequestBody ArticuloCreateRequest request) {
         try {
             Articulo articulo = articuloService.createArticulo(request);
-            return ResponseEntity.status(HttpStatus.CREATED).body(articuloService.toCompactResponse(articulo));
+            return ResponseEntity.status(HttpStatus.CREATED).body(
+                    articuloService.getCompactById(articulo.getId()));
         } catch (RuntimeException e) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
                     "message", e.getMessage(),
