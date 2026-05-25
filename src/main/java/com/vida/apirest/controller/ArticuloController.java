@@ -32,19 +32,22 @@ public class ArticuloController {
 //        return ResponseEntity.ok(articulo);
 //    }
 
+    @GetMapping("/lista")
+    public ResponseEntity<List<ArticuloCompactResponse>> listAll() {
+        return ResponseEntity.ok(articuloService.findAllCompact());
+    }
+
     @PostMapping
-    public ResponseEntity<Articulo> createArticulo(@RequestBody ArticuloCreateRequest request) {
+    public ResponseEntity<?> createArticulo(@RequestBody ArticuloCreateRequest request) {
         try {
             Articulo articulo = articuloService.createArticulo(request);
-            return  ResponseEntity.status(HttpStatus.CREATED).body(articulo);
-
+            return ResponseEntity.status(HttpStatus.CREATED).body(articuloService.toCompactResponse(articulo));
         } catch (RuntimeException e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body((Articulo) Map.of(
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
                     "message", e.getMessage(),
                     "statusCode", HttpStatus.BAD_REQUEST.value()
             ));
         }
-
     }
 
     @GetMapping("/depositos")

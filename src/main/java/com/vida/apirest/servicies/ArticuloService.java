@@ -39,8 +39,19 @@ public class ArticuloService {
     private final DepositoRepository depositoRepository;
     private final SucursalRepository sucursalRepository;
 
+    @Transactional(readOnly = true)
+    public List<ArticuloCompactResponse> findAllCompact() {
+        return articuloRepository.findAll().stream()
+                .map(this::toCompactResponse)
+                .collect(Collectors.toList());
+    }
+
     @Transactional
     public Articulo createArticulo(ArticuloCreateRequest request) {
+        if (request.getVariantes() == null || request.getVariantes().isEmpty()) {
+            throw new RuntimeException("Debe agregar al menos una variante (talle, color, precio y cantidad)");
+        }
+
         // Buscar o crear Marca
         Marca marca = marcaRepository.findByNombre(request.getMarca())
                 .orElseGet(() -> {
@@ -230,7 +241,10 @@ public class ArticuloService {
 
     @Transactional(readOnly = true)
     public ArticuloCompactResponse getByCodigoCompact(String codigo) {
-        Articulo articulo = getByCodigo(codigo);
+        return toCompactResponse(getByCodigo(codigo));
+    }
+
+    public ArticuloCompactResponse toCompactResponse(Articulo articulo) {
         ArticuloCompactResponse response = new ArticuloCompactResponse();
         response.setId(articulo.getId());
         response.setCodigo(articulo.getCodigo());

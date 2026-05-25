@@ -6,7 +6,6 @@ import com.vida.apirest.model.persona.Empleado;
 import com.vida.apirest.servicies.EmpleadoService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -37,7 +36,7 @@ public class EmpleadoController {
     }
 
     @PostMapping
-    public ResponseEntity<?> create(@ModelAttribute CreateEmpleadoRequest request) {
+    public ResponseEntity<?> create(@RequestBody CreateEmpleadoRequest request) {
         try {
             EmpleadoResponse response = empleadoService.create(request);
             return ResponseEntity.status(HttpStatus.CREATED).body(response);
@@ -46,8 +45,8 @@ public class EmpleadoController {
         }
     }
 
-    @PutMapping(value = "/{id}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<?> update(@PathVariable Long id, @ModelAttribute CreateEmpleadoRequest request) {
+    @PutMapping(value = "/{id}")
+    public ResponseEntity<?> update(@PathVariable Long id, @RequestBody CreateEmpleadoRequest request) {
         try {
             EmpleadoResponse response = empleadoService.update(id, request);
             return ResponseEntity.ok(response);

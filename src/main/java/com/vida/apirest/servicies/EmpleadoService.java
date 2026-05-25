@@ -18,8 +18,6 @@ import com.vida.apirest.model.persona.Empleado;
 import com.vida.apirest.repositories.EmpleadoRepository;
 import com.vida.apirest.repositories.RoleRepository;
 import com.vida.apirest.model.auth.Role;
-import com.vida.apirest.model.auth.UsuarioHasRoles;
-import com.vida.apirest.repositories.UsuarioHasRoleRepository;
 import com.vida.apirest.repositories.UsuarioRepository;
 
 @Service
@@ -33,9 +31,6 @@ public class EmpleadoService {
 
     @Autowired
     private RoleRepository roleRepository;
-
-    @Autowired
-    private UsuarioHasRoleRepository usuarioHasRoleRepository;
 
     @Transactional
     public List<EmpleadoResponse> findAll() {
@@ -56,19 +51,14 @@ public class EmpleadoService {
         empleado.setApellido(request.getApellido());
         empleado.setDni(request.getDni());
 
-        Empleado empleadoSaved = empleadoRepository.save(empleado);
-
-        if (request.getFile() != null && !request.getFile().isEmpty()) {
-            String uploadDir = "uploads/empleado/" + empleadoSaved.getId();
-            String fileName = getPerfilFileName(request.getFile().getOriginalFilename());
-            String filePath = Paths.get(uploadDir, fileName).toString();
-
-            Files.createDirectories(Paths.get(uploadDir));
-            Files.copy(request.getFile().getInputStream(), Paths.get(filePath), StandardCopyOption.REPLACE_EXISTING);
-            empleadoSaved.setImage("/" + filePath.replace("\\", "/"));
-            empleadoRepository.save(empleadoSaved);
-
+        if (request.getActivo() != null) {
+            empleado.setActivo(request.getActivo());
         }
+
+        Empleado empleadoSaved = empleadoRepository.save(empleado);
+        empleadoSaved = guardarImagenSiExiste(request, empleadoSaved);
+        vincularUsuario(empleadoSaved, request.getUsuarioId());
+        empleadoSaved = empleadoRepository.save(empleadoSaved);
 
         return toEmpleadoResponse(empleadoSaved);
     }
@@ -98,46 +88,45 @@ public class EmpleadoService {
     }
 
     private void mapRequestToEmpleado(CreateEmpleadoRequest request, Empleado empleado) throws IOException {
-        empleado.setNombre(request.getNombre());
-        empleado.setApellido(request.getApellido());
-        empleado.setDni(request.getDni());
-
-        Empleado empleadoSaved = empleadoRepository.save(empleado);
-
-        if (request.getFile() != null && !request.getFile().isEmpty()) {
-            String uploadDir = "uploads/empleado/" + empleadoSaved.getId();
-            String fileName = getPerfilFileName(request.getFile().getOriginalFilename());
-            String filePath = Paths.get(uploadDir, fileName).toString();
-            Files.createDirectories(Paths.get(uploadDir));
-            Files.copy(request.getFile().getInputStream(), Paths.get(filePath), StandardCopyOption.REPLACE_EXISTING);
-            empleadoSaved.setImage("/" + filePath.replace("\\", "/"));
-            empleadoRepository.save(empleadoSaved);
+        if (request.getNombre() != null) {
+            empleado.setNombre(request.getNombre());
+        }
+        if (request.getApellido() != null) {
+            empleado.setApellido(request.getApellido());
+        }
+        if (request.getDni() != null) {
+            empleado.setDni(request.getDni());
         }
 
         if (request.getActivo() != null) {
             empleado.setActivo(request.getActivo());
         }
 
-        // --- NUEVA LÓGICA DE VINCULACIÓN Y ROLES ---
+        guardarImagenSiExiste(request, empleado);
         if (request.getUsuarioId() != null) {
-            Usuario usuario = usuarioRepository.findById(request.getUsuarioId())
+            vincularUsuario(empleado, request.getUsuarioId());
+        }
+    }
+
+    private Empleado guardarImagenSiExiste(CreateEmpleadoRequest request, Empleado empleado) throws IOException {
+        if (request.getFile() != null && !request.getFile().isEmpty()) {
+            String uploadDir = "uploads/empleado/" + empleado.getId();
+            String fileName = getPerfilFileName(request.getFile().getOriginalFilename());
+            String filePath = Paths.get(uploadDir, fileName).toString();
+
+            Files.createDirectories(Paths.get(uploadDir));
+            Files.copy(request.getFile().getInputStream(), Paths.get(filePath), StandardCopyOption.REPLACE_EXISTING);
+            empleado.setImage("/" + filePath.replace("\\", "/"));
+            return empleadoRepository.save(empleado);
+        }
+        return empleado;
+    }
+
+    private void vincularUsuario(Empleado empleado, Long usuarioId) {
+        if (usuarioId != null) {
+            Usuario usuario = usuarioRepository.findById(usuarioId)
                     .orElseThrow(() -> new RuntimeException("Usuario para empleado no encontrado"));
             empleado.setUsuario(usuario);
-
-            // 1. Buscamos el rol EMPLEADO en la base de datos
-            Role empleadoRole = roleRepository.findByNombre("EMPLEADO")
-                    .orElseThrow(() -> new RuntimeException("El rol EMPLEADO no existe en la BD"));
-
-            // 2. Verificamos si el usuario ya tiene este rol asignado
-            List<Role> userRoles = roleRepository.findAllByUsuariosHasRoles_Usuario_Id(usuario.getId());
-            boolean hasRoleEmpleado = userRoles.stream().anyMatch(r -> r.getNombre().equals("EMPLEADO"));
-
-            // 3. Si no lo tiene, se lo agregamos automáticamente
-            if (!hasRoleEmpleado) {
-                UsuarioHasRoles nuevoRol = new UsuarioHasRoles(usuario, empleadoRole);
-                usuarioHasRoleRepository.save(nuevoRol);
-            }
-
         } else {
             empleado.setUsuario(null);
         }
@@ -156,10 +145,22 @@ public class EmpleadoService {
             response.setCelular(empleado.getUsuario().getCelular());
 
             List<Role> rolesBD = roleRepository.findAllByUsuariosHasRoles_Usuario_Id(empleado.getUsuario().getId());
-            response.setRoles(rolesBD.stream().map(Role::getNombre).collect(Collectors.toList()));
+            List<String> nombresRoles = rolesBD.stream().map(Role::getNombre).collect(Collectors.toList());
+            response.setRoles(nombresRoles);
+            response.setRolPrincipal(resolverRolPrincipal(nombresRoles));
         }
 
         return response;
+    }
+
+    private String resolverRolPrincipal(List<String> roles) {
+        if (roles == null || roles.isEmpty()) {
+            return null;
+        }
+        if (roles.contains("ADMINISTRADOR")) {
+            return "ADMINISTRADOR";
+        }
+        return roles.get(0);
     }
 
     private String getPerfilFileName(String originalFilename) {

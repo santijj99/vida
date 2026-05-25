@@ -57,7 +57,7 @@ public class UsuarioService {
         Usuario usuario = new Usuario();
         usuario.setUsuario(request.usuario);
         usuario.setEmail(request.email);
-        usuario.setCelular(request.celular);
+        usuario.setCelular(celularNormalizado(request.celular));
 
         String encryptedPassword = passwordEncoder.encode(request.password);
         usuario.setPassword(encryptedPassword);
@@ -92,24 +92,28 @@ public class UsuarioService {
         }).toList();
     }
 
-   @Transactional
+    @Transactional
     public UsuarioResponse createByAdmin(CreateUsuarioRequest request) {
         if (usuarioRepository.existsByEmail(request.email)) {
             throw new RuntimeException("El correo ya está en uso");
         }
-        
+
         Usuario usuario = new Usuario();
         usuario.setUsuario(request.usuario);
         usuario.setEmail(request.email);
-        usuario.setCelular(request.celular);
+        usuario.setCelular(celularNormalizado(request.celular));
         usuario.setActivo(true);
-        
+
         String encryptedPassword = passwordEncoder.encode(request.password);
         usuario.setPassword(encryptedPassword);
         Usuario savedUser = usuarioRepository.save(usuario);
-        List<Role> rolesVacios = java.util.List.of();
-        
-        return usuarioMapper.toUsuarioResponse(savedUser, rolesVacios);
+
+        if (request.rolId != null) {
+            asignarRolSiNoExiste(savedUser, request.rolId);
+        }
+
+        List<Role> roles = roleRepository.findAllByUsuariosHasRoles_Usuario_Id(savedUser.getId());
+        return usuarioMapper.toUsuarioResponse(savedUser, roles);
     }
 
     @Transactional
@@ -167,20 +171,31 @@ public class UsuarioService {
     public UsuarioResponse asignarRol(Long usuarioId, Long rolId) {
         Usuario usuario = usuarioRepository.findById(usuarioId)
                 .orElseThrow(() -> new RuntimeException("El usuario no existe"));
-        
-        Role role = roleRepository.findById(rolId)
-                .orElseThrow(() -> new RuntimeException("El rol no existe"));
-        
-        boolean yaAsignado = usuarioHasRoleRepository.existsByUsuarioIdAndRoleId(usuarioId, rolId);
-        if (yaAsignado) {
-            throw new RuntimeException("El usuario ya tiene asignado este rol");
-        }
-        
-        UsuarioHasRoles usuarioHasRoles = new UsuarioHasRoles(usuario, role);
-        usuarioHasRoleRepository.save(usuarioHasRoles);
-        
+
+        asignarRolSiNoExiste(usuario, rolId);
+
         List<Role> roles = roleRepository.findAllByUsuariosHasRoles_Usuario_Id(usuarioId);
         return usuarioMapper.toUsuarioResponse(usuario, roles);
+    }
+
+    private String celularNormalizado(String celular) {
+        if (celular == null || celular.isBlank()) {
+            return null;
+        }
+        return celular.trim();
+    }
+
+    private void asignarRolSiNoExiste(Usuario usuario, Long rolId) {
+        Role role = roleRepository.findById(rolId)
+                .orElseThrow(() -> new RuntimeException("El rol no existe"));
+
+        boolean yaAsignado = usuarioHasRoleRepository.existsByUsuarioIdAndRoleId(usuario.getId(), rolId);
+        if (yaAsignado) {
+            return;
+        }
+
+        UsuarioHasRoles usuarioHasRoles = new UsuarioHasRoles(usuario, role);
+        usuarioHasRoleRepository.save(usuarioHasRoles);
     }
 
 }

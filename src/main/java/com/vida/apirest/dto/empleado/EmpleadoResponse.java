@@ -15,4 +15,5 @@ public class EmpleadoResponse {
     private Long usuarioId;
     private String celular;
     private List<String> roles;
+    private String rolPrincipal;
 }
