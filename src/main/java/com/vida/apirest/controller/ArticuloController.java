@@ -3,6 +3,7 @@ package com.vida.apirest.controller;
 import com.vida.apirest.dto.ariticulo.ArticuloCompactResponse;
 import com.vida.apirest.dto.ariticulo.ArticuloCreateRequest;
 import com.vida.apirest.dto.ariticulo.ArticuloFiltrosResponse;
+import com.vida.apirest.dto.ariticulo.ArticuloParaVentaResponse;
 import com.vida.apirest.dto.ariticulo.ArticuloTablaRowResponse;
 import com.vida.apirest.model.almacen.Deposito;
 import com.vida.apirest.model.almacen.Sucursal;
@@ -41,6 +42,18 @@ public class ArticuloController {
     @GetMapping("/tabla/filtros")
     public ResponseEntity<ArticuloFiltrosResponse> filtrosTabla() {
         return ResponseEntity.ok(articuloService.obtenerFiltrosTabla());
+    }
+
+    @GetMapping("/para-venta")
+    public ResponseEntity<?> listParaVenta(@RequestParam Long sucursalId) {
+        try {
+            return ResponseEntity.ok(articuloService.findParaVenta(sucursalId));
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
+                    "message", e.getMessage(),
+                    "statusCode", HttpStatus.BAD_REQUEST.value()
+            ));
+        }
     }
 
     @GetMapping("/tabla")

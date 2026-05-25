@@ -3,6 +3,7 @@ package com.vida.apirest.servicies;
 import com.vida.apirest.dto.ariticulo.ArticuloCompactResponse;
 import com.vida.apirest.dto.ariticulo.ArticuloCreateRequest;
 import com.vida.apirest.dto.ariticulo.ArticuloFiltrosResponse;
+import com.vida.apirest.dto.ariticulo.ArticuloParaVentaResponse;
 import com.vida.apirest.dto.ariticulo.ArticuloTablaRowResponse;
 import com.vida.apirest.dto.ariticulo.VarianteCompactResponse;
 import com.vida.apirest.model.almacen.Deposito;
@@ -478,5 +479,53 @@ public class ArticuloService {
 
     public List<Articulo> getByColor(String color) {
         return articuloRepository.findAllByColorNombreContaining(color);
+    }
+
+    @Transactional(readOnly = true)
+    public List<ArticuloParaVentaResponse> findParaVenta(Long sucursalId) {
+        if (sucursalId == null) {
+            throw new RuntimeException("Sucursal requerida para listar artículos de venta");
+        }
+        if (!sucursalRepository.existsById(sucursalId)) {
+            throw new RuntimeException("Sucursal no encontrada con ID: " + sucursalId);
+        }
+
+        List<ArticuloParaVentaResponse> resultado = new ArrayList<>();
+        for (Articulo articulo : articuloRepository.findAllWithDetalle()) {
+            String marca = articulo.getMarca() != null ? articulo.getMarca().getNombre() : null;
+            if (articulo.getVariantes() == null || articulo.getVariantes().isEmpty()) {
+                continue;
+            }
+            for (VarianteArticulo variante : articulo.getVariantes()) {
+                int stock = getCantidadDisponibleEnSucursal(
+                        articulo.getId(), variante.getId(), sucursalId);
+                if (stock <= 0) {
+                    continue;
+                }
+                BigDecimal precio = getPrecioActual(variante.getId());
+                if (precio == null || precio.compareTo(BigDecimal.ZERO) <= 0) {
+                    continue;
+                }
+                resultado.add(new ArticuloParaVentaResponse(
+                        articulo.getId(),
+                        variante.getId(),
+                        articulo.getCodigo(),
+                        marca,
+                        articulo.getModelo(),
+                        variante.getTalle() != null ? variante.getTalle().getNumero() : null,
+                        variante.getColor() != null ? variante.getColor().getNombre() : null,
+                        variante.getCodigoBarras(),
+                        precio,
+                        stock
+                ));
+            }
+        }
+        return resultado;
+    }
+
+    private Integer getCantidadDisponibleEnSucursal(Long articuloId, Long varianteId, Long sucursalId) {
+        return stockRepository.findByVarianteIdAndSucursalId(varianteId, sucursalId)
+                .map(Stock::getCantidadDisponible)
+                .orElse(0);
     }
 }

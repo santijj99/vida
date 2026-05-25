@@ -35,6 +35,13 @@ public class ClienteService {
         return toClienteResponse(cliente);
     }
 
+    @Transactional(readOnly = true)
+    public ClienteResponse findByDni(String dni) {
+        Cliente cliente = clienteRepository.findByDni(dni.trim())
+                .orElseThrow(() -> new RuntimeException("Cliente no encontrado con DNI: " + dni));
+        return toClienteResponse(cliente);
+    }
+
     @Transactional
     public ClienteResponse createClienteOnly(CreateClienteSimpleRequest request) {
         Cliente cliente = new Cliente();

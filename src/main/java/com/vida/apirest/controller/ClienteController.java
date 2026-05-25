@@ -26,6 +26,16 @@ public class ClienteController {
         return ResponseEntity.ok(clientes);
     }
 
+    @GetMapping("/dni/{dni}")
+    public ResponseEntity<?> getByDni(@PathVariable String dni) {
+        try {
+            return ResponseEntity.ok(clienteService.findByDni(dni));
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
+                    "message", e.getMessage(), "statusCode", HttpStatus.NOT_FOUND.value()));
+        }
+    }
+
     @GetMapping("/{id:[0-9]+}")
     public ResponseEntity<?> getById(@PathVariable Long id) {
         try {
