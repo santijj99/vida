@@ -71,6 +71,11 @@ public class VentaService {
 
     @Transactional
     public VentaResponse registrarVenta(VentaCreateRequest request) {
+        return registrarVenta(request, true);
+    }
+
+    @Transactional
+    public VentaResponse registrarVenta(VentaCreateRequest request, boolean descontarStock) {
         if (request.getClienteDni() == null || request.getClienteDni().isBlank()) {
             throw new RuntimeException("DNI de cliente requerido para registrar la venta");
         }
@@ -148,10 +153,12 @@ public class VentaService {
                 precioUnitario = detalleReq.getPrecioUnitario();
             }
 
-            Stock stock = variante != null
-                    ? findStockByVariante(variante.getId(), sucursal.getId())
-                    : findStock(articulo.getId(), null, sucursal.getId());
-            ajustarStock(stock, detalleReq.getCantidad(), venta.getNumeroFactura());
+            if (descontarStock) {
+                Stock stock = variante != null
+                        ? findStockByVariante(variante.getId(), sucursal.getId())
+                        : findStock(articulo.getId(), null, sucursal.getId());
+                ajustarStock(stock, detalleReq.getCantidad(), venta.getNumeroFactura());
+            }
 
             VentaDetalle detalle = new VentaDetalle();
             detalle.setVenta(venta);
@@ -289,6 +296,11 @@ public class VentaService {
 
     @Transactional
     public VentaResponse registrarVentaCreditoPersonal(VentaCreditoPersonalRequest request) {
+        return registrarVentaCreditoPersonal(request, true);
+    }
+
+    @Transactional
+    public VentaResponse registrarVentaCreditoPersonal(VentaCreditoPersonalRequest request, boolean descontarStock) {
         if (request.getCreditoPlazoMeses() == null || request.getCreditoPlazoMeses() <= 0) {
             throw new RuntimeException("Se requiere un plazo de crédito personal mayor a cero");
         }
@@ -341,7 +353,7 @@ public class VentaService {
         pagos.add(pagoCredito);
 
         internalRequest.setPagos(pagos);
-        return registrarVenta(internalRequest);
+        return registrarVenta(internalRequest, descontarStock);
     }
 
     private BigDecimal resolverSubtotalSimulacion(CreditoSimulacionRequest request) {

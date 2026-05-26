@@ -6,4 +6,6 @@ import org.springframework.data.jpa.repository.JpaRepository;
 public interface VarianteArticuloRepository extends JpaRepository<VarianteArticulo, Long> {
 
     boolean existsByCodigoBarras(String codigoBarras);
+
+    boolean existsByArticuloIdAndColorIdAndTalleId(Long articuloId, Long colorId, Long talleId);
 }

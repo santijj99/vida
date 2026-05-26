@@ -5,6 +5,8 @@ import com.vida.apirest.dto.ariticulo.ArticuloCreateRequest;
 import com.vida.apirest.dto.ariticulo.ArticuloFiltrosResponse;
 import com.vida.apirest.dto.ariticulo.ArticuloParaVentaResponse;
 import com.vida.apirest.dto.ariticulo.ArticuloTablaRowResponse;
+import com.vida.apirest.dto.ariticulo.VariantCreateRequest;
+import com.vida.apirest.dto.ariticulo.VarianteCompactResponse;
 import com.vida.apirest.model.almacen.Deposito;
 import com.vida.apirest.model.almacen.Sucursal;
 import com.vida.apirest.model.articulo.Articulo;
@@ -106,7 +108,38 @@ public class ArticuloController {
         return ResponseEntity.ok(results);
     }
 
-    @GetMapping("/{id}")
+    @GetMapping("/{id:[0-9]+}/compact")
+    public ResponseEntity<?> getCompactById(@PathVariable Long id) {
+        try {
+            return ResponseEntity.ok(articuloService.getCompactById(id));
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
+                    "message", e.getMessage(),
+                    "statusCode", HttpStatus.NOT_FOUND.value()
+            ));
+        }
+    }
+
+    @PostMapping("/{id:[0-9]+}/variantes")
+    public ResponseEntity<?> agregarVariante(
+            @PathVariable Long id,
+            @RequestBody VariantCreateRequest request,
+            @RequestParam(required = false) Long depositoId,
+            @RequestParam(required = false) Long sucursalId
+    ) {
+        try {
+            VarianteCompactResponse variante = articuloService.agregarVariante(
+                    id, request, depositoId, sucursalId);
+            return ResponseEntity.status(HttpStatus.CREATED).body(variante);
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
+                    "message", e.getMessage(),
+                    "statusCode", HttpStatus.BAD_REQUEST.value()
+            ));
+        }
+    }
+
+    @GetMapping("/{id:[0-9]+}")
     public ResponseEntity<Articulo> getById(@PathVariable Long id) {
         Articulo articulo = articuloService.getArticuloById(id);
         return ResponseEntity.ok(articulo);
