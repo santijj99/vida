@@ -10,6 +10,7 @@ public class CreateClienteRequest {
     private String apellido;
     private String dni;
     private Long direccionId;
+    private DireccionRequest direccion;
     private Long garanteId;
     private List<ContactoRequest> contactos;
 }

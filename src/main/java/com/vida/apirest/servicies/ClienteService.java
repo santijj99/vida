@@ -35,6 +35,13 @@ public class ClienteService {
         return toClienteResponse(cliente);
     }
 
+    @Transactional(readOnly = true)
+    public ClienteResponse findByDni(String dni) {
+        Cliente cliente = clienteRepository.findByDni(dni.trim())
+                .orElseThrow(() -> new RuntimeException("Cliente no encontrado con DNI: " + dni));
+        return toClienteResponse(cliente);
+    }
+
     @Transactional
     public ClienteResponse createClienteOnly(CreateClienteSimpleRequest request) {
         Cliente cliente = new Cliente();
@@ -42,16 +49,9 @@ public class ClienteService {
         cliente.setApellido(request.getApellido());
         cliente.setDni(request.getDni());
         
-        // Agregar dirección si se proporciona
-        if (request.getDireccionId() != null) {
-            Direccion direccion = direccionRepository.findById(request.getDireccionId())
-                    .orElseThrow(() -> new RuntimeException("Dirección no encontrada"));
-            cliente.setDireccion(direccion);
-        }
-        
-        // Sin garante ni contactos
+        cliente.setDireccion(resolverDireccion(request.getDireccionId(), null));
         cliente.setGarante(null);
-        
+
         Cliente saved = clienteRepository.save(cliente);
         return toClienteResponse(saved);
     }
@@ -63,34 +63,9 @@ public class ClienteService {
         cliente.setApellido(request.getApellido());
         cliente.setDni(request.getDni());
 
-        // Agregar dirección si se proporciona
-        if (request.getDireccionId() != null) {
-            Direccion direccion = direccionRepository.findById(request.getDireccionId())
-                    .orElseThrow(() -> new RuntimeException("Dirección no encontrada"));
-            cliente.setDireccion(direccion);
-        }
-
-        // Agregar garante si se proporciona
-        if (request.getGaranteId() != null) {
-            Cliente garante = clienteRepository.findById(request.getGaranteId())
-                    .orElseThrow(() -> new RuntimeException("Garante no encontrado"));
-            cliente.setGarante(garante);
-        } else {
-            cliente.setGarante(null);
-        }
-
-        // Agregar contactos si se proporcionan
-        if (request.getContactos() != null && !request.getContactos().isEmpty()) {
-            for (ContactoRequest contactoRequest : request.getContactos()) {
-                Contacto contacto = new Contacto();
-                contacto.setNombre(contactoRequest.getNombre());
-                contacto.setApellido(contactoRequest.getApellido());
-                contacto.setEmail(contactoRequest.getEmail());
-                contacto.setTelefono(contactoRequest.getTelefono());
-                contacto.setCliente(cliente);
-                cliente.getContactos().add(contacto);
-            }
-        }
+        cliente.setDireccion(resolverDireccion(request.getDireccionId(), null));
+        cliente.setGarante(resolverGarante(request.getGaranteId(), null));
+        agregarContactos(request.getContactos(), cliente, false);
 
         Cliente saved = clienteRepository.save(cliente);
         return toClienteResponse(saved);
@@ -127,34 +102,88 @@ public class ClienteService {
         cliente.setNombre(request.getNombre());
         cliente.setApellido(request.getApellido());
         cliente.setDni(request.getDni());
+        cliente.setDireccion(resolverDireccion(request.getDireccionId(), request.getDireccion()));
+        cliente.setGarante(resolverGarante(request.getGaranteId(), cliente.getId()));
+        agregarContactos(request.getContactos(), cliente, true);
+    }
 
-        // Agregar dirección si se proporciona
-        if (request.getDireccionId() != null) {
-            Direccion direccion = direccionRepository.findById(request.getDireccionId())
+    private Direccion resolverDireccion(Long direccionId, DireccionRequest direccionRequest) {
+        if (direccionId != null) {
+            return direccionRepository.findById(direccionId)
                     .orElseThrow(() -> new RuntimeException("Dirección no encontrada"));
-            cliente.setDireccion(direccion);
         }
-
-        if (request.getGaranteId() != null) {
-            Cliente garante = clienteRepository.findById(request.getGaranteId())
-                    .orElseThrow(() -> new RuntimeException("Garante no encontrado"));
-            cliente.setGarante(garante);
-        } else {
-            cliente.setGarante(null);
+        if (tieneDatosDireccion(direccionRequest)) {
+            Direccion direccion = new Direccion();
+            mapDireccionRequest(direccionRequest, direccion);
+            return direccionRepository.save(direccion);
         }
+        return null;
+    }
 
-        if (request.getContactos() != null) {
+    private Cliente resolverGarante(Long garanteId, Long clienteId) {
+        if (garanteId == null) {
+            return null;
+        }
+        if (clienteId != null && garanteId.equals(clienteId)) {
+            throw new RuntimeException("Un cliente no puede ser garante de sí mismo");
+        }
+        return clienteRepository.findById(garanteId)
+                .orElseThrow(() -> new RuntimeException("Garante no encontrado"));
+    }
+
+    private void agregarContactos(List<ContactoRequest> contactosRequest, Cliente cliente, boolean reemplazar) {
+        if (contactosRequest == null) {
+            return;
+        }
+        if (reemplazar) {
             cliente.getContactos().clear();
-            for (ContactoRequest contactoRequest : request.getContactos()) {
-                Contacto contacto = new Contacto();
-                contacto.setNombre(contactoRequest.getNombre());
-                contacto.setApellido(contactoRequest.getApellido());
-                contacto.setEmail(contactoRequest.getEmail());
-                contacto.setTelefono(contactoRequest.getTelefono());
-                contacto.setCliente(cliente);
-                cliente.getContactos().add(contacto);
-            }
         }
+        for (ContactoRequest contactoRequest : contactosRequest) {
+            if (!tieneDatosContacto(contactoRequest)) {
+                continue;
+            }
+            Contacto contacto = new Contacto();
+            contacto.setNombre(contactoRequest.getNombre());
+            contacto.setApellido(contactoRequest.getApellido());
+            contacto.setEmail(contactoRequest.getEmail());
+            contacto.setTelefono(contactoRequest.getTelefono());
+            contacto.setCliente(cliente);
+            cliente.getContactos().add(contacto);
+        }
+    }
+
+    private void mapDireccionRequest(DireccionRequest request, Direccion direccion) {
+        direccion.setPais(request.getPais());
+        direccion.setProvincia(request.getProvincia());
+        direccion.setLocalidad(request.getLocalidad());
+        direccion.setBarrio(request.getBarrio());
+        direccion.setCalle(request.getCalle());
+        direccion.setNumero(request.getNumero());
+        direccion.setObservacion(request.getObservacion());
+    }
+
+    private boolean tieneDatosDireccion(DireccionRequest request) {
+        if (request == null) {
+            return false;
+        }
+        return esTextoValido(request.getPais())
+                || esTextoValido(request.getProvincia())
+                || esTextoValido(request.getLocalidad())
+                || esTextoValido(request.getBarrio())
+                || esTextoValido(request.getCalle())
+                || esTextoValido(request.getNumero())
+                || esTextoValido(request.getObservacion());
+    }
+
+    private boolean tieneDatosContacto(ContactoRequest request) {
+        return esTextoValido(request.getNombre())
+                || esTextoValido(request.getApellido())
+                || esTextoValido(request.getEmail())
+                || esTextoValido(request.getTelefono());
+    }
+
+    private boolean esTextoValido(String valor) {
+        return valor != null && !valor.isBlank();
     }
 
     private ClienteResponse toClienteResponse(Cliente cliente) {

@@ -65,7 +65,7 @@ public class Articulo {
     private EstadoProducto estado = EstadoProducto.ACTIVO;
 
     // Relaciones bidireccionales
-    @OneToMany(mappedBy = "articulo", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OneToMany(mappedBy = "articulo", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
         @JsonManagedReference
         private List<VarianteArticulo> variantes;
 

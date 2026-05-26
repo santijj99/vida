@@ -15,4 +15,6 @@ public class PagoVentaRequest {
     private Integer creditoPlazoMeses;
     private BigDecimal creditoTasaInteres;
     private String creditoDescripcion;
+    private BigDecimal creditoMontoAnticipo;
+    private String creditoModoDistribucion;
 }

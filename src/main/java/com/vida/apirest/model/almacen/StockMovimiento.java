@@ -32,7 +32,9 @@ public class StockMovimiento {
         SALIDA_TRANSFERENCIA,
         INGRESO_TRANSFERENCIA,
         SALIDA_MERMA,
-        SALIDA_OBSEQUIO
+        SALIDA_OBSEQUIO,
+        RESERVA_PRESTAMO,
+        LIBERACION_RESERVA_PRESTAMO
     }
 
     @Id

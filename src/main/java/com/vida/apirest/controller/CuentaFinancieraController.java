@@ -12,7 +12,7 @@ import java.util.List;
 import java.util.Map;
 
 @RestController
-@RequestMapping("/cuenta-financiera")
+@RequestMapping("/api/cuenta-financiera")
 public class CuentaFinancieraController {
 
     @Autowired

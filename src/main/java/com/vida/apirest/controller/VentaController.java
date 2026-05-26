@@ -2,6 +2,8 @@ package com.vida.apirest.controller;
 
 import com.vida.apirest.dto.venta.CajaCuentaResponse;
 import com.vida.apirest.dto.venta.CajaMovimientoResponse;
+import com.vida.apirest.dto.venta.CreditoSimulacionRequest;
+import com.vida.apirest.dto.venta.CreditoSimulacionResponse;
 import com.vida.apirest.dto.venta.VentaCreateRequest;
 import com.vida.apirest.dto.venta.VentaCreditoPersonalRequest;
 import com.vida.apirest.dto.venta.VentaResponse;
@@ -40,6 +42,18 @@ public class VentaController {
             String errorMessage = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of("message", errorMessage, "statusCode", HttpStatus.INTERNAL_SERVER_ERROR.value()));
+        }
+    }
+
+    @PostMapping("/credito-personal/simular")
+    public ResponseEntity<?> simularCreditoPersonal(@RequestBody CreditoSimulacionRequest request) {
+        try {
+            CreditoSimulacionResponse response = ventaService.simularCreditoPersonal(request);
+            return ResponseEntity.ok(response);
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
+                    "message", e.getMessage(),
+                    "statusCode", HttpStatus.BAD_REQUEST.value()));
         }
     }
 

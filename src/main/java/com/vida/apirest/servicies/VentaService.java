@@ -2,6 +2,8 @@ package com.vida.apirest.servicies;
 
 import com.vida.apirest.dto.venta.CajaCuentaResponse;
 import com.vida.apirest.dto.venta.CajaMovimientoResponse;
+import com.vida.apirest.dto.venta.CreditoSimulacionRequest;
+import com.vida.apirest.dto.venta.CreditoSimulacionResponse;
 import com.vida.apirest.dto.venta.PagoVentaRequest;
 import com.vida.apirest.dto.venta.PagoVentaResponse;
 import com.vida.apirest.dto.venta.VentaCreateRequest;
@@ -42,11 +44,10 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -70,6 +71,11 @@ public class VentaService {
 
     @Transactional
     public VentaResponse registrarVenta(VentaCreateRequest request) {
+        return registrarVenta(request, true);
+    }
+
+    @Transactional
+    public VentaResponse registrarVenta(VentaCreateRequest request, boolean descontarStock) {
         if (request.getClienteDni() == null || request.getClienteDni().isBlank()) {
             throw new RuntimeException("DNI de cliente requerido para registrar la venta");
         }
@@ -147,10 +153,12 @@ public class VentaService {
                 precioUnitario = detalleReq.getPrecioUnitario();
             }
 
-            Stock stock = variante != null
-                    ? findStockByVariante(variante.getId(), sucursal.getId())
-                    : findStock(articulo.getId(), null, sucursal.getId());
-            ajustarStock(stock, detalleReq.getCantidad(), venta.getNumeroFactura());
+            if (descontarStock) {
+                Stock stock = variante != null
+                        ? findStockByVariante(variante.getId(), sucursal.getId())
+                        : findStock(articulo.getId(), null, sucursal.getId());
+                ajustarStock(stock, detalleReq.getCantidad(), venta.getNumeroFactura());
+            }
 
             VentaDetalle detalle = new VentaDetalle();
             detalle.setVenta(venta);
@@ -213,17 +221,26 @@ public class VentaService {
                     credito.setSucursal(sucursal);
                     credito.setVenta(ventaGuardada);
                     credito.setNumero("CR-" + cliente.getId() + "-" + sucursal.getId() + "-" + UUID.randomUUID().toString().replace("-", "").substring(0, 10).toUpperCase());
-                    credito.setImporte(pago.getMonto());
-                    credito.setSaldo(pago.getMonto());
                     credito.setPlazoMeses(pagoReq.getCreditoPlazoMeses());
                     credito.setTasaInteres(pagoReq.getCreditoTasaInteres() != null ? pagoReq.getCreditoTasaInteres() : BigDecimal.ZERO);
                     credito.setDescripcion(pagoReq.getCreditoDescripcion());
                     credito.setEstado(Credito.EstadoCredito.ACTIVO);
-                    credito.setCuotas(crearCuotasParaCredito(credito, pago.getMonto(), pagoReq.getCreditoPlazoMeses(), ventaGuardada.getFechaVenta()));
+                    CreditoPlanificador.ResultadoPlan plan = CreditoPlanificador.planificar(
+                            ventaGuardada.getTotal(),
+                            pagoReq.getCreditoPlazoMeses(),
+                            pagoReq.getCreditoTasaInteres(),
+                            pagoReq.getCreditoMontoAnticipo() != null ? pagoReq.getCreditoMontoAnticipo() : BigDecimal.ZERO,
+                            pagoReq.getCreditoModoDistribucion(),
+                            ventaGuardada.getFechaVenta()
+                    );
+                    credito.setImporte(plan.montoFinanciado);
+                    credito.setSaldo(plan.montoFinanciado);
+                    credito.setCuotas(CreditoPlanificador.materializarCuotas(credito, plan));
+                    pago.setMonto(plan.montoFinanciado);
                     creditoRepository.save(credito);
 
                     BigDecimal saldoAnteriorCredito = cuentaCredito.getSaldoActual() != null ? cuentaCredito.getSaldoActual() : BigDecimal.ZERO;
-                    cuentaCredito.setSaldoActual(saldoAnteriorCredito.add(pago.getMonto()));
+                    cuentaCredito.setSaldoActual(saldoAnteriorCredito.add(plan.montoFinanciado));
                     creditoCuentaRepository.save(cuentaCredito);
 
                     pago.setEstado(PagoVenta.EstadoPago.PENDIENTE);
@@ -260,16 +277,46 @@ public class VentaService {
                 .orElseThrow(() -> new RuntimeException("Error al recuperar la venta registrada")));
     }
 
+    @Transactional(readOnly = true)
+    public CreditoSimulacionResponse simularCreditoPersonal(CreditoSimulacionRequest request) {
+        BigDecimal subtotal = resolverSubtotalSimulacion(request);
+        int plazo = request.getPlazoMeses() != null ? request.getPlazoMeses() : 1;
+        BigDecimal tasa = request.getTasaInteres() != null ? request.getTasaInteres() : BigDecimal.ZERO;
+        BigDecimal anticipo = request.getMontoAnticipo() != null ? request.getMontoAnticipo() : BigDecimal.ZERO;
+        CreditoPlanificador.ResultadoPlan plan = CreditoPlanificador.planificar(
+                subtotal,
+                plazo,
+                tasa,
+                anticipo,
+                request.getModoDistribucion(),
+                resolverBaseFechaCredito(request.getFechaPrimerVencimiento())
+        );
+        return CreditoPlanificador.toSimulacionResponse(plan, plazo, tasa);
+    }
+
     @Transactional
     public VentaResponse registrarVentaCreditoPersonal(VentaCreditoPersonalRequest request) {
-        if (request.getPagos() != null && !request.getPagos().isEmpty()) {
-            throw new RuntimeException("En venta con crédito personal no se deben enviar pagos directos");
-        }
+        return registrarVentaCreditoPersonal(request, true);
+    }
+
+    @Transactional
+    public VentaResponse registrarVentaCreditoPersonal(VentaCreditoPersonalRequest request, boolean descontarStock) {
         if (request.getCreditoPlazoMeses() == null || request.getCreditoPlazoMeses() <= 0) {
             throw new RuntimeException("Se requiere un plazo de crédito personal mayor a cero");
         }
 
-        BigDecimal montoTotal = calcularTotalCreditoPersonal(request);
+        BigDecimal subtotal = calcularTotalCreditoPersonal(request);
+        BigDecimal anticipo = request.getMontoAnticipo() != null ? request.getMontoAnticipo() : BigDecimal.ZERO;
+        BigDecimal tasa = request.getCreditoTasaInteres() != null ? request.getCreditoTasaInteres() : BigDecimal.ZERO;
+
+        CreditoPlanificador.ResultadoPlan plan = CreditoPlanificador.planificar(
+                subtotal,
+                request.getCreditoPlazoMeses(),
+                tasa,
+                anticipo,
+                request.getModoDistribucion(),
+                resolverBaseFechaCredito(request.getFechaPrimerVencimiento())
+        );
 
         VentaCreateRequest internalRequest = new VentaCreateRequest();
         internalRequest.setSucursalId(request.getSucursalId());
@@ -281,15 +328,41 @@ public class VentaService {
         internalRequest.setMetodoPago("CREDITO");
         internalRequest.setDetalles(request.getDetalles());
 
-        PagoVentaRequest pago = new PagoVentaRequest();
-        pago.setMonto(montoTotal);
-        pago.setMetodoPago("CREDITO");
-        pago.setCreditoPlazoMeses(request.getCreditoPlazoMeses());
-        pago.setCreditoTasaInteres(request.getCreditoTasaInteres());
-        pago.setCreditoDescripcion(request.getCreditoDescripcion());
-        internalRequest.setPagos(List.of(pago));
+        List<PagoVentaRequest> pagos = new ArrayList<>();
+        if (anticipo.compareTo(BigDecimal.ZERO) > 0) {
+            PagoVentaRequest pagoAnticipo = new PagoVentaRequest();
+            pagoAnticipo.setMonto(anticipo);
+            pagoAnticipo.setMetodoPago(
+                    request.getMetodoPagoAnticipo() != null && !request.getMetodoPagoAnticipo().isBlank()
+                            ? request.getMetodoPagoAnticipo()
+                            : "EFECTIVO"
+            );
+            pagoAnticipo.setCuentaId(request.getCuentaIdAnticipo());
+            pagoAnticipo.setObservaciones("Anticipo crédito personal");
+            pagos.add(pagoAnticipo);
+        }
 
-        return registrarVenta(internalRequest);
+        PagoVentaRequest pagoCredito = new PagoVentaRequest();
+        pagoCredito.setMonto(plan.montoFinanciado);
+        pagoCredito.setMetodoPago("CREDITO");
+        pagoCredito.setCreditoPlazoMeses(request.getCreditoPlazoMeses());
+        pagoCredito.setCreditoTasaInteres(tasa);
+        pagoCredito.setCreditoDescripcion(request.getCreditoDescripcion());
+        pagoCredito.setCreditoMontoAnticipo(anticipo);
+        pagoCredito.setCreditoModoDistribucion(plan.modoDistribucion);
+        pagos.add(pagoCredito);
+
+        internalRequest.setPagos(pagos);
+        return registrarVenta(internalRequest, descontarStock);
+    }
+
+    private BigDecimal resolverSubtotalSimulacion(CreditoSimulacionRequest request) {
+        if (request.getMontoTotal() != null && request.getMontoTotal().compareTo(BigDecimal.ZERO) > 0) {
+            return request.getMontoTotal();
+        }
+        VentaCreditoPersonalRequest tmp = new VentaCreditoPersonalRequest();
+        tmp.setDetalles(request.getDetalles());
+        return calcularTotalCreditoPersonal(tmp);
     }
 
     private BigDecimal calcularTotalCreditoPersonal(VentaCreditoPersonalRequest request) {
@@ -451,28 +524,6 @@ public class VentaService {
                 });
     }
 
-    private List<Cuota> crearCuotasParaCredito(Credito credito, BigDecimal importe, Integer plazoMeses, LocalDateTime fechaVenta) {
-        List<Cuota> cuotas = new ArrayList<>();
-        BigDecimal cuotaBase = importe.divide(BigDecimal.valueOf(plazoMeses), 2, RoundingMode.HALF_UP);
-
-        for (int i = 1; i <= plazoMeses; i++) {
-            BigDecimal montoCuota = (i == plazoMeses)
-                    ? importe.subtract(cuotaBase.multiply(BigDecimal.valueOf(plazoMeses - 1)))
-                    : cuotaBase;
-
-            Cuota cuota = new Cuota();
-            cuota.setCredito(credito);
-            cuota.setNumero("CU-" + i + "/" + plazoMeses);
-            cuota.setFechaVencimiento(fechaVenta.plusMonths(i));
-            cuota.setMonto(montoCuota);
-            cuota.setSaldo(montoCuota);
-            cuota.setDescripcion("Cuota " + i + " de " + plazoMeses + " del crédito " + credito.getNumero());
-            cuotas.add(cuota);
-        }
-
-        return cuotas;
-    }
-
     private VentaResponse mapVentaResponse(Venta venta) {
         VentaResponse response = new VentaResponse();
         response.setId(venta.getId());
@@ -534,6 +585,14 @@ public class VentaService {
         response.setTipo(cuenta.getTipo() != null ? cuenta.getTipo().name() : null);
         response.setSaldoActual(cuenta.getSaldoActual());
         return response;
+    }
+
+    /** base + 1 mes = primera cuota; si no hay fecha, primera cuota a ~30 días. */
+    private LocalDateTime resolverBaseFechaCredito(LocalDate fechaPrimerVencimiento) {
+        if (fechaPrimerVencimiento != null) {
+            return fechaPrimerVencimiento.minusMonths(1).atStartOfDay();
+        }
+        return LocalDateTime.now();
     }
 
     private CajaMovimientoResponse mapCajaMovimientoResponse(MovimientoFinanciero movimiento) {

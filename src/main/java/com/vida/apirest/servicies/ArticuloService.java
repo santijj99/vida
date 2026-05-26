@@ -2,6 +2,10 @@ package com.vida.apirest.servicies;
 
 import com.vida.apirest.dto.ariticulo.ArticuloCompactResponse;
 import com.vida.apirest.dto.ariticulo.ArticuloCreateRequest;
+import com.vida.apirest.dto.ariticulo.ArticuloFiltrosResponse;
+import com.vida.apirest.dto.ariticulo.ArticuloParaVentaResponse;
+import com.vida.apirest.dto.ariticulo.ArticuloTablaRowResponse;
+import com.vida.apirest.dto.ariticulo.VariantCreateRequest;
 import com.vida.apirest.dto.ariticulo.VarianteCompactResponse;
 import com.vida.apirest.model.almacen.Deposito;
 import com.vida.apirest.model.almacen.Stock;
@@ -15,9 +19,9 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
+import java.util.stream.Collectors;
 import org.springframework.data.jpa.domain.Specification;
 import jakarta.persistence.criteria.Join;
 import jakarta.persistence.criteria.JoinType;
@@ -33,14 +37,170 @@ public class ArticuloService {
     private final ColorRepository colorRepository;
     private final TalleRepository talleRepository;
     private final TaxonRepository taxonRepository;
+    private final TaxonArticuloRepository taxonArticuloRepository;
     private final VarianteArticuloRepository varianteArticuloRepository;
     private final HistorialPrecioRepository historialPrecioRepository;
     private final StockRepository stockRepository;
     private final DepositoRepository depositoRepository;
     private final SucursalRepository sucursalRepository;
 
+    @Transactional(readOnly = true)
+    public List<ArticuloCompactResponse> findAllCompact() {
+        return articuloRepository.findAllWithDetalle().stream()
+                .map(this::toCompactResponse)
+                .collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public List<ArticuloTablaRowResponse> findAllTabla(
+            String categoria,
+            String subCategoria,
+            String genero,
+            String marca
+    ) {
+        List<ArticuloTablaRowResponse> filas = new ArrayList<>();
+        for (Articulo articulo : articuloRepository.findAllWithDetalle()) {
+            String marcaNombre = articulo.getMarca() != null ? articulo.getMarca().getNombre() : null;
+            String categoriaNombre = articulo.getCategoria() != null ? articulo.getCategoria().getNombre() : null;
+            String generoNombre = articulo.getGenero() != null ? articulo.getGenero().getNombre() : null;
+            if (articulo.getVariantes() == null || articulo.getVariantes().isEmpty()) {
+                String subCategoriaNombre = obtenerSubCategoria(articulo);
+                ArticuloTablaRowResponse fila = new ArticuloTablaRowResponse(
+                        articulo.getId(), null,
+                        articulo.getCodigo(), marcaNombre, articulo.getModelo(),
+                        categoriaNombre, subCategoriaNombre, generoNombre,
+                        null, null, null, null, null);
+                if (coincideFiltros(fila, categoria, subCategoria, genero, marca)) {
+                    filas.add(fila);
+                }
+                continue;
+            }
+            for (VarianteArticulo variante : articulo.getVariantes()) {
+                ArticuloTablaRowResponse fila = new ArticuloTablaRowResponse(
+                        articulo.getId(),
+                        variante.getId(),
+                        articulo.getCodigo(),
+                        marcaNombre,
+                        articulo.getModelo(),
+                        categoriaNombre,
+                        obtenerSubCategoriaVariante(variante, articulo),
+                        generoNombre,
+                        variante.getTalle() != null ? variante.getTalle().getNumero() : null,
+                        variante.getColor() != null ? variante.getColor().getNombre() : null,
+                        variante.getCodigoBarras(),
+                        getPrecioActual(variante.getId()),
+                        getCantidadDisponibleForVariante(articulo.getId(), variante.getId()));
+                if (coincideFiltros(fila, categoria, subCategoria, genero, marca)) {
+                    filas.add(fila);
+                }
+            }
+        }
+        return filas;
+    }
+
+    @Transactional(readOnly = true)
+    public ArticuloFiltrosResponse obtenerFiltrosTabla() {
+        List<ArticuloTablaRowResponse> todas = findAllTabla(null, null, null, null);
+        return new ArticuloFiltrosResponse(
+                valoresUnicos(todas, ArticuloTablaRowResponse::getCategoria),
+                valoresUnicos(todas, ArticuloTablaRowResponse::getSubCategoria),
+                valoresUnicos(todas, ArticuloTablaRowResponse::getGenero),
+                valoresUnicos(todas, ArticuloTablaRowResponse::getMarca)
+        );
+    }
+
+    private String obtenerSubCategoria(Articulo articulo) {
+        if (articulo.getTaxones() == null || articulo.getTaxones().isEmpty()) {
+            return null;
+        }
+        return articulo.getTaxones().stream()
+                .map(TaxonArticulo::getTaxon)
+                .filter(Objects::nonNull)
+                .map(Taxon::getNombre)
+                .findFirst()
+                .orElse(null);
+    }
+
+    private String obtenerSubCategoriaVariante(VarianteArticulo variante, Articulo articulo) {
+        return obtenerSubCategoria(articulo);
+    }
+
+    private Taxon resolverTaxon(String nombre) {
+        if (nombre == null || nombre.isBlank()) {
+            return null;
+        }
+        String normalizado = nombre.trim();
+        return taxonRepository.findByNombre(normalizado)
+                .orElseGet(() -> {
+                    Taxon nuevo = new Taxon();
+                    nuevo.setNombre(normalizado);
+                    nuevo.setNivel(1);
+                    return taxonRepository.save(nuevo);
+                });
+    }
+
+    private void vincularTaxonArticulo(Long articuloId, Taxon taxon) {
+        if (taxon == null) {
+            return;
+        }
+        if (!taxonArticuloRepository.existsByArticuloIdAndTaxonId(articuloId, taxon.getId())) {
+            TaxonArticulo taxonArticulo = new TaxonArticulo();
+            taxonArticulo.setArticuloId(articuloId);
+            taxonArticulo.setTaxonId(taxon.getId());
+            taxonArticuloRepository.save(taxonArticulo);
+        }
+    }
+
+    private boolean coincideFiltros(
+            ArticuloTablaRowResponse fila,
+            String categoria,
+            String subCategoria,
+            String genero,
+            String marca
+    ) {
+        if (categoria != null && !categoria.isBlank()
+                && !categoria.equalsIgnoreCase(nullToDash(fila.getCategoria()))) {
+            return false;
+        }
+        if (subCategoria != null && !subCategoria.isBlank()
+                && !subCategoria.equalsIgnoreCase(nullToDash(fila.getSubCategoria()))) {
+            return false;
+        }
+        if (genero != null && !genero.isBlank()
+                && !genero.equalsIgnoreCase(nullToDash(fila.getGenero()))) {
+            return false;
+        }
+        if (marca != null && !marca.isBlank()
+                && !marca.equalsIgnoreCase(nullToDash(fila.getMarca()))) {
+            return false;
+        }
+        return true;
+    }
+
+    private String nullToDash(String value) {
+        return value == null ? "" : value;
+    }
+
+    private List<String> valoresUnicos(
+            List<ArticuloTablaRowResponse> filas,
+            java.util.function.Function<ArticuloTablaRowResponse, String> extractor
+    ) {
+        return filas.stream()
+                .map(extractor)
+                .filter(Objects::nonNull)
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .distinct()
+                .sorted()
+                .collect(Collectors.toList());
+    }
+
     @Transactional
     public Articulo createArticulo(ArticuloCreateRequest request) {
+        if (request.getVariantes() == null || request.getVariantes().isEmpty()) {
+            throw new RuntimeException("Debe agregar al menos una variante (talle, color, precio y cantidad)");
+        }
+
         // Buscar o crear Marca
         Marca marca = marcaRepository.findByNombre(request.getMarca())
                 .orElseGet(() -> {
@@ -56,18 +216,6 @@ public class ArticuloService {
                     newCategoria.setNombre(request.getCategoria());
                     return categoriaRepository.save(newCategoria);
                 });
-
-        // Buscar o crear SubCategoria (Taxon)
-        Taxon subCategoria = null;
-        if (request.getSubCategoria() != null) {
-            subCategoria = taxonRepository.findByNombre(request.getSubCategoria())
-                    .orElseGet(() -> {
-                        Taxon newTaxon = new Taxon();
-                        newTaxon.setNombre(request.getSubCategoria());
-                        newTaxon.setNivel(1);
-                        return taxonRepository.save(newTaxon);
-                    });
-        }
 
         // Buscar o crear Genero
         Genero genero = generoRepository.findByNombre(request.getGenero())
@@ -85,17 +233,11 @@ public class ArticuloService {
         articulo.setGeneroId(genero.getId());
         articulo.setCodigo(request.getCodigo());
         articulo.setModelo(request.getModelo());
-        articulo.setDescripcion(request.getDescripcion());
+        articulo.setDescripcion(null);
         articulo = articuloRepository.save(articulo);
 
-        // Crear TaxonArticulo si hay subCategoria
-        if (subCategoria != null) {
-            TaxonArticulo taxonArticulo = new TaxonArticulo();
-            taxonArticulo.setArticuloId(articulo.getId());
-            taxonArticulo.setTaxonId(subCategoria.getId());
-            // Asumir que hay un repository para TaxonArticulo
-            // taxonArticuloRepository.save(taxonArticulo);
-        }
+        Taxon subCategoriaArticulo = resolverTaxon(request.getSubCategoria());
+        vincularTaxonArticulo(articulo.getId(), subCategoriaArticulo);
 
         // Obtener deposito y sucursal
         Deposito deposito;
@@ -117,60 +259,126 @@ public class ArticuloService {
                     .orElseThrow(() -> new RuntimeException("No hay sucursales disponibles. Por favor, crea una primero."));
         }
 
-        // Crear variantes
         for (var variantReq : request.getVariantes()) {
-            // Validar pais
-            Talle.Pais pais;
-            try {
-                pais = Talle.Pais.valueOf(variantReq.getPais().toUpperCase());
-            } catch (IllegalArgumentException e) {
-                throw new RuntimeException("País de talle inválido. Valores válidos: AR, UK, BR, US, EU");
-            }
-
-            // Buscar Talle
-            Talle talle = talleRepository.findByPaisAndNumero(pais, variantReq.getTalleNumero())
-                    .orElseGet(() -> {
-                        Talle newTalle = new Talle();
-                        newTalle.setPais(pais);
-                        newTalle.setNumero(variantReq.getTalleNumero());
-                        newTalle.setDescripcion("Talle " + variantReq.getTalleNumero() + " - " + pais);
-                        return talleRepository.save(newTalle);
-                    });
-
-            // Buscar o crear Color para esta variante
-            Color varianteColor = colorRepository.findByNombre(variantReq.getColor())
-                    .orElseGet(() -> {
-                        Color newColor = new Color();
-                        newColor.setNombre(variantReq.getColor());
-                        return colorRepository.save(newColor);
-                    });
-
-            // Crear VarianteArticulo
-            VarianteArticulo variante = new VarianteArticulo();
-            variante.setArticuloId(articulo.getId());
-            variante.setColorId(varianteColor.getId());
-            variante.setTalleId(talle.getId());
-            variante = varianteArticuloRepository.save(variante);
-
-            // Crear HistorialPrecio
-            HistorialPrecio historial = new HistorialPrecio();
-            historial.setVarianteArticuloId(variante.getId());
-            historial.setPrecioNuevo(variantReq.getPrecio());
-            historial.setFecha(LocalDateTime.now());
-            historialPrecioRepository.save(historial);
-
-            // Crear Stock
-            Stock stock = new Stock();
-            stock.setDeposito(deposito);
-            stock.setSucursal(sucursal);
-            stock.setArticulo(articulo);
-            stock.setVariante(variante);
-            stock.setCantidadActual(variantReq.getCantidad());
-            stock.setCantidadDisponible(variantReq.getCantidad());
-            stockRepository.save(stock);
+            crearVariante(articulo, variantReq, deposito, sucursal);
         }
 
         return articulo;
+    }
+
+    @Transactional
+    public VarianteCompactResponse agregarVariante(
+            Long articuloId,
+            VariantCreateRequest request,
+            Long depositoId,
+            Long sucursalId
+    ) {
+        Articulo articulo = articuloRepository.findById(articuloId)
+                .orElseThrow(() -> new RuntimeException("Artículo no encontrado con ID: " + articuloId));
+
+        Deposito deposito = depositoId != null
+                ? depositoRepository.findById(depositoId)
+                .orElseThrow(() -> new RuntimeException("Depósito no encontrado con ID: " + depositoId))
+                : depositoRepository.findAll().stream().findFirst()
+                .orElseThrow(() -> new RuntimeException("No hay depósitos disponibles. Por favor, crea uno primero."));
+
+        Sucursal sucursal = sucursalId != null
+                ? sucursalRepository.findById(sucursalId)
+                .orElseThrow(() -> new RuntimeException("Sucursal no encontrada con ID: " + sucursalId))
+                : sucursalRepository.findAll().stream().findFirst()
+                .orElseThrow(() -> new RuntimeException("No hay sucursales disponibles. Por favor, crea una primero."));
+
+        VarianteArticulo variante = crearVariante(articulo, request, deposito, sucursal);
+        return toVarianteCompact(articulo.getId(), variante);
+    }
+
+    private VarianteArticulo crearVariante(
+            Articulo articulo,
+            VariantCreateRequest variantReq,
+            Deposito deposito,
+            Sucursal sucursal
+    ) {
+        if (variantReq.getPrecio() == null || variantReq.getPrecio().compareTo(BigDecimal.ZERO) <= 0) {
+            throw new RuntimeException("El precio de venta debe ser mayor a cero");
+        }
+        if (variantReq.getCantidad() == null || variantReq.getCantidad() < 0) {
+            throw new RuntimeException("La cantidad debe ser cero o mayor");
+        }
+
+        Talle.Pais pais;
+        try {
+            pais = Talle.Pais.valueOf(variantReq.getPais().toUpperCase());
+        } catch (IllegalArgumentException e) {
+            throw new RuntimeException("País de talle inválido. Valores válidos: AR, UK, BR, US, EU");
+        }
+
+        Talle talle = talleRepository.findByPaisAndNumero(pais, variantReq.getTalleNumero())
+                .orElseGet(() -> {
+                    Talle newTalle = new Talle();
+                    newTalle.setPais(pais);
+                    newTalle.setNumero(variantReq.getTalleNumero());
+                    newTalle.setDescripcion("Talle " + variantReq.getTalleNumero() + " - " + pais);
+                    return talleRepository.save(newTalle);
+                });
+
+        Color varianteColor = colorRepository.findByNombre(variantReq.getColor())
+                .orElseGet(() -> {
+                    Color newColor = new Color();
+                    newColor.setNombre(variantReq.getColor());
+                    return colorRepository.save(newColor);
+                });
+
+        if (varianteArticuloRepository.existsByArticuloIdAndColorIdAndTalleId(
+                articulo.getId(), varianteColor.getId(), talle.getId())) {
+            throw new RuntimeException("Ya existe una variante con ese talle y color para este artículo");
+        }
+
+        if (variantReq.getCodigoBarras() != null && !variantReq.getCodigoBarras().isBlank()) {
+            String codigoBarras = variantReq.getCodigoBarras().trim();
+            if (varianteArticuloRepository.existsByCodigoBarras(codigoBarras)) {
+                throw new RuntimeException("El código de barras ya está registrado: " + codigoBarras);
+            }
+        }
+
+        VarianteArticulo variante = new VarianteArticulo();
+        variante.setArticuloId(articulo.getId());
+        variante.setColorId(varianteColor.getId());
+        variante.setTalleId(talle.getId());
+        if (variantReq.getCodigoBarras() != null && !variantReq.getCodigoBarras().isBlank()) {
+            variante.setCodigoBarras(variantReq.getCodigoBarras().trim());
+        }
+        variante = varianteArticuloRepository.save(variante);
+
+        HistorialPrecio historial = new HistorialPrecio();
+        historial.setVarianteArticuloId(variante.getId());
+        historial.setPrecioNuevo(variantReq.getPrecio());
+        if (variantReq.getCosto() != null && variantReq.getCosto().compareTo(BigDecimal.ZERO) >= 0) {
+            historial.setCostoNuevo(variantReq.getCosto());
+        }
+        historial.setFecha(LocalDateTime.now());
+        historialPrecioRepository.save(historial);
+
+        Stock stock = new Stock();
+        stock.setDeposito(deposito);
+        stock.setSucursal(sucursal);
+        stock.setArticulo(articulo);
+        stock.setVariante(variante);
+        stock.setCantidadActual(variantReq.getCantidad());
+        stock.setCantidadDisponible(variantReq.getCantidad());
+        stockRepository.save(stock);
+
+        return variante;
+    }
+
+    private VarianteCompactResponse toVarianteCompact(Long articuloId, VarianteArticulo variante) {
+        VarianteCompactResponse dto = new VarianteCompactResponse();
+        dto.setId(variante.getId());
+        dto.setColor(variante.getColor() != null ? variante.getColor().getNombre() : null);
+        dto.setTalle(variante.getTalle() != null ? variante.getTalle().getNumero() : null);
+        dto.setCodigoBarras(variante.getCodigoBarras());
+        dto.setPrecio(getPrecioActual(variante.getId()));
+        dto.setCantidad(getCantidadDisponibleForVariante(articuloId, variante.getId()));
+        return dto;
     }
 
     public List<Articulo> searchArticulos(String codigo, String marca, String talleNumero, String color, String categoria, String modelo, String genero) {
@@ -219,8 +427,16 @@ public class ArticuloService {
         return articuloRepository.findAll(spec);
     }
 
+    @Transactional(readOnly = true)
     public Articulo getArticuloById(Long id) {
         return articuloRepository.findById(id).orElseThrow(() -> new RuntimeException("Artículo no encontrado con id: " + id));
+    }
+
+    @Transactional(readOnly = true)
+    public ArticuloCompactResponse getCompactById(Long id) {
+        Articulo articulo = articuloRepository.findByIdWithDetalle(id)
+                .orElseThrow(() -> new RuntimeException("Artículo no encontrado con id: " + id));
+        return toCompactResponse(articulo);
     }
 
     public Articulo getByCodigo(String codigo) {
@@ -230,7 +446,10 @@ public class ArticuloService {
 
     @Transactional(readOnly = true)
     public ArticuloCompactResponse getByCodigoCompact(String codigo) {
-        Articulo articulo = getByCodigo(codigo);
+        return toCompactResponse(getByCodigo(codigo));
+    }
+
+    public ArticuloCompactResponse toCompactResponse(Articulo articulo) {
         ArticuloCompactResponse response = new ArticuloCompactResponse();
         response.setId(articulo.getId());
         response.setCodigo(articulo.getCodigo());
@@ -257,7 +476,7 @@ public class ArticuloService {
                 variantDto.setColor(variante.getColor() != null ? variante.getColor().getNombre() : null);
                 variantDto.setTalle(variante.getTalle() != null ? variante.getTalle().getNumero() : null);
                 variantDto.setCodigoBarras(variante.getCodigoBarras());
-                variantDto.setPrecio(getPrecioActual(variante));
+                variantDto.setPrecio(getPrecioActual(variante.getId()));
                 variantDto.setCantidad(getCantidadDisponibleForVariante(articulo.getId(), variante.getId()));
                 variants.add(variantDto);
             }
@@ -266,12 +485,11 @@ public class ArticuloService {
         return response;
     }
 
-    private BigDecimal getPrecioActual(VarianteArticulo variante) {
-        if (variante.getHistorialPrecios() == null || variante.getHistorialPrecios().isEmpty()) {
+    private BigDecimal getPrecioActual(Long varianteId) {
+        if (varianteId == null) {
             return null;
         }
-        return variante.getHistorialPrecios().stream()
-                .max(Comparator.comparing(HistorialPrecio::getFecha))
+        return historialPrecioRepository.findFirstByVarianteArticuloIdOrderByFechaDesc(varianteId)
                 .map(HistorialPrecio::getPrecioNuevo)
                 .orElse(null);
     }
@@ -294,5 +512,53 @@ public class ArticuloService {
 
     public List<Articulo> getByColor(String color) {
         return articuloRepository.findAllByColorNombreContaining(color);
+    }
+
+    @Transactional(readOnly = true)
+    public List<ArticuloParaVentaResponse> findParaVenta(Long sucursalId) {
+        if (sucursalId == null) {
+            throw new RuntimeException("Sucursal requerida para listar artículos de venta");
+        }
+        if (!sucursalRepository.existsById(sucursalId)) {
+            throw new RuntimeException("Sucursal no encontrada con ID: " + sucursalId);
+        }
+
+        List<ArticuloParaVentaResponse> resultado = new ArrayList<>();
+        for (Articulo articulo : articuloRepository.findAllWithDetalle()) {
+            String marca = articulo.getMarca() != null ? articulo.getMarca().getNombre() : null;
+            if (articulo.getVariantes() == null || articulo.getVariantes().isEmpty()) {
+                continue;
+            }
+            for (VarianteArticulo variante : articulo.getVariantes()) {
+                int stock = getCantidadDisponibleEnSucursal(
+                        articulo.getId(), variante.getId(), sucursalId);
+                if (stock <= 0) {
+                    continue;
+                }
+                BigDecimal precio = getPrecioActual(variante.getId());
+                if (precio == null || precio.compareTo(BigDecimal.ZERO) <= 0) {
+                    continue;
+                }
+                resultado.add(new ArticuloParaVentaResponse(
+                        articulo.getId(),
+                        variante.getId(),
+                        articulo.getCodigo(),
+                        marca,
+                        articulo.getModelo(),
+                        variante.getTalle() != null ? variante.getTalle().getNumero() : null,
+                        variante.getColor() != null ? variante.getColor().getNombre() : null,
+                        variante.getCodigoBarras(),
+                        precio,
+                        stock
+                ));
+            }
+        }
+        return resultado;
+    }
+
+    private Integer getCantidadDisponibleEnSucursal(Long articuloId, Long varianteId, Long sucursalId) {
+        return stockRepository.findByVarianteIdAndSucursalId(varianteId, sucursalId)
+                .map(Stock::getCantidadDisponible)
+                .orElse(0);
     }
 }

@@ -73,6 +73,13 @@ public class VarianteArticulo {
     @JoinColumn(name = "talle_id", insertable = false, updatable = false)
     private Talle talle;
 
+    @Column(name = "taxon_id")
+    private Long taxonId;
+
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "taxon_id", insertable = false, updatable = false)
+    private Taxon taxon;
+
     @Column(name = "codigo_barras", length = 64, unique = true)
     private String codigoBarras;
 
