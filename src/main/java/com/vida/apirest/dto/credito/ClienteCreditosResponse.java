@@ -17,6 +17,9 @@ public class ClienteCreditosResponse {
     private Long sucursalId;
     private BigDecimal saldoCuenta;
     private BigDecimal limiteCredito;
+    private Integer cantidadCreditos;
+    private BigDecimal totalCreditosSacados;
+    private BigDecimal totalPagado;
     private List<CreditoClienteResponse> creditosActivos;
     private List<CreditoClienteResponse> creditosCancelados;
 }

@@ -71,7 +71,7 @@ public class ClienteService {
         cliente.setApellido(request.getApellido());
         cliente.setDni(request.getDni());
         
-        cliente.setDireccion(resolverDireccion(request.getDireccionId(), null));
+        cliente.setDireccion(resolverDireccion(request.getDireccionId(), null, null));
         cliente.setGarante(null);
 
         Cliente saved = clienteRepository.save(cliente);
@@ -85,7 +85,7 @@ public class ClienteService {
         cliente.setApellido(request.getApellido());
         cliente.setDni(request.getDni());
 
-        cliente.setDireccion(resolverDireccion(request.getDireccionId(), null));
+        cliente.setDireccion(resolverDireccion(request.getDireccionId(), null, null));
         cliente.setGarante(resolverGarante(request.getGaranteId(), null));
         agregarContactos(request.getContactos(), cliente, false);
 
@@ -124,22 +124,36 @@ public class ClienteService {
         cliente.setNombre(request.getNombre());
         cliente.setApellido(request.getApellido());
         cliente.setDni(request.getDni());
-        cliente.setDireccion(resolverDireccion(request.getDireccionId(), request.getDireccion()));
+        cliente.setTelefono(request.getTelefono());
+        cliente.setTrabajo(request.getTrabajo());
+        cliente.setDireccion(resolverDireccion(
+                request.getDireccionId(), request.getDireccion(), cliente.getDireccion()));
         cliente.setGarante(resolverGarante(request.getGaranteId(), cliente.getId()));
         agregarContactos(request.getContactos(), cliente, true);
     }
 
-    private Direccion resolverDireccion(Long direccionId, DireccionRequest direccionRequest) {
-        if (direccionId != null) {
-            return direccionRepository.findById(direccionId)
-                    .orElseThrow(() -> new RuntimeException("Dirección no encontrada"));
-        }
+    private Direccion resolverDireccion(
+            Long direccionId, DireccionRequest direccionRequest, Direccion direccionActual) {
         if (tieneDatosDireccion(direccionRequest)) {
+            if (direccionId != null) {
+                Direccion direccion = direccionRepository.findById(direccionId)
+                        .orElseThrow(() -> new RuntimeException("Dirección no encontrada"));
+                mapDireccionRequest(direccionRequest, direccion);
+                return direccionRepository.save(direccion);
+            }
+            if (direccionActual != null) {
+                mapDireccionRequest(direccionRequest, direccionActual);
+                return direccionRepository.save(direccionActual);
+            }
             Direccion direccion = new Direccion();
             mapDireccionRequest(direccionRequest, direccion);
             return direccionRepository.save(direccion);
         }
-        return null;
+        if (direccionId != null) {
+            return direccionRepository.findById(direccionId)
+                    .orElseThrow(() -> new RuntimeException("Dirección no encontrada"));
+        }
+        return direccionActual;
     }
 
     private Cliente resolverGarante(Long garanteId, Long clienteId) {
@@ -214,6 +228,8 @@ public class ClienteService {
         response.setNombre(cliente.getNombre());
         response.setApellido(cliente.getApellido());
         response.setDni(cliente.getDni());
+        response.setTelefono(cliente.getTelefono());
+        response.setTrabajo(cliente.getTrabajo());
 
         // Agregar dirección
         if (cliente.getDireccion() != null) {

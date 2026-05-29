@@ -1,8 +1,12 @@
 package com.vida.apirest.controller;
 
 import com.vida.apirest.dto.common.PageResponse;
+import com.vida.apirest.dto.venta.AbrirCajaRequest;
 import com.vida.apirest.dto.venta.CajaCuentaResponse;
 import com.vida.apirest.dto.venta.CajaMovimientoResponse;
+import com.vida.apirest.dto.venta.CajaSesionResponse;
+import com.vida.apirest.dto.venta.CerrarCajaRequest;
+import com.vida.apirest.servicies.CajaSesionService;
 import com.vida.apirest.dto.venta.CreditoSimulacionRequest;
 import com.vida.apirest.dto.venta.CreditoSimulacionResponse;
 import com.vida.apirest.dto.venta.VentaCancelarRequest;
@@ -32,6 +36,9 @@ public class VentaController {
 
     @Autowired
     private VentaService ventaService;
+
+    @Autowired
+    private CajaSesionService cajaSesionService;
 
     @PostMapping
     public ResponseEntity<?> registrarVenta(@RequestBody VentaCreateRequest request) {
@@ -141,7 +148,42 @@ public class VentaController {
     }
 
     @GetMapping("/caja/movimientos")
-    public ResponseEntity<List<CajaMovimientoResponse>> listarMovimientosCaja() {
-        return ResponseEntity.ok(ventaService.listarMovimientosCaja());
+    public ResponseEntity<List<CajaMovimientoResponse>> listarMovimientosCaja(
+            @RequestParam(required = false) Long cuentaId) {
+        return ResponseEntity.ok(ventaService.listarMovimientosCaja(cuentaId));
+    }
+
+    @GetMapping("/caja/sesiones/activa")
+    public ResponseEntity<?> sesionActiva(@RequestParam Long cuentaId) {
+        CajaSesionResponse sesion = cajaSesionService.obtenerSesionActiva(cuentaId);
+        if (sesion == null) {
+            return ResponseEntity.noContent().build();
+        }
+        return ResponseEntity.ok(sesion);
+    }
+
+    @GetMapping("/caja/sesiones")
+    public ResponseEntity<List<CajaSesionResponse>> listarSesionesCaja(@RequestParam Long cuentaId) {
+        return ResponseEntity.ok(cajaSesionService.listarSesiones(cuentaId));
+    }
+
+    @PostMapping("/caja/sesiones/abrir")
+    public ResponseEntity<?> abrirCaja(@RequestBody AbrirCajaRequest request) {
+        try {
+            return ResponseEntity.status(HttpStatus.CREATED).body(cajaSesionService.abrirCaja(request));
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(Map.of("message", e.getMessage(), "statusCode", HttpStatus.BAD_REQUEST.value()));
+        }
+    }
+
+    @PostMapping("/caja/sesiones/{id}/cerrar")
+    public ResponseEntity<?> cerrarCaja(@PathVariable Long id, @RequestBody CerrarCajaRequest request) {
+        try {
+            return ResponseEntity.ok(cajaSesionService.cerrarCaja(id, request));
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(Map.of("message", e.getMessage(), "statusCode", HttpStatus.BAD_REQUEST.value()));
+        }
     }
 }

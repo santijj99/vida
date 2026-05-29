@@ -41,6 +41,19 @@ public interface CuentaRepository extends JpaRepository<Cuenta, Long> {
                           LOWER(CONCAT(COALESCE(cl.nombre, ''), ' ', COALESCE(cl.apellido, ''))) LIKE LOWER(CONCAT('%', :q, '%')) OR
                           LOWER(c.numero) LIKE LOWER(CONCAT('%', :q, '%')) OR
                           LOWER(s.nombre) LIKE LOWER(CONCAT('%', :q, '%')))
+                    AND (
+                        :estadoCredito IS NULL OR :estadoCredito = '' OR :estadoCredito = 'TODOS' OR
+                        (:estadoCredito = 'ACTIVO' AND EXISTS (
+                            SELECT 1 FROM Credito cr
+                            WHERE cr.cliente.id = cl.id
+                            AND cr.estado = com.vida.apirest.model.credito.Credito.EstadoCredito.ACTIVO
+                        )) OR
+                        (:estadoCredito = 'VENCIDO' AND EXISTS (
+                            SELECT 1 FROM Credito cr
+                            WHERE cr.cliente.id = cl.id
+                            AND cr.estado = com.vida.apirest.model.credito.Credito.EstadoCredito.VENCIDO
+                        ))
+                    )
                     """,
             countQuery = """
                     SELECT COUNT(c) FROM Cuenta c
@@ -55,11 +68,25 @@ public interface CuentaRepository extends JpaRepository<Cuenta, Long> {
                           LOWER(CONCAT(COALESCE(cl.nombre, ''), ' ', COALESCE(cl.apellido, ''))) LIKE LOWER(CONCAT('%', :q, '%')) OR
                           LOWER(c.numero) LIKE LOWER(CONCAT('%', :q, '%')) OR
                           LOWER(s.nombre) LIKE LOWER(CONCAT('%', :q, '%')))
+                    AND (
+                        :estadoCredito IS NULL OR :estadoCredito = '' OR :estadoCredito = 'TODOS' OR
+                        (:estadoCredito = 'ACTIVO' AND EXISTS (
+                            SELECT 1 FROM Credito cr
+                            WHERE cr.cliente.id = cl.id
+                            AND cr.estado = com.vida.apirest.model.credito.Credito.EstadoCredito.ACTIVO
+                        )) OR
+                        (:estadoCredito = 'VENCIDO' AND EXISTS (
+                            SELECT 1 FROM Credito cr
+                            WHERE cr.cliente.id = cl.id
+                            AND cr.estado = com.vida.apirest.model.credito.Credito.EstadoCredito.VENCIDO
+                        ))
+                    )
                     """
     )
     Page<Cuenta> searchPage(
             @Param("sucursalId") Long sucursalId,
             @Param("q") String q,
+            @Param("estadoCredito") String estadoCredito,
             Pageable pageable
     );
 }

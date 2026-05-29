@@ -621,9 +621,12 @@ public class VentaService {
     }
 
     @Transactional(readOnly = true)
-    public List<CajaMovimientoResponse> listarMovimientosCaja() {
-        return movimientoFinancieroRepository.findByCuentaTipo(CuentaFinanciera.TipoCuenta.CAJA)
+    public List<CajaMovimientoResponse> listarMovimientosCaja(Long cuentaId) {
+        return movimientoFinancieroRepository
+                .findByCuentaTipoOrderByCreatedAtDesc(CuentaFinanciera.TipoCuenta.CAJA)
                 .stream()
+                .filter(m -> cuentaId == null
+                        || (m.getCuenta() != null && cuentaId.equals(m.getCuenta().getId())))
                 .map(this::mapCajaMovimientoResponse)
                 .collect(Collectors.toList());
     }
