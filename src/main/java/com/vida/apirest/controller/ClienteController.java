@@ -4,6 +4,7 @@ import com.vida.apirest.dto.cliente.ClienteResponse;
 import com.vida.apirest.dto.cliente.CreateClienteRequest;
 import com.vida.apirest.dto.cliente.CreateClienteSimpleRequest;
 import com.vida.apirest.dto.cliente.CreateClienteWithGaranteAndContactoRequest;
+import com.vida.apirest.dto.common.PageResponse;
 import com.vida.apirest.servicies.ClienteService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
@@ -24,6 +25,14 @@ public class ClienteController {
     public ResponseEntity<List<ClienteResponse>> getAll() {
         List<ClienteResponse> clientes = clienteService.findAll();
         return ResponseEntity.ok(clientes);
+    }
+
+    @GetMapping("/pagina")
+    public ResponseEntity<PageResponse<ClienteResponse>> getPage(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "15") int size,
+            @RequestParam(required = false) String q) {
+        return ResponseEntity.ok(clienteService.findPage(q, page, size));
     }
 
     @GetMapping("/dni/{dni}")

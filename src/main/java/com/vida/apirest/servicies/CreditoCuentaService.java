@@ -1,6 +1,7 @@
 package com.vida.apirest.servicies;
 
 import com.vida.apirest.dto.credito.*;
+import com.vida.apirest.dto.common.PageResponse;
 import com.vida.apirest.model.credito.Credito;
 import com.vida.apirest.model.credito.Cuota;
 import com.vida.apirest.model.credito.Cuenta;
@@ -13,6 +14,9 @@ import com.vida.apirest.repositories.CuentaRepository;
 import com.vida.apirest.repositories.FinanzasCuentaFinancieraRepository;
 import com.vida.apirest.repositories.MovimientoFinancieroRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -26,6 +30,9 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class CreditoCuentaService {
 
+    private static final int DEFAULT_PAGE_SIZE = 15;
+    private static final int MAX_PAGE_SIZE = 100;
+
     private final CuentaRepository creditoCuentaRepository;
     private final CreditoRepository creditoRepository;
     private final CuotaRepository cuotaRepository;
@@ -38,6 +45,22 @@ public class CreditoCuentaService {
                 ? creditoCuentaRepository.findActivasBySucursalWithCliente(sucursalId)
                 : creditoCuentaRepository.findAllActivasWithCliente();
         return cuentas.stream().map(this::mapCuentaList).collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public PageResponse<CuentaCreditoListResponse> listarCuentasPage(Long sucursalId, String q, int page, int size) {
+        int safePage = Math.max(0, page);
+        int safeSize = Math.max(1, Math.min(size <= 0 ? DEFAULT_PAGE_SIZE : size, MAX_PAGE_SIZE));
+        String query = q == null ? "" : q.trim();
+        Pageable pageable = PageRequest.of(
+                safePage,
+                safeSize,
+                Sort.by(Sort.Direction.DESC, "saldoActual")
+        );
+        return PageResponse.from(
+                creditoCuentaRepository.searchPage(sucursalId, query, pageable)
+                        .map(this::mapCuentaList)
+        );
     }
 
     @Transactional(readOnly = true)

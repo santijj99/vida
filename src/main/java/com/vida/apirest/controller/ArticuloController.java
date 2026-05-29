@@ -1,6 +1,7 @@
 package com.vida.apirest.controller;
 
 import com.vida.apirest.dto.ariticulo.ArticuloCompactResponse;
+import com.vida.apirest.dto.common.PageResponse;
 import com.vida.apirest.dto.ariticulo.ArticuloCreateRequest;
 import com.vida.apirest.dto.ariticulo.ArticuloFiltrosResponse;
 import com.vida.apirest.dto.ariticulo.ArticuloParaVentaResponse;
@@ -47,9 +48,15 @@ public class ArticuloController {
     }
 
     @GetMapping("/para-venta")
-    public ResponseEntity<?> listParaVenta(@RequestParam Long sucursalId) {
+    public ResponseEntity<?> listParaVenta(
+            @RequestParam Long sucursalId,
+            @RequestParam(required = false) String q,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "15") int size
+    ) {
         try {
-            return ResponseEntity.ok(articuloService.findParaVenta(sucursalId));
+            PageResponse<?> response = articuloService.findParaVentaPage(sucursalId, q, page, size);
+            return ResponseEntity.ok(response);
         } catch (RuntimeException e) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
                     "message", e.getMessage(),
@@ -59,13 +66,17 @@ public class ArticuloController {
     }
 
     @GetMapping("/tabla")
-    public ResponseEntity<List<ArticuloTablaRowResponse>> listTabla(
+    public ResponseEntity<PageResponse<ArticuloTablaRowResponse>> listTabla(
             @RequestParam(required = false) String categoria,
             @RequestParam(required = false) String subCategoria,
             @RequestParam(required = false) String genero,
-            @RequestParam(required = false) String marca
+            @RequestParam(required = false) String marca,
+            @RequestParam(required = false) String q,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "15") int size
     ) {
-        return ResponseEntity.ok(articuloService.findAllTabla(categoria, subCategoria, genero, marca));
+        return ResponseEntity.ok(articuloService.findTablaPage(
+                categoria, subCategoria, genero, marca, q, page, size));
     }
 
     @PostMapping

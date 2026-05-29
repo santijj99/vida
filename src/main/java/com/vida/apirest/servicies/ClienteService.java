@@ -1,12 +1,16 @@
 package com.vida.apirest.servicies;
 
 import com.vida.apirest.dto.cliente.*;
+import com.vida.apirest.dto.common.PageResponse;
 import com.vida.apirest.model.persona.Cliente;
 import com.vida.apirest.model.persona.Contacto;
 import com.vida.apirest.model.persona.Direccion;
 import com.vida.apirest.repositories.ClienteRepository;
 import com.vida.apirest.repositories.DireccionRepository;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -17,15 +21,33 @@ import java.util.Optional;
 @Service
 public class ClienteService {
 
+    private static final int DEFAULT_PAGE_SIZE = 15;
+    private static final int MAX_PAGE_SIZE = 100;
+
     @Autowired
     private ClienteRepository clienteRepository;
 
     @Autowired
     private DireccionRepository direccionRepository;
 
-    @Transactional
+    @Transactional(readOnly = true)
     public List<ClienteResponse> findAll() {
         return clienteRepository.findAll().stream().map(this::toClienteResponse).collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public PageResponse<ClienteResponse> findPage(String q, int page, int size) {
+        int safePage = Math.max(0, page);
+        int safeSize = Math.max(1, Math.min(size <= 0 ? DEFAULT_PAGE_SIZE : size, MAX_PAGE_SIZE));
+        String query = q == null ? "" : q.trim();
+        Pageable pageable = PageRequest.of(
+                safePage,
+                safeSize,
+                Sort.by("apellido").ascending().and(Sort.by("nombre").ascending())
+        );
+        return PageResponse.from(
+                clienteRepository.searchPage(query, pageable).map(this::toClienteResponse)
+        );
     }
 
     @Transactional

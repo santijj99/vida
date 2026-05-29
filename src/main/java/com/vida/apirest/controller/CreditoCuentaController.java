@@ -4,6 +4,7 @@ import com.vida.apirest.dto.credito.ClienteCreditosResponse;
 import com.vida.apirest.dto.credito.CuentaCreditoListResponse;
 import com.vida.apirest.dto.credito.PagoCuotasRequest;
 import com.vida.apirest.dto.credito.PagoCuotasResponse;
+import com.vida.apirest.dto.common.PageResponse;
 import com.vida.apirest.servicies.CreditoCuentaService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -24,6 +25,15 @@ public class CreditoCuentaController {
     public ResponseEntity<List<CuentaCreditoListResponse>> listar(
             @RequestParam(required = false) Long sucursalId) {
         return ResponseEntity.ok(creditoCuentaService.listarCuentas(sucursalId));
+    }
+
+    @GetMapping("/pagina")
+    public ResponseEntity<PageResponse<CuentaCreditoListResponse>> listarPagina(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "15") int size,
+            @RequestParam(required = false) String q,
+            @RequestParam(required = false) Long sucursalId) {
+        return ResponseEntity.ok(creditoCuentaService.listarCuentasPage(sucursalId, q, page, size));
     }
 
     @GetMapping("/{id}")
