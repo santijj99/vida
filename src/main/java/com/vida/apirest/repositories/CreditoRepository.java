@@ -12,4 +12,6 @@ public interface CreditoRepository extends JpaRepository<Credito, Long> {
     /** Sin JOIN FETCH de cuotas: DISTINCT+OneToMany devuelve un solo crédito incorrectamente. */
     @Query("SELECT c FROM Credito c WHERE c.cliente.id = :clienteId ORDER BY c.createdAt DESC")
     List<Credito> findByClienteIdOrderByCreatedAtDesc(@Param("clienteId") Long clienteId);
+
+    List<Credito> findByVentaId(Long ventaId);
 }

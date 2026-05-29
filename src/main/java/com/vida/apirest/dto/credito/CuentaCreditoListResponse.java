@@ -12,6 +12,7 @@ public class CuentaCreditoListResponse {
     private String clienteNombre;
     private String clienteApellido;
     private String clienteDni;
+    private String clienteTelefono;
     private Long sucursalId;
     private String sucursalNombre;
     private BigDecimal saldoActual;

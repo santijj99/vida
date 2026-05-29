@@ -191,6 +191,7 @@ public class CreditoCuentaService {
         response.setClienteNombre(cliente.getNombre());
         response.setClienteApellido(cliente.getApellido());
         response.setClienteDni(cliente.getDni());
+        response.setClienteTelefono(cliente.getTelefono());
         response.setSucursalId(cuenta.getSucursal().getId());
         response.setSaldoCuenta(saldoCuenta);
         response.setLimiteCredito(cuenta.getLimiteCredito());
@@ -313,6 +314,7 @@ public class CreditoCuentaService {
         dto.setClienteNombre(cliente.getNombre());
         dto.setClienteApellido(cliente.getApellido());
         dto.setClienteDni(cliente.getDni());
+        dto.setClienteTelefono(cliente.getTelefono());
         dto.setSucursalId(cuenta.getSucursal().getId());
         dto.setSucursalNombre(cuenta.getSucursal().getNombre());
         dto.setSaldoActual(saldoActual);

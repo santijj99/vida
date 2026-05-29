@@ -22,6 +22,10 @@ public class VentaResponse {
     private String estado;
     private String metodoPago;
     private String observaciones;
+    private String motivoCancelacion;
+    private LocalDateTime fechaCancelacion;
+    private String clienteNombre;
     private List<VentaDetalleResponse> detalles;
     private List<PagoVentaResponse> pagos;
+    private List<VentaCambioArticuloResponse> cambiosArticulo;
 }

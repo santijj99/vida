@@ -1,20 +1,26 @@
 package com.vida.apirest.controller;
 
+import com.vida.apirest.dto.common.PageResponse;
 import com.vida.apirest.dto.venta.CajaCuentaResponse;
 import com.vida.apirest.dto.venta.CajaMovimientoResponse;
 import com.vida.apirest.dto.venta.CreditoSimulacionRequest;
 import com.vida.apirest.dto.venta.CreditoSimulacionResponse;
+import com.vida.apirest.dto.venta.VentaCancelarRequest;
+import com.vida.apirest.dto.venta.VentaCambioArticuloRequest;
 import com.vida.apirest.dto.venta.VentaCreateRequest;
 import com.vida.apirest.dto.venta.VentaCreditoPersonalRequest;
+import com.vida.apirest.dto.venta.VentaHistorialItemResponse;
 import com.vida.apirest.dto.venta.VentaResponse;
 import com.vida.apirest.servicies.VentaService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 
@@ -72,6 +78,60 @@ public class VentaController {
             String errorMessage = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of("message", errorMessage, "statusCode", HttpStatus.INTERNAL_SERVER_ERROR.value()));
+        }
+    }
+
+    @GetMapping("/historial")
+    public ResponseEntity<?> listarHistorial(
+            @RequestParam(required = false) Long sucursalId,
+            @RequestParam(required = false) String estado,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate desde,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate hasta,
+            @RequestParam(required = false) String q,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "15") int size
+    ) {
+        try {
+            PageResponse<VentaHistorialItemResponse> response = ventaService.listarHistorial(
+                    sucursalId, estado, desde, hasta, q, page, size);
+            return ResponseEntity.ok(response);
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(Map.of("message", e.getMessage(), "statusCode", HttpStatus.BAD_REQUEST.value()));
+        }
+    }
+
+    @GetMapping("/{id}")
+    public ResponseEntity<?> obtenerVenta(@PathVariable Long id) {
+        try {
+            return ResponseEntity.ok(ventaService.obtenerVenta(id));
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(Map.of("message", e.getMessage(), "statusCode", HttpStatus.NOT_FOUND.value()));
+        }
+    }
+
+    @PostMapping("/{id}/cancelar")
+    public ResponseEntity<?> cancelarVenta(@PathVariable Long id, @RequestBody VentaCancelarRequest request) {
+        try {
+            VentaResponse response = ventaService.cancelarVenta(id, request);
+            return ResponseEntity.ok(response);
+        } catch (RuntimeException e) {
+            logger.error("Error cancelando venta {}", id, e);
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(Map.of("message", e.getMessage(), "statusCode", HttpStatus.BAD_REQUEST.value()));
+        }
+    }
+
+    @PostMapping("/{id}/cambio-articulo")
+    public ResponseEntity<?> cambiarArticulo(@PathVariable Long id, @RequestBody VentaCambioArticuloRequest request) {
+        try {
+            VentaResponse response = ventaService.cambiarArticulo(id, request);
+            return ResponseEntity.ok(response);
+        } catch (RuntimeException e) {
+            logger.error("Error en cambio de artículo venta {}", id, e);
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(Map.of("message", e.getMessage(), "statusCode", HttpStatus.BAD_REQUEST.value()));
         }
     }
 

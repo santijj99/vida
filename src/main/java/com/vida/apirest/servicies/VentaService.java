@@ -1,15 +1,21 @@
 package com.vida.apirest.servicies;
 
+import com.vida.apirest.dto.common.PageResponse;
 import com.vida.apirest.dto.venta.CajaCuentaResponse;
 import com.vida.apirest.dto.venta.CajaMovimientoResponse;
 import com.vida.apirest.dto.venta.CreditoSimulacionRequest;
 import com.vida.apirest.dto.venta.CreditoSimulacionResponse;
 import com.vida.apirest.dto.venta.PagoVentaRequest;
 import com.vida.apirest.dto.venta.PagoVentaResponse;
+import com.vida.apirest.dto.venta.VentaCancelarRequest;
+import com.vida.apirest.dto.venta.VentaCambioArticuloRequest;
+import com.vida.apirest.dto.venta.VentaCambioArticuloResponse;
 import com.vida.apirest.dto.venta.VentaCreateRequest;
 import com.vida.apirest.dto.venta.VentaCreditoPersonalRequest;
 import com.vida.apirest.dto.venta.VentaDetalleResponse;
+import com.vida.apirest.dto.venta.VentaHistorialItemResponse;
 import com.vida.apirest.dto.venta.VentaResponse;
+import com.vida.apirest.model.venta.VentaCambioArticulo;
 import com.vida.apirest.model.almacen.Stock;
 import com.vida.apirest.model.almacen.StockMovimiento;
 import com.vida.apirest.model.almacen.Sucursal;
@@ -36,9 +42,13 @@ import com.vida.apirest.repositories.PagoVentaRepository;
 import com.vida.apirest.repositories.SucursalRepository;
 import com.vida.apirest.repositories.StockMovimientoRepository;
 import com.vida.apirest.repositories.StockRepository;
+import com.vida.apirest.repositories.VentaCambioArticuloRepository;
 import com.vida.apirest.repositories.VentaRepository;
 import com.vida.apirest.repositories.VarianteArticuloRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -68,6 +78,7 @@ public class VentaService {
     private final CuentaRepository creditoCuentaRepository;
     private final CreditoRepository creditoRepository;
     private final MovimientoFinancieroRepository movimientoFinancieroRepository;
+    private final VentaCambioArticuloRepository ventaCambioArticuloRepository;
 
     @Transactional
     public VentaResponse registrarVenta(VentaCreateRequest request) {
@@ -419,6 +430,189 @@ public class VentaService {
     }
 
     @Transactional(readOnly = true)
+    public PageResponse<VentaHistorialItemResponse> listarHistorial(
+            Long sucursalId,
+            String estado,
+            LocalDate desde,
+            LocalDate hasta,
+            String q,
+            int page,
+            int size
+    ) {
+        LocalDateTime desdeDt = (desde != null ? desde : LocalDate.now()).atStartOfDay();
+        LocalDate hastaInclusive = hasta != null ? hasta : LocalDate.now();
+        LocalDateTime hastaExclusivo = hastaInclusive.plusDays(1).atStartOfDay();
+
+        String estadoFilter = (estado == null || estado.isBlank()) ? null : estado.trim().toUpperCase();
+        Pageable pageable = PageRequest.of(Math.max(page, 0), Math.max(size, 1));
+        Page<Venta> result = ventaRepository.searchHistorial(
+                sucursalId,
+                estadoFilter,
+                desdeDt,
+                hastaExclusivo,
+                q != null ? q.trim() : null,
+                pageable
+        );
+        return PageResponse.from(result.map(this::mapHistorialItem));
+    }
+
+    @Transactional(readOnly = true)
+    public VentaResponse obtenerVenta(Long id) {
+        Venta venta = ventaRepository.findByIdWithDetalles(id)
+                .orElseThrow(() -> new RuntimeException("Venta no encontrada con ID: " + id));
+        return mapVentaResponseCompleto(venta);
+    }
+
+    @Transactional
+    public VentaResponse cancelarVenta(Long id, VentaCancelarRequest request) {
+        if (request == null || request.getMotivo() == null || request.getMotivo().isBlank()) {
+            throw new RuntimeException("Debe indicar el motivo de cancelación");
+        }
+
+        Venta venta = ventaRepository.findByIdWithDetalles(id)
+                .orElseThrow(() -> new RuntimeException("Venta no encontrada con ID: " + id));
+
+        if (venta.getEstado() == Venta.EstadoVenta.CANCELADA) {
+            throw new RuntimeException("La venta ya está cancelada");
+        }
+        if (venta.getEstado() == Venta.EstadoVenta.BORRADOR) {
+            throw new RuntimeException("No se puede cancelar una venta en borrador");
+        }
+
+        Long sucursalId = venta.getSucursal().getId();
+        String referencia = venta.getNumeroFactura();
+
+        for (VentaDetalle detalle : venta.getDetalles()) {
+            if (detalle.getVariante() != null) {
+                Stock stock = findStockByVariante(detalle.getVariante().getId(), sucursalId);
+                ingresarStockDevolucion(stock, detalle.getCantidad(), referencia);
+            } else if (detalle.getArticulo() != null) {
+                Stock stock = findStock(detalle.getArticulo().getId(), null, sucursalId);
+                ingresarStockDevolucion(stock, detalle.getCantidad(), referencia);
+            }
+        }
+
+        if (venta.getPagos() != null) {
+            for (PagoVenta pago : venta.getPagos()) {
+                if (pago.getEstado() == PagoVenta.EstadoPago.RECIBIDO && pago.getCuenta() != null) {
+                    revertirMovimientoCaja(pago.getCuenta(), pago, referencia);
+                    pago.setEstado(PagoVenta.EstadoPago.DEVUELTO);
+                    pagoVentaRepository.save(pago);
+                } else if (pago.getEstado() == PagoVenta.EstadoPago.PENDIENTE
+                        && pago.getMetodoPago() != null
+                        && pago.getMetodoPago().equalsIgnoreCase("CREDITO")) {
+                    pago.setEstado(PagoVenta.EstadoPago.DEVUELTO);
+                    pagoVentaRepository.save(pago);
+                }
+            }
+        }
+
+        cancelarCreditosVenta(venta);
+
+        venta.setEstado(Venta.EstadoVenta.CANCELADA);
+        venta.setMotivoCancelacion(request.getMotivo().trim());
+        venta.setFechaCancelacion(LocalDateTime.now());
+        ventaRepository.save(venta);
+
+        return mapVentaResponseCompleto(ventaRepository.findByIdWithDetalles(id)
+                .orElseThrow(() -> new RuntimeException("Error al recuperar la venta cancelada")));
+    }
+
+    @Transactional
+    public VentaResponse cambiarArticulo(Long ventaId, VentaCambioArticuloRequest request) {
+        if (request == null || request.getVentaDetalleId() == null) {
+            throw new RuntimeException("Debe indicar la línea de venta a cambiar");
+        }
+        if (request.getNuevaVarianteId() == null) {
+            throw new RuntimeException("Debe indicar la variante nueva");
+        }
+        if (request.getMotivo() == null || request.getMotivo().isBlank()) {
+            throw new RuntimeException("Debe indicar el motivo del cambio");
+        }
+
+        Venta venta = ventaRepository.findByIdWithDetalles(ventaId)
+                .orElseThrow(() -> new RuntimeException("Venta no encontrada con ID: " + ventaId));
+
+        if (venta.getEstado() == Venta.EstadoVenta.CANCELADA) {
+            throw new RuntimeException("No se puede cambiar artículos en una venta cancelada");
+        }
+        if (venta.getEstado() == Venta.EstadoVenta.BORRADOR) {
+            throw new RuntimeException("La venta debe estar confirmada para registrar un cambio");
+        }
+
+        VentaDetalle detalle = venta.getDetalles().stream()
+                .filter(d -> d.getId().equals(request.getVentaDetalleId()))
+                .findFirst()
+                .orElseThrow(() -> new RuntimeException("Línea de venta no encontrada en esta venta"));
+
+        VarianteArticulo varianteDevuelta = detalle.getVariante();
+        VarianteArticulo varianteNueva = varianteArticuloRepository.findById(request.getNuevaVarianteId())
+                .orElseThrow(() -> new RuntimeException("Variante nueva no encontrada"));
+
+        if (varianteDevuelta != null && varianteNueva.getId().equals(varianteDevuelta.getId())) {
+            throw new RuntimeException("El artículo nuevo debe ser distinto al devuelto");
+        }
+
+        int cantidad = request.getCantidad() != null ? request.getCantidad() : detalle.getCantidad();
+        if (cantidad <= 0 || cantidad > detalle.getCantidad()) {
+            throw new RuntimeException("Cantidad inválida para el cambio");
+        }
+
+        Long sucursalId = venta.getSucursal().getId();
+        String referencia = venta.getNumeroFactura();
+
+        if (varianteDevuelta != null) {
+            Stock stockDevuelto = findStockByVariante(varianteDevuelta.getId(), sucursalId);
+            ingresarStockDevolucion(stockDevuelto, cantidad, referencia);
+        } else {
+            Stock stockDevuelto = findStock(detalle.getArticulo().getId(), null, sucursalId);
+            ingresarStockDevolucion(stockDevuelto, cantidad, referencia);
+        }
+
+        Stock stockNuevo = findStockByVariante(varianteNueva.getId(), sucursalId);
+        ajustarStock(stockNuevo, cantidad, referencia + "-CAMBIO");
+
+        Articulo articuloNuevo = articuloRepository.findById(varianteNueva.getArticuloId())
+                .orElseThrow(() -> new RuntimeException("Artículo de la variante nueva no encontrado"));
+
+        BigDecimal precioAnterior = detalle.getPrecioUnitario();
+        BigDecimal precioNuevo = obtenerPrecioUnitarioDesdeVariante(varianteNueva);
+        if (precioNuevo == null || precioNuevo.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new RuntimeException("No existe precio válido para la variante nueva");
+        }
+
+        BigDecimal diferencia = precioNuevo.subtract(precioAnterior).multiply(BigDecimal.valueOf(cantidad));
+
+        VentaCambioArticulo cambio = new VentaCambioArticulo();
+        cambio.setVenta(venta);
+        cambio.setVentaDetalle(detalle);
+        cambio.setVarianteDevuelta(varianteDevuelta);
+        cambio.setVarianteNueva(varianteNueva);
+        cambio.setCantidad(cantidad);
+        cambio.setMotivo(request.getMotivo().trim());
+        cambio.setPrecioAnterior(precioAnterior);
+        cambio.setPrecioNuevo(precioNuevo);
+        cambio.setDiferenciaPrecio(diferencia);
+        cambio.setObservaciones(request.getObservaciones());
+        ventaCambioArticuloRepository.save(cambio);
+
+        detalle.setArticulo(articuloNuevo);
+        detalle.setVariante(varianteNueva);
+        detalle.setPrecioUnitario(precioNuevo);
+        BigDecimal detalleSubtotal = precioNuevo.multiply(BigDecimal.valueOf(detalle.getCantidad()))
+                .subtract(detalle.getDescuentoMonto() != null ? detalle.getDescuentoMonto() : BigDecimal.ZERO);
+        BigDecimal detalleTotal = detalleSubtotal.add(detalle.getImpuesto() != null ? detalle.getImpuesto() : BigDecimal.ZERO);
+        detalle.setSubtotal(detalleSubtotal);
+        detalle.setTotal(detalleTotal);
+
+        recalcularTotalesVenta(venta);
+        ventaRepository.save(venta);
+
+        return mapVentaResponseCompleto(ventaRepository.findByIdWithDetalles(ventaId)
+                .orElseThrow(() -> new RuntimeException("Error al recuperar la venta actualizada")));
+    }
+
+    @Transactional(readOnly = true)
     public List<CajaCuentaResponse> listarCajas() {
         return cuentaRepository.findByTipoAndActivoTrue(CuentaFinanciera.TipoCuenta.CAJA)
                 .stream()
@@ -524,11 +718,131 @@ public class VentaService {
                 });
     }
 
+    private void ingresarStockDevolucion(Stock stock, Integer cantidad, String referencia) {
+        Integer disponibleAnterior = stock.getCantidadDisponible() != null ? stock.getCantidadDisponible() : 0;
+        Integer nuevoDisponible = disponibleAnterior + cantidad;
+        stock.setCantidadDisponible(nuevoDisponible);
+        stock.setCantidadActual((stock.getCantidadActual() != null ? stock.getCantidadActual() : 0) + cantidad);
+        stockRepository.save(stock);
+
+        StockMovimiento movimiento = new StockMovimiento();
+        movimiento.setStock(stock);
+        movimiento.setTipo(StockMovimiento.TipoMovimiento.INGRESO_DEVOLUCION);
+        movimiento.setCantidad(cantidad);
+        movimiento.setSaldoAnterior(disponibleAnterior);
+        movimiento.setSaldoNuevo(nuevoDisponible);
+        movimiento.setReferencia(referencia);
+        movimiento.setDescripcion("Ingreso por devolución o cambio");
+        movimiento.setUsuario("sistema");
+        stockMovimientoRepository.save(movimiento);
+    }
+
+    private void revertirMovimientoCaja(CuentaFinanciera cuenta, PagoVenta pago, String referenciaVenta) {
+        BigDecimal saldoAnterior = cuenta.getSaldoActual() != null ? cuenta.getSaldoActual() : BigDecimal.ZERO;
+        BigDecimal saldoNuevo = saldoAnterior.subtract(pago.getMonto());
+        cuenta.setSaldoActual(saldoNuevo);
+        cuentaRepository.save(cuenta);
+
+        MovimientoFinanciero movimiento = new MovimientoFinanciero();
+        movimiento.setCuenta(cuenta);
+        movimiento.setNumero("MV-" + UUID.randomUUID().toString().replace("-", ""));
+        movimiento.setTipo(MovimientoFinanciero.TipoMovimiento.EGRESO);
+        movimiento.setMonto(pago.getMonto());
+        movimiento.setSaldoAnterior(saldoAnterior);
+        movimiento.setSaldoNuevo(saldoNuevo);
+        movimiento.setDescripcion("Reversión por cancelación de venta " + referenciaVenta);
+        movimiento.setReferencia(pago.getReferencia());
+        movimiento.setResponsable("sistema");
+        movimientoFinancieroRepository.save(movimiento);
+    }
+
+    private void cancelarCreditosVenta(Venta venta) {
+        List<Credito> creditos = creditoRepository.findByVentaId(venta.getId());
+        if (creditos.isEmpty()) {
+            return;
+        }
+        Cuenta cuentaCredito = creditoCuentaRepository
+                .findByClienteIdAndSucursalIdAndActivoTrue(venta.getCliente().getId(), venta.getSucursal().getId())
+                .orElse(null);
+
+        for (Credito credito : creditos) {
+            if (credito.getEstado() == Credito.EstadoCredito.CANCELADO
+                    || credito.getEstado() == Credito.EstadoCredito.PAGADO) {
+                continue;
+            }
+            BigDecimal saldoCredito = credito.getSaldo() != null ? credito.getSaldo() : credito.getImporte();
+            if (cuentaCredito != null && saldoCredito.compareTo(BigDecimal.ZERO) > 0) {
+                BigDecimal saldoCuenta = cuentaCredito.getSaldoActual() != null ? cuentaCredito.getSaldoActual() : BigDecimal.ZERO;
+                cuentaCredito.setSaldoActual(saldoCuenta.subtract(saldoCredito).max(BigDecimal.ZERO));
+            }
+            credito.setEstado(Credito.EstadoCredito.CANCELADO);
+            credito.setSaldo(BigDecimal.ZERO);
+            if (credito.getCuotas() != null) {
+                credito.getCuotas().forEach(cuota -> {
+                    if (cuota.getEstado() != Cuota.EstadoCuota.PAGADA) {
+                        cuota.setEstado(Cuota.EstadoCuota.CANCELADA);
+                        cuota.setSaldo(BigDecimal.ZERO);
+                    }
+                });
+            }
+            creditoRepository.save(credito);
+        }
+        if (cuentaCredito != null) {
+            creditoCuentaRepository.save(cuentaCredito);
+        }
+    }
+
+    private void recalcularTotalesVenta(Venta venta) {
+        BigDecimal subtotal = BigDecimal.ZERO;
+        BigDecimal descuento = BigDecimal.ZERO;
+        BigDecimal impuesto = BigDecimal.ZERO;
+        BigDecimal total = BigDecimal.ZERO;
+        for (VentaDetalle detalle : venta.getDetalles()) {
+            subtotal = subtotal.add(detalle.getSubtotal() != null ? detalle.getSubtotal() : BigDecimal.ZERO);
+            descuento = descuento.add(detalle.getDescuentoMonto() != null ? detalle.getDescuentoMonto() : BigDecimal.ZERO);
+            impuesto = impuesto.add(detalle.getImpuesto() != null ? detalle.getImpuesto() : BigDecimal.ZERO);
+            total = total.add(detalle.getTotal() != null ? detalle.getTotal() : BigDecimal.ZERO);
+        }
+        venta.setSubtotal(subtotal);
+        venta.setDescuento(descuento);
+        venta.setImpuesto(impuesto);
+        venta.setTotal(total);
+    }
+
+    private VentaHistorialItemResponse mapHistorialItem(Venta venta) {
+        VentaHistorialItemResponse item = new VentaHistorialItemResponse();
+        item.setId(venta.getId());
+        item.setNumeroFactura(venta.getNumeroFactura());
+        item.setFechaVenta(venta.getFechaVenta());
+        if (venta.getCliente() != null) {
+            String nombre = (venta.getCliente().getNombre() != null ? venta.getCliente().getNombre() : "")
+                    + " " + (venta.getCliente().getApellido() != null ? venta.getCliente().getApellido() : "");
+            item.setClienteNombre(nombre.trim());
+            item.setClienteDni(venta.getCliente().getDni());
+        }
+        item.setTotal(venta.getTotal());
+        item.setEstado(venta.getEstado() != null ? venta.getEstado().name() : null);
+        item.setMetodoPago(venta.getMetodoPago());
+        item.setMotivoCancelacion(venta.getMotivoCancelacion());
+        int items = venta.getDetalles() != null ? venta.getDetalles().size() : 0;
+        item.setCantidadItems(items);
+        return item;
+    }
+
     private VentaResponse mapVentaResponse(Venta venta) {
+        return mapVentaResponseCompleto(venta);
+    }
+
+    private VentaResponse mapVentaResponseCompleto(Venta venta) {
         VentaResponse response = new VentaResponse();
         response.setId(venta.getId());
         response.setClienteId(venta.getCliente().getId());
         response.setClienteDni(venta.getCliente().getDni());
+        if (venta.getCliente() != null) {
+            String nombre = (venta.getCliente().getNombre() != null ? venta.getCliente().getNombre() : "")
+                    + " " + (venta.getCliente().getApellido() != null ? venta.getCliente().getApellido() : "");
+            response.setClienteNombre(nombre.trim());
+        }
         response.setEmpleadoId(venta.getEmpleado() != null ? venta.getEmpleado().getId() : null);
         response.setSucursalId(venta.getSucursal().getId());
         response.setNumeroFactura(venta.getNumeroFactura());
@@ -540,8 +854,33 @@ public class VentaService {
         response.setEstado(venta.getEstado() != null ? venta.getEstado().name() : null);
         response.setMetodoPago(venta.getMetodoPago());
         response.setObservaciones(venta.getObservaciones());
-        response.setDetalles(venta.getDetalles().stream().map(this::mapVentaDetalleResponse).collect(Collectors.toList()));
-        response.setPagos(venta.getPagos().stream().map(this::mapPagoVentaResponse).collect(Collectors.toList()));
+        response.setMotivoCancelacion(venta.getMotivoCancelacion());
+        response.setFechaCancelacion(venta.getFechaCancelacion());
+        if (venta.getDetalles() != null) {
+            response.setDetalles(venta.getDetalles().stream().map(this::mapVentaDetalleResponse).collect(Collectors.toList()));
+        }
+        if (venta.getPagos() != null) {
+            response.setPagos(venta.getPagos().stream().map(this::mapPagoVentaResponse).collect(Collectors.toList()));
+        }
+        List<VentaCambioArticulo> cambios = ventaCambioArticuloRepository.findByVentaIdOrderByCreatedAtDesc(venta.getId());
+        response.setCambiosArticulo(cambios.stream().map(this::mapCambioArticuloResponse).collect(Collectors.toList()));
+        return response;
+    }
+
+    private VentaCambioArticuloResponse mapCambioArticuloResponse(VentaCambioArticulo cambio) {
+        VentaCambioArticuloResponse response = new VentaCambioArticuloResponse();
+        response.setId(cambio.getId());
+        response.setVentaId(cambio.getVenta().getId());
+        response.setVentaDetalleId(cambio.getVentaDetalle() != null ? cambio.getVentaDetalle().getId() : null);
+        response.setVarianteDevueltaId(cambio.getVarianteDevuelta() != null ? cambio.getVarianteDevuelta().getId() : null);
+        response.setVarianteNuevaId(cambio.getVarianteNueva().getId());
+        response.setCantidad(cambio.getCantidad());
+        response.setMotivo(cambio.getMotivo());
+        response.setPrecioAnterior(cambio.getPrecioAnterior());
+        response.setPrecioNuevo(cambio.getPrecioNuevo());
+        response.setDiferenciaPrecio(cambio.getDiferenciaPrecio());
+        response.setObservaciones(cambio.getObservaciones());
+        response.setCreatedAt(cambio.getCreatedAt());
         return response;
     }
 
@@ -559,7 +898,43 @@ public class VentaService {
         response.setTotal(detalle.getTotal());
         response.setLote(detalle.getLote());
         response.setNumeroSerie(detalle.getNumeroSerie());
+        Articulo articulo = detalle.getArticulo();
+        if (articulo != null) {
+            response.setCodigoArticulo(articulo.getCodigo());
+            response.setDescripcionArticulo(construirDescripcionArticulo(articulo, detalle.getVariante()));
+        }
+        VarianteArticulo variante = detalle.getVariante();
+        if (variante != null) {
+            if (variante.getTalle() != null) {
+                response.setTalle(variante.getTalle().getNumero());
+            }
+            if (variante.getColor() != null) {
+                response.setColor(variante.getColor().getNombre());
+            }
+        }
         return response;
+    }
+
+    private String construirDescripcionArticulo(Articulo articulo, VarianteArticulo variante) {
+        StringBuilder sb = new StringBuilder();
+        if (articulo.getCodigo() != null && !articulo.getCodigo().isBlank()) {
+            sb.append(articulo.getCodigo());
+        }
+        if (articulo.getModelo() != null && !articulo.getModelo().isBlank()) {
+            if (!sb.isEmpty()) sb.append(" · ");
+            sb.append(articulo.getModelo());
+        }
+        if (variante != null) {
+            if (variante.getTalle() != null && variante.getTalle().getNumero() != null) {
+                if (!sb.isEmpty()) sb.append(" · ");
+                sb.append("Talle ").append(variante.getTalle().getNumero());
+            }
+            if (variante.getColor() != null && variante.getColor().getNombre() != null) {
+                if (!sb.isEmpty()) sb.append(" · ");
+                sb.append(variante.getColor().getNombre());
+            }
+        }
+        return sb.isEmpty() ? "Artículo #" + articulo.getId() : sb.toString();
     }
 
     private PagoVentaResponse mapPagoVentaResponse(PagoVenta pago) {

@@ -84,6 +84,12 @@ public class Venta {
     @Column(name = "observaciones", columnDefinition = "TEXT")
     private String observaciones;
 
+    @Column(name = "motivo_cancelacion", columnDefinition = "TEXT")
+    private String motivoCancelacion;
+
+    @Column(name = "fecha_cancelacion")
+    private LocalDateTime fechaCancelacion;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;

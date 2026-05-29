@@ -13,6 +13,7 @@ public class ClienteCreditosResponse {
     private String clienteNombre;
     private String clienteApellido;
     private String clienteDni;
+    private String clienteTelefono;
     private Long sucursalId;
     private BigDecimal saldoCuenta;
     private BigDecimal limiteCredito;
