@@ -18,4 +18,8 @@ public class VentaDetalleResponse {
     private BigDecimal total;
     private String lote;
     private String numeroSerie;
+    private String codigoArticulo;
+    private String descripcionArticulo;
+    private String talle;
+    private String color;
 }

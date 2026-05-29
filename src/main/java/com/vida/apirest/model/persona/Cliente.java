@@ -25,6 +25,15 @@ public class Cliente {
     @Column(name = "apellido", nullable = true, length = 100)
     private String apellido;
 
+    @Column(name = "email", nullable = true, length = 100)
+    private String email;
+
+    @Column(name = "telefono", nullable = true, length = 30)
+    private String telefono;
+
+    @Column(name = "tabajo", nullable = true, length = 100)
+    private String trabajo;
+
     @ManyToOne
     @JoinColumn(name = "garante_id")
     private Cliente garante;

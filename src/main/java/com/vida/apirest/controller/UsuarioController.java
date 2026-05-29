@@ -7,6 +7,7 @@ import java.util.Map;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -29,11 +30,13 @@ public class UsuarioController {
     private UsuarioService usuarioService;
 
     @GetMapping
+    @PreAuthorize("hasAuthority('LEER_USUARIOS')")
     public ResponseEntity<List<UsuarioResponse>> getAll() {
         return ResponseEntity.ok(usuarioService.findAll());
     }
 
     @PostMapping("/admin/create")
+    @PreAuthorize("hasAuthority('CREAR_USUARIOS')")
     public ResponseEntity<?> createByAdmin(@RequestBody CreateUsuarioRequest request) {
         try {
             UsuarioResponse response = usuarioService.createByAdmin(request);
@@ -77,6 +80,7 @@ public class UsuarioController {
     }
 
     @PostMapping("/{usuarioId}/asignar-rol/{rolId}")
+    @PreAuthorize("hasAuthority('MODIFICAR_USUARIOS')")
     public ResponseEntity<?> asignarRol(@PathVariable Long usuarioId, @PathVariable Long rolId) {
         try {
             UsuarioResponse response = usuarioService.asignarRol(usuarioId, rolId);
