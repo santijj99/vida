@@ -2,6 +2,9 @@ package com.vida.apirest.controller;
 
 import com.vida.apirest.dto.cliente.ClienteResponse;
 import com.vida.apirest.dto.cliente.CreateClienteRequest;
+import com.vida.apirest.dto.cliente.CreateClienteSimpleRequest;
+import com.vida.apirest.dto.cliente.CreateClienteWithGaranteAndContactoRequest;
+import com.vida.apirest.dto.common.PageResponse;
 import com.vida.apirest.servicies.ClienteService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
@@ -24,7 +27,25 @@ public class ClienteController {
         return ResponseEntity.ok(clientes);
     }
 
-    @GetMapping("/{id}")
+    @GetMapping("/pagina")
+    public ResponseEntity<PageResponse<ClienteResponse>> getPage(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "15") int size,
+            @RequestParam(required = false) String q) {
+        return ResponseEntity.ok(clienteService.findPage(q, page, size));
+    }
+
+    @GetMapping("/dni/{dni}")
+    public ResponseEntity<?> getByDni(@PathVariable String dni) {
+        try {
+            return ResponseEntity.ok(clienteService.findByDni(dni));
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
+                    "message", e.getMessage(), "statusCode", HttpStatus.NOT_FOUND.value()));
+        }
+    }
+
+    @GetMapping("/{id:[0-9]+}")
     public ResponseEntity<?> getById(@PathVariable Long id) {
         try {
             ClienteResponse response = clienteService.findById(id);
@@ -44,7 +65,27 @@ public class ClienteController {
         }
     }
 
-    @PutMapping("/{id}")
+    @PostMapping("/solo")
+    public ResponseEntity<?> createClienteOnly(@RequestBody CreateClienteSimpleRequest request) {
+        try {
+            ClienteResponse response = clienteService.createClienteOnly(request);
+            return ResponseEntity.status(HttpStatus.CREATED).body(response);
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", e.getMessage(), "statusCode", HttpStatus.BAD_REQUEST.value()));
+        }
+    }
+
+    @PostMapping("/con-garante-contacto")
+    public ResponseEntity<?> createClienteWithGaranteAndContacto(@RequestBody CreateClienteWithGaranteAndContactoRequest request) {
+        try {
+            ClienteResponse response = clienteService.createClienteWithGaranteAndContacto(request);
+            return ResponseEntity.status(HttpStatus.CREATED).body(response);
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", e.getMessage(), "statusCode", HttpStatus.BAD_REQUEST.value()));
+        }
+    }
+
+    @PutMapping("/{id:[0-9]+}")
     public ResponseEntity<?> update(@PathVariable Long id, @RequestBody CreateClienteRequest request) {
         try {
             ClienteResponse response = clienteService.update(id, request);
@@ -54,7 +95,7 @@ public class ClienteController {
         }
     }
 
-    @DeleteMapping("/{id}")
+    @DeleteMapping("/{id:[0-9]+}")
     public ResponseEntity<?> delete(@PathVariable Long id) {
         try {
             clienteService.delete(id);

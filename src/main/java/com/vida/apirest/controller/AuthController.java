@@ -4,14 +4,19 @@ import com.vida.apirest.dto.usuario.CreateUsuarioRequest;
 import com.vida.apirest.dto.usuario.UsuarioResponse;
 import com.vida.apirest.dto.usuario.LoginRequest;
 import com.vida.apirest.dto.usuario.LoginResponse;
+import com.vida.apirest.dto.usuario.UsuarioResponse;
 import com.vida.apirest.servicies.UsuarioService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+
+import com.vida.apirest.security.AppUserDetails;
 
 import java.util.Map;
 
@@ -49,5 +54,17 @@ public class AuthController {
                     "statusCode", HttpStatus.BAD_REQUEST.value()
             ));
         }
+    }
+
+    @GetMapping("/me")
+    public ResponseEntity<?> me(@AuthenticationPrincipal AppUserDetails userDetails) {
+        if (userDetails == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of(
+                    "message", "No autenticado",
+                    "statusCode", HttpStatus.UNAUTHORIZED.value()
+            ));
+        }
+        UsuarioResponse response = usuarioService.buildProfileResponse(userDetails.getUsuario());
+        return ResponseEntity.ok(response);
     }
 }

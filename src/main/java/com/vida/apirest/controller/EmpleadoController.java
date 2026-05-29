@@ -2,12 +2,14 @@ package com.vida.apirest.controller;
 
 import com.vida.apirest.dto.empleado.CreateEmpleadoRequest;
 import com.vida.apirest.dto.empleado.EmpleadoResponse;
+import com.vida.apirest.model.persona.Empleado;
 import com.vida.apirest.servicies.EmpleadoService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 
@@ -38,17 +40,17 @@ public class EmpleadoController {
         try {
             EmpleadoResponse response = empleadoService.create(request);
             return ResponseEntity.status(HttpStatus.CREATED).body(response);
-        } catch (RuntimeException e) {
+        } catch (RuntimeException | IOException e) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", e.getMessage(), "statusCode", HttpStatus.BAD_REQUEST.value()));
         }
     }
 
-    @PutMapping("/{id}")
+    @PutMapping(value = "/{id}")
     public ResponseEntity<?> update(@PathVariable Long id, @RequestBody CreateEmpleadoRequest request) {
         try {
             EmpleadoResponse response = empleadoService.update(id, request);
             return ResponseEntity.ok(response);
-        } catch (RuntimeException e) {
+        } catch (RuntimeException | IOException e) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("message", e.getMessage(), "statusCode", HttpStatus.NOT_FOUND.value()));
         }
     }

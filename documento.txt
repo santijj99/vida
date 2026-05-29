@@ -1,0 +1,12 @@
+Sidebar
+Dashboard
+Cajas
+Ventas
+Clientes
+Cuentas
+Empleados - sueldo/porcentaje
+Articulos
+Proveedores - orden de pedido - excel
+Historial - de Ventas
+Notas de Credito - cancelaciones
+Prestamo - presto una zapa 

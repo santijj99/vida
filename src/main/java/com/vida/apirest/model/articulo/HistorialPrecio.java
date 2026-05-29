@@ -4,6 +4,7 @@ import jakarta.persistence.*;
 import lombok.Data;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
+import com.fasterxml.jackson.annotation.JsonBackReference;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -29,6 +30,7 @@ public class HistorialPrecio {
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "variante_articulo_id", insertable = false, updatable = false)
+    @JsonBackReference
     private VarianteArticulo varianteArticulo;
 
     @Column(name = "precio_anterior", precision = 12, scale = 2)

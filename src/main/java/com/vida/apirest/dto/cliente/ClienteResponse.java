@@ -10,7 +10,10 @@ public class ClienteResponse {
     private String nombre;
     private String apellido;
     private String dni;
-    private String image;
+    private String telefono;
+    private String trabajo;
+    private Long direccionId;
+    private DireccionResponse direccion;
     private Long garanteId;
     private String garanteNombre;
     private List<ContactoResponse> contactos;

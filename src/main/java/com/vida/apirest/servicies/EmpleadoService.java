@@ -1,17 +1,24 @@
 package com.vida.apirest.servicies;
 
-import com.vida.apirest.dto.empleado.CreateEmpleadoRequest;
-import com.vida.apirest.dto.empleado.EmpleadoResponse;
-import com.vida.apirest.model.persona.Empleado;
-import com.vida.apirest.model.auth.Usuario;
-import com.vida.apirest.repositories.EmpleadoRepository;
-import com.vida.apirest.repositories.UsuarioRepository;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
+import java.util.List;
+import java.util.stream.Collectors;
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.List;
-import java.util.stream.Collectors;
+import com.vida.apirest.dto.empleado.CreateEmpleadoRequest;
+import com.vida.apirest.dto.empleado.EmpleadoResponse;
+import com.vida.apirest.model.auth.Usuario;
+import com.vida.apirest.model.persona.Empleado;
+import com.vida.apirest.repositories.EmpleadoRepository;
+import com.vida.apirest.repositories.RoleRepository;
+import com.vida.apirest.model.auth.Role;
+import com.vida.apirest.repositories.UsuarioRepository;
 
 @Service
 public class EmpleadoService {
@@ -21,6 +28,9 @@ public class EmpleadoService {
 
     @Autowired
     private UsuarioRepository usuarioRepository;
+
+    @Autowired
+    private RoleRepository roleRepository;
 
     @Transactional
     public List<EmpleadoResponse> findAll() {
@@ -35,16 +45,26 @@ public class EmpleadoService {
     }
 
     @Transactional
-    public EmpleadoResponse create(CreateEmpleadoRequest request) {
+    public EmpleadoResponse create(CreateEmpleadoRequest request) throws IOException {
         Empleado empleado = new Empleado();
-        mapRequestToEmpleado(request, empleado);
+        empleado.setNombre(request.getNombre());
+        empleado.setApellido(request.getApellido());
+        empleado.setDni(request.getDni());
 
-        Empleado saved = empleadoRepository.save(empleado);
-        return toEmpleadoResponse(saved);
+        if (request.getActivo() != null) {
+            empleado.setActivo(request.getActivo());
+        }
+
+        Empleado empleadoSaved = empleadoRepository.save(empleado);
+        empleadoSaved = guardarImagenSiExiste(request, empleadoSaved);
+        vincularUsuario(empleadoSaved, request.getUsuarioId());
+        empleadoSaved = empleadoRepository.save(empleadoSaved);
+
+        return toEmpleadoResponse(empleadoSaved);
     }
 
     @Transactional
-    public EmpleadoResponse update(Long id, CreateEmpleadoRequest request) {
+    public EmpleadoResponse update(Long id, CreateEmpleadoRequest request) throws IOException {
         Empleado empleado = empleadoRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Empleado no encontrado"));
 
@@ -58,21 +78,53 @@ public class EmpleadoService {
     public void delete(Long id) {
         Empleado empleado = empleadoRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Empleado no encontrado"));
-        empleadoRepository.delete(empleado);
+        empleado.setActivo(false);
+        if (empleado.getUsuario() != null) {
+            empleado.getUsuario().setActivo(false);
+            usuarioRepository.save(empleado.getUsuario());
+        }
+
+        empleadoRepository.save(empleado);
     }
 
-    private void mapRequestToEmpleado(CreateEmpleadoRequest request, Empleado empleado) {
-        empleado.setNombre(request.getNombre());
-        empleado.setApellido(request.getApellido());
-        empleado.setDni(request.getDni());
-        empleado.setImage(request.getImage());
+    private void mapRequestToEmpleado(CreateEmpleadoRequest request, Empleado empleado) throws IOException {
+        if (request.getNombre() != null) {
+            empleado.setNombre(request.getNombre());
+        }
+        if (request.getApellido() != null) {
+            empleado.setApellido(request.getApellido());
+        }
+        if (request.getDni() != null) {
+            empleado.setDni(request.getDni());
+        }
 
         if (request.getActivo() != null) {
             empleado.setActivo(request.getActivo());
         }
 
+        guardarImagenSiExiste(request, empleado);
         if (request.getUsuarioId() != null) {
-            Usuario usuario = usuarioRepository.findById(request.getUsuarioId())
+            vincularUsuario(empleado, request.getUsuarioId());
+        }
+    }
+
+    private Empleado guardarImagenSiExiste(CreateEmpleadoRequest request, Empleado empleado) throws IOException {
+        if (request.getFile() != null && !request.getFile().isEmpty()) {
+            String uploadDir = "uploads/empleado/" + empleado.getId();
+            String fileName = getPerfilFileName(request.getFile().getOriginalFilename());
+            String filePath = Paths.get(uploadDir, fileName).toString();
+
+            Files.createDirectories(Paths.get(uploadDir));
+            Files.copy(request.getFile().getInputStream(), Paths.get(filePath), StandardCopyOption.REPLACE_EXISTING);
+            empleado.setImage("/" + filePath.replace("\\", "/"));
+            return empleadoRepository.save(empleado);
+        }
+        return empleado;
+    }
+
+    private void vincularUsuario(Empleado empleado, Long usuarioId) {
+        if (usuarioId != null) {
+            Usuario usuario = usuarioRepository.findById(usuarioId)
                     .orElseThrow(() -> new RuntimeException("Usuario para empleado no encontrado"));
             empleado.setUsuario(usuario);
         } else {
@@ -88,11 +140,33 @@ public class EmpleadoService {
         response.setDni(empleado.getDni());
         response.setImage(empleado.getImage());
         response.setActivo(empleado.getActivo());
-
         if (empleado.getUsuario() != null) {
             response.setUsuarioId(empleado.getUsuario().getId());
+            response.setCelular(empleado.getUsuario().getCelular());
+
+            List<Role> rolesBD = roleRepository.findAllByUsuariosHasRoles_Usuario_Id(empleado.getUsuario().getId());
+            List<String> nombresRoles = rolesBD.stream().map(Role::getNombre).collect(Collectors.toList());
+            response.setRoles(nombresRoles);
+            response.setRolPrincipal(resolverRolPrincipal(nombresRoles));
         }
 
         return response;
+    }
+
+    private String resolverRolPrincipal(List<String> roles) {
+        if (roles == null || roles.isEmpty()) {
+            return null;
+        }
+        if (roles.contains("ADMINISTRADOR")) {
+            return "ADMINISTRADOR";
+        }
+        return roles.get(0);
+    }
+
+    private String getPerfilFileName(String originalFilename) {
+        if (originalFilename != null && originalFilename.contains(".")) {
+            return "perfil" + originalFilename.substring(originalFilename.lastIndexOf("."));
+        }
+        return "perfil";
     }
 }

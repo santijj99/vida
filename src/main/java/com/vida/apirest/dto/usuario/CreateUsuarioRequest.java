@@ -6,6 +6,6 @@ public class CreateUsuarioRequest {
     public String email;
     public String password;
     public String celular;
-
+    public Long rolId;
 
 }

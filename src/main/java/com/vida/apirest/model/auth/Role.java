@@ -2,7 +2,8 @@ package com.vida.apirest.model.auth;
 
 import jakarta.persistence.*;
 import lombok.Data;
-
+import lombok.EqualsAndHashCode;
+import lombok.ToString;
 import java.time.LocalDate;
 import java.util.HashSet;
 import java.util.Set;
@@ -28,6 +29,8 @@ public class Role {
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDate createdAt = LocalDate.now();
 
+    @EqualsAndHashCode.Exclude
+    @ToString.Exclude
     @OneToMany(mappedBy = "role", cascade = CascadeType.ALL, orphanRemoval = true)
     private Set<UsuarioHasRoles> usuariosHasRoles = new HashSet<>();
 
