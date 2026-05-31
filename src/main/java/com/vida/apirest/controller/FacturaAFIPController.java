@@ -4,11 +4,13 @@ import com.vida.apirest.dto.afip.AfipAmbienteRequest;
 import com.vida.apirest.dto.afip.AfipAmbienteResponse;
 import com.vida.apirest.dto.afip.EmitirFacturaAFIPRequest;
 import com.vida.apirest.dto.afip.FacturaAFIPResponse;
+import com.vida.apirest.dto.afip.ReceptorAfipConsultaResponse;
 import com.vida.apirest.dto.afip.TokenValidationResponse;
 import com.vida.apirest.model.afip.FacturaAFIP;
 import com.vida.apirest.servicies.afip.AFIPTokenValidatorService;
 import com.vida.apirest.servicies.afip.AfipConfigService;
 import com.vida.apirest.servicies.afip.FacturaAFIPService;
+import com.vida.apirest.servicies.afip.ReceptorAfipConsultaService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -27,6 +29,7 @@ public class FacturaAFIPController {
     private final FacturaAFIPService facturaAFIPService;
     private final AFIPTokenValidatorService tokenValidatorService;
     private final AfipConfigService afipConfigService;
+    private final ReceptorAfipConsultaService receptorAfipConsultaService;
 
     @GetMapping
     public ResponseEntity<List<FacturaAFIPResponse>> listar() {
@@ -105,5 +108,12 @@ public class FacturaAFIPController {
             return ResponseEntity.badRequest().build();
         }
         return ResponseEntity.ok(afipConfigService.cambiarAmbiente(request.getHomologacion()));
+    }
+
+    @GetMapping("/receptor/consulta")
+    public ResponseEntity<ReceptorAfipConsultaResponse> consultarReceptor(
+            @RequestParam Integer docTipo,
+            @RequestParam String docNro) {
+        return ResponseEntity.ok(receptorAfipConsultaService.consultar(docTipo, docNro));
     }
 }
