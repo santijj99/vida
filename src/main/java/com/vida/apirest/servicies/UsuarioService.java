@@ -7,12 +7,15 @@ import java.nio.file.StandardCopyOption;
 import java.util.List;
 import java.util.stream.Collectors;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.vida.apirest.dto.auth.EffectivePermissions;
+import com.vida.apirest.config.AfipProperties;
+import com.vida.apirest.dto.afip.TokenValidationResponse;
 import com.vida.apirest.dto.usuario.CreateUsuarioRequest;
 import com.vida.apirest.dto.usuario.LoginRequest;
 import com.vida.apirest.dto.usuario.LoginResponse;
@@ -25,10 +28,14 @@ import com.vida.apirest.model.auth.UsuarioHasRoles;
 import com.vida.apirest.repositories.RoleRepository;
 import com.vida.apirest.repositories.UsuarioHasRoleRepository;
 import com.vida.apirest.repositories.UsuarioRepository;
+import com.vida.apirest.servicies.afip.AFIPTokenValidatorService;
 import com.vida.apirest.utils.JwtUtil;
+import com.vida.apirest.dto.auth.EffectivePermissions;
 
 @Service
 public class UsuarioService {
+
+    private static final Logger log = LoggerFactory.getLogger(UsuarioService.class);
 
     @Autowired
     private UsuarioRepository usuarioRepository;
@@ -50,6 +57,12 @@ public class UsuarioService {
 
     @Autowired
     private PermissionResolverService permissionResolverService;
+
+    @Autowired
+    private AFIPTokenValidatorService afipTokenValidatorService;
+
+    @Autowired
+    private AfipProperties afipProperties;
 
     @Transactional
     public LoginResponse create(CreateUsuarioRequest request) {
@@ -177,7 +190,28 @@ public class UsuarioService {
         LoginResponse response = new LoginResponse();
         response.setToken("Bearer " + token);
         response.setUsuario(usuarioMapper.toUsuarioResponse(usuario, roles, permissions));
+        response.setAfipToken(validarTokenAfipEnLogin());
         return response;
+    }
+
+    private TokenValidationResponse validarTokenAfipEnLogin() {
+        if (!afipProperties.isEnabled() || !afipProperties.isValidarTokenEnLogin()) {
+            return null;
+        }
+        try {
+            TokenValidationResponse resultado = afipTokenValidatorService.validarYRegenerarToken();
+            if (!resultado.isActivo()) {
+                log.warn("Token AFIP no disponible al login: {}", resultado.getMensaje());
+            }
+            return resultado;
+        } catch (Exception e) {
+            log.error("Error verificando token AFIP al login: {}", e.getMessage());
+            return TokenValidationResponse.builder()
+                    .activo(false)
+                    .mensaje("No se pudo verificar el token AFIP: " + e.getMessage())
+                    .regenerado(false)
+                    .build();
+        }
     }
 
     private String celularNormalizado(String celular) {

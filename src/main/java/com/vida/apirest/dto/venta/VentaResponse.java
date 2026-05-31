@@ -1,5 +1,6 @@
 package com.vida.apirest.dto.venta;
 
+import com.vida.apirest.dto.afip.FacturaAFIPResponse;
 import lombok.Data;
 
 import java.math.BigDecimal;
@@ -28,4 +29,5 @@ public class VentaResponse {
     private List<VentaDetalleResponse> detalles;
     private List<PagoVentaResponse> pagos;
     private List<VentaCambioArticuloResponse> cambiosArticulo;
+    private FacturaAFIPResponse facturaAfip;
 }
