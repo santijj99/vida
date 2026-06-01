@@ -18,5 +18,6 @@ public class CreditoClienteResponse {
     private String descripcion;
     private Long ventaId;
     private String numeroFactura;
+    private LocalDateTime createdAt;
     private List<CuotaCreditoResponse> cuotas;
 }

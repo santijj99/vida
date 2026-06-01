@@ -5,12 +5,17 @@ import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.util.List;
+import java.util.stream.Collectors;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.vida.apirest.config.AfipProperties;
+import com.vida.apirest.dto.afip.TokenValidationResponse;
 import com.vida.apirest.dto.usuario.CreateUsuarioRequest;
 import com.vida.apirest.dto.usuario.LoginRequest;
 import com.vida.apirest.dto.usuario.LoginResponse;
@@ -23,10 +28,14 @@ import com.vida.apirest.model.auth.UsuarioHasRoles;
 import com.vida.apirest.repositories.RoleRepository;
 import com.vida.apirest.repositories.UsuarioHasRoleRepository;
 import com.vida.apirest.repositories.UsuarioRepository;
+import com.vida.apirest.servicies.afip.AFIPTokenValidatorService;
 import com.vida.apirest.utils.JwtUtil;
+import com.vida.apirest.dto.auth.EffectivePermissions;
 
 @Service
 public class UsuarioService {
+
+    private static final Logger log = LoggerFactory.getLogger(UsuarioService.class);
 
     @Autowired
     private UsuarioRepository usuarioRepository;
@@ -46,13 +55,19 @@ public class UsuarioService {
     @Autowired
     private UsuarioMapper usuarioMapper;
 
+    @Autowired
+    private PermissionResolverService permissionResolverService;
+
+    @Autowired
+    private AFIPTokenValidatorService afipTokenValidatorService;
+
+    @Autowired
+    private AfipProperties afipProperties;
 
     @Transactional
     public LoginResponse create(CreateUsuarioRequest request) {
         if (usuarioRepository.existsByEmail(request.email)) {
             throw new RuntimeException("El correo ya esta en uso");
-
-
         }
         Usuario usuario = new Usuario();
         usuario.setUsuario(request.usuario);
@@ -70,25 +85,15 @@ public class UsuarioService {
         UsuarioHasRoles usuarioHasRoles = new UsuarioHasRoles(savedUser, clientRole);
         usuarioHasRoleRepository.save(usuarioHasRoles);
 
-
-        String token = jwtUtil.generatToken(usuario);
-        List<Role> roles = roleRepository.findAllByUsuariosHasRoles_Usuario_Id(savedUser.getId());
-
-        LoginResponse response = new LoginResponse();
-        response.setToken("Bearer " + token);
-        response.setUsuario(usuarioMapper.toUsuarioResponse(usuario, roles));
-
-
-        return response;
-
-
+        return buildLoginResponse(savedUser);
     }
 
     @Transactional(readOnly = true)
     public List<UsuarioResponse> findAll() {
         return usuarioRepository.findAll().stream().map(usuario -> {
             List<Role> roles = roleRepository.findAllByUsuariosHasRoles_Usuario_Id(usuario.getId());
-            return usuarioMapper.toUsuarioResponse(usuario, roles);
+            EffectivePermissions permissions = permissionResolverService.resolve(usuario);
+            return usuarioMapper.toUsuarioResponse(usuario, roles, permissions);
         }).toList();
     }
 
@@ -112,38 +117,37 @@ public class UsuarioService {
             asignarRolSiNoExiste(savedUser, request.rolId);
         }
 
-        List<Role> roles = roleRepository.findAllByUsuariosHasRoles_Usuario_Id(savedUser.getId());
-        return usuarioMapper.toUsuarioResponse(savedUser, roles);
+        return buildProfileResponse(savedUser);
     }
 
     @Transactional
     public LoginResponse login(LoginRequest request) {
-        Usuario usuario = usuarioRepository.findByEmail(request.getEmail()).orElseThrow(() -> new RuntimeException("El email o password no son validos"));
+        Usuario usuario = usuarioRepository.findByEmailWithRolesAndRolPrincipal(request.getEmail())
+                .orElseThrow(() -> new RuntimeException("El email o password no son validos"));
         if (!passwordEncoder.matches(request.getPassword(), usuario.getPassword())) {
             throw new RuntimeException("El password no es valido");
         }
-        String token = jwtUtil.generatToken(usuario);
+        return buildLoginResponse(usuario);
+    }
+
+    @Transactional(readOnly = true)
+    public UsuarioResponse buildProfileResponse(Usuario usuario) {
         List<Role> roles = roleRepository.findAllByUsuariosHasRoles_Usuario_Id(usuario.getId());
-        LoginResponse response = new LoginResponse();
-        response.setToken("Bearer " + token);
-        response.setUsuario(usuarioMapper.toUsuarioResponse(usuario, roles));
-        return response;
+        EffectivePermissions permissions = permissionResolverService.resolve(usuario);
+        return usuarioMapper.toUsuarioResponse(usuario, roles, permissions);
     }
 
     @Transactional
     public UsuarioResponse findById(Long id) {
-
-        Usuario usuario = usuarioRepository.findById(id).orElseThrow(() -> new RuntimeException("El email o password no son validos"));
-        List<Role> roles = roleRepository.findAllByUsuariosHasRoles_Usuario_Id(usuario.getId());
-
-
-        return usuarioMapper.toUsuarioResponse(usuario, roles);
+        Usuario usuario = usuarioRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("El usuario no existe"));
+        return buildProfileResponse(usuario);
     }
 
     @Transactional
     public UsuarioResponse updateUsuarioConImagen(Long id, UpdateUsuarioRequest request) throws IOException {
-
-        Usuario usuario = usuarioRepository.findById(id).orElseThrow(() -> new RuntimeException("El email o password no son validos"));
+        Usuario usuario = usuarioRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("El usuario no existe"));
 
         if (request.getCelular() != null) {
             usuario.setCelular(request.getCelular());
@@ -160,11 +164,7 @@ public class UsuarioService {
         }
 
         usuarioRepository.save(usuario);
-
-
-        List<Role> roles = roleRepository.findAllByUsuariosHasRoles_Usuario_Id(usuario.getId());
-
-        return usuarioMapper.toUsuarioResponse(usuario, roles);
+        return buildProfileResponse(usuario);
     }
 
     @Transactional
@@ -173,9 +173,45 @@ public class UsuarioService {
                 .orElseThrow(() -> new RuntimeException("El usuario no existe"));
 
         asignarRolSiNoExiste(usuario, rolId);
+        return buildProfileResponse(usuario);
+    }
 
-        List<Role> roles = roleRepository.findAllByUsuariosHasRoles_Usuario_Id(usuarioId);
-        return usuarioMapper.toUsuarioResponse(usuario, roles);
+    private LoginResponse buildLoginResponse(Usuario usuario) {
+        EffectivePermissions permissions = permissionResolverService.resolve(usuario);
+        List<Role> roles = roleRepository.findAllByUsuariosHasRoles_Usuario_Id(usuario.getId());
+
+        List<String> roleNames = roles.stream().map(Role::getNombre).collect(Collectors.toList());
+        String token = jwtUtil.generateToken(
+                usuario,
+                roleNames,
+                permissions.getPermisosEfectivos()
+        );
+
+        LoginResponse response = new LoginResponse();
+        response.setToken("Bearer " + token);
+        response.setUsuario(usuarioMapper.toUsuarioResponse(usuario, roles, permissions));
+        response.setAfipToken(validarTokenAfipEnLogin());
+        return response;
+    }
+
+    private TokenValidationResponse validarTokenAfipEnLogin() {
+        if (!afipProperties.isEnabled() || !afipProperties.isValidarTokenEnLogin()) {
+            return null;
+        }
+        try {
+            TokenValidationResponse resultado = afipTokenValidatorService.validarYRegenerarToken();
+            if (!resultado.isActivo()) {
+                log.warn("Token AFIP no disponible al login: {}", resultado.getMensaje());
+            }
+            return resultado;
+        } catch (Exception e) {
+            log.error("Error verificando token AFIP al login: {}", e.getMessage());
+            return TokenValidationResponse.builder()
+                    .activo(false)
+                    .mensaje("No se pudo verificar el token AFIP: " + e.getMessage())
+                    .regenerado(false)
+                    .build();
+        }
     }
 
     private String celularNormalizado(String celular) {
@@ -197,5 +233,4 @@ public class UsuarioService {
         UsuarioHasRoles usuarioHasRoles = new UsuarioHasRoles(usuario, role);
         usuarioHasRoleRepository.save(usuarioHasRoles);
     }
-
 }

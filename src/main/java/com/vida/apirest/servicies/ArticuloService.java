@@ -5,6 +5,7 @@ import com.vida.apirest.dto.ariticulo.ArticuloCreateRequest;
 import com.vida.apirest.dto.ariticulo.ArticuloFiltrosResponse;
 import com.vida.apirest.dto.ariticulo.ArticuloParaVentaResponse;
 import com.vida.apirest.dto.ariticulo.ArticuloTablaRowResponse;
+import com.vida.apirest.dto.common.PageResponse;
 import com.vida.apirest.dto.ariticulo.VariantCreateRequest;
 import com.vida.apirest.dto.ariticulo.VarianteCompactResponse;
 import com.vida.apirest.model.almacen.Deposito;
@@ -43,6 +44,7 @@ public class ArticuloService {
     private final StockRepository stockRepository;
     private final DepositoRepository depositoRepository;
     private final SucursalRepository sucursalRepository;
+    private final ArticuloTablaQueryRepository articuloTablaQueryRepository;
 
     @Transactional(readOnly = true)
     public List<ArticuloCompactResponse> findAllCompact() {
@@ -52,60 +54,26 @@ public class ArticuloService {
     }
 
     @Transactional(readOnly = true)
-    public List<ArticuloTablaRowResponse> findAllTabla(
+    public PageResponse<ArticuloTablaRowResponse> findTablaPage(
             String categoria,
             String subCategoria,
             String genero,
-            String marca
+            String marca,
+            String q,
+            int page,
+            int size
     ) {
-        List<ArticuloTablaRowResponse> filas = new ArrayList<>();
-        for (Articulo articulo : articuloRepository.findAllWithDetalle()) {
-            String marcaNombre = articulo.getMarca() != null ? articulo.getMarca().getNombre() : null;
-            String categoriaNombre = articulo.getCategoria() != null ? articulo.getCategoria().getNombre() : null;
-            String generoNombre = articulo.getGenero() != null ? articulo.getGenero().getNombre() : null;
-            if (articulo.getVariantes() == null || articulo.getVariantes().isEmpty()) {
-                String subCategoriaNombre = obtenerSubCategoria(articulo);
-                ArticuloTablaRowResponse fila = new ArticuloTablaRowResponse(
-                        articulo.getId(), null,
-                        articulo.getCodigo(), marcaNombre, articulo.getModelo(),
-                        categoriaNombre, subCategoriaNombre, generoNombre,
-                        null, null, null, null, null);
-                if (coincideFiltros(fila, categoria, subCategoria, genero, marca)) {
-                    filas.add(fila);
-                }
-                continue;
-            }
-            for (VarianteArticulo variante : articulo.getVariantes()) {
-                ArticuloTablaRowResponse fila = new ArticuloTablaRowResponse(
-                        articulo.getId(),
-                        variante.getId(),
-                        articulo.getCodigo(),
-                        marcaNombre,
-                        articulo.getModelo(),
-                        categoriaNombre,
-                        obtenerSubCategoriaVariante(variante, articulo),
-                        generoNombre,
-                        variante.getTalle() != null ? variante.getTalle().getNumero() : null,
-                        variante.getColor() != null ? variante.getColor().getNombre() : null,
-                        variante.getCodigoBarras(),
-                        getPrecioActual(variante.getId()),
-                        getCantidadDisponibleForVariante(articulo.getId(), variante.getId()));
-                if (coincideFiltros(fila, categoria, subCategoria, genero, marca)) {
-                    filas.add(fila);
-                }
-            }
-        }
-        return filas;
+        return articuloTablaQueryRepository.findTablaPage(
+                categoria, subCategoria, genero, marca, q, page, size);
     }
 
     @Transactional(readOnly = true)
     public ArticuloFiltrosResponse obtenerFiltrosTabla() {
-        List<ArticuloTablaRowResponse> todas = findAllTabla(null, null, null, null);
         return new ArticuloFiltrosResponse(
-                valoresUnicos(todas, ArticuloTablaRowResponse::getCategoria),
-                valoresUnicos(todas, ArticuloTablaRowResponse::getSubCategoria),
-                valoresUnicos(todas, ArticuloTablaRowResponse::getGenero),
-                valoresUnicos(todas, ArticuloTablaRowResponse::getMarca)
+                categoriaRepository.findDistinctNombres(),
+                taxonRepository.findDistinctNombresUsadosEnArticulos(),
+                generoRepository.findDistinctNombres(),
+                marcaRepository.findDistinctNombres()
         );
     }
 
@@ -515,45 +483,15 @@ public class ArticuloService {
     }
 
     @Transactional(readOnly = true)
-    public List<ArticuloParaVentaResponse> findParaVenta(Long sucursalId) {
+    public PageResponse<ArticuloParaVentaResponse> findParaVentaPage(
+            Long sucursalId, String q, int page, int size) {
         if (sucursalId == null) {
             throw new RuntimeException("Sucursal requerida para listar artículos de venta");
         }
         if (!sucursalRepository.existsById(sucursalId)) {
             throw new RuntimeException("Sucursal no encontrada con ID: " + sucursalId);
         }
-
-        List<ArticuloParaVentaResponse> resultado = new ArrayList<>();
-        for (Articulo articulo : articuloRepository.findAllWithDetalle()) {
-            String marca = articulo.getMarca() != null ? articulo.getMarca().getNombre() : null;
-            if (articulo.getVariantes() == null || articulo.getVariantes().isEmpty()) {
-                continue;
-            }
-            for (VarianteArticulo variante : articulo.getVariantes()) {
-                int stock = getCantidadDisponibleEnSucursal(
-                        articulo.getId(), variante.getId(), sucursalId);
-                if (stock <= 0) {
-                    continue;
-                }
-                BigDecimal precio = getPrecioActual(variante.getId());
-                if (precio == null || precio.compareTo(BigDecimal.ZERO) <= 0) {
-                    continue;
-                }
-                resultado.add(new ArticuloParaVentaResponse(
-                        articulo.getId(),
-                        variante.getId(),
-                        articulo.getCodigo(),
-                        marca,
-                        articulo.getModelo(),
-                        variante.getTalle() != null ? variante.getTalle().getNumero() : null,
-                        variante.getColor() != null ? variante.getColor().getNombre() : null,
-                        variante.getCodigoBarras(),
-                        precio,
-                        stock
-                ));
-            }
-        }
-        return resultado;
+        return articuloTablaQueryRepository.findParaVentaPage(sucursalId, q, page, size);
     }
 
     private Integer getCantidadDisponibleEnSucursal(Long articuloId, Long varianteId, Long sucursalId) {

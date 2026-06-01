@@ -9,6 +9,8 @@ public class CreateClienteRequest {
     private String nombre;
     private String apellido;
     private String dni;
+    private String telefono;
+    private String trabajo;
     private Long direccionId;
     private DireccionRequest direccion;
     private Long garanteId;

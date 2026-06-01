@@ -1,18 +1,26 @@
 package com.vida.apirest.servicies;
 
 import com.vida.apirest.dto.credito.*;
+import com.vida.apirest.dto.common.PageResponse;
 import com.vida.apirest.model.credito.Credito;
 import com.vida.apirest.model.credito.Cuota;
 import com.vida.apirest.model.credito.Cuenta;
+import com.vida.apirest.model.credito.PagoCuota;
 import com.vida.apirest.model.finanzas.CuentaFinanciera;
 import com.vida.apirest.model.persona.Cliente;
 import com.vida.apirest.model.tesoreria.MovimientoFinanciero;
+import com.vida.apirest.repositories.CreditoResumenPorCliente;
 import com.vida.apirest.repositories.CreditoRepository;
 import com.vida.apirest.repositories.CuotaRepository;
 import com.vida.apirest.repositories.CuentaRepository;
 import com.vida.apirest.repositories.FinanzasCuentaFinancieraRepository;
 import com.vida.apirest.repositories.MovimientoFinancieroRepository;
+import com.vida.apirest.repositories.PagoCuotaRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -26,18 +34,118 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class CreditoCuentaService {
 
+    private static final int DEFAULT_PAGE_SIZE = 15;
+    private static final int MAX_PAGE_SIZE = 100;
+
     private final CuentaRepository creditoCuentaRepository;
     private final CreditoRepository creditoRepository;
     private final CuotaRepository cuotaRepository;
     private final FinanzasCuentaFinancieraRepository cuentaFinancieraRepository;
     private final MovimientoFinancieroRepository movimientoFinancieroRepository;
+    private final PagoCuotaRepository pagoCuotaRepository;
 
     @Transactional(readOnly = true)
     public List<CuentaCreditoListResponse> listarCuentas(Long sucursalId) {
         List<Cuenta> cuentas = sucursalId != null
                 ? creditoCuentaRepository.findActivasBySucursalWithCliente(sucursalId)
                 : creditoCuentaRepository.findAllActivasWithCliente();
-        return cuentas.stream().map(this::mapCuentaList).collect(Collectors.toList());
+        Map<Long, CreditoResumenPorCliente> resumenMap = loadResumenMap(
+                cuentas.stream().map(x -> x.getCliente().getId()).distinct().toList());
+        Set<Long> clientesVencidos = loadClientesConVencidos(
+                cuentas.stream().map(x -> x.getCliente().getId()).distinct().toList());
+        return cuentas.stream()
+                .map(c -> enrichWithResumen(mapCuentaList(c), resumenMap, clientesVencidos))
+                .collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public PageResponse<CuentaCreditoListResponse> listarCuentasPage(
+            Long sucursalId, String q, String estadoCredito, int page, int size
+    ) {
+        int safePage = Math.max(0, page);
+        int safeSize = Math.max(1, Math.min(size <= 0 ? DEFAULT_PAGE_SIZE : size, MAX_PAGE_SIZE));
+        String query = q == null ? "" : q.trim();
+        String estadoFilter = normalizeEstadoCreditoFilter(estadoCredito);
+        Pageable pageable = PageRequest.of(
+                safePage,
+                safeSize,
+                Sort.by(Sort.Direction.DESC, "saldoActual")
+        );
+        Page<Cuenta> cuentaPage = creditoCuentaRepository.searchPage(
+                sucursalId, query, estadoFilter, pageable);
+        List<Long> clienteIds = cuentaPage.getContent().stream()
+                .map(c -> c.getCliente().getId()).distinct().toList();
+        Map<Long, CreditoResumenPorCliente> resumenMap = loadResumenMap(clienteIds);
+        Set<Long> clientesVencidos = loadClientesConVencidos(clienteIds);
+        return PageResponse.from(cuentaPage.map(c -> enrichWithResumen(
+                mapCuentaList(c),
+                resumenMap,
+                clientesVencidos
+        )));
+    }
+
+    private String normalizeEstadoCreditoFilter(String estadoCredito) {
+        if (estadoCredito == null || estadoCredito.isBlank()) {
+            return "TODOS";
+        }
+        return estadoCredito.trim().toUpperCase();
+    }
+
+    private Set<Long> loadClientesConVencidos(List<Long> clienteIds) {
+        if (clienteIds == null || clienteIds.isEmpty()) {
+            return Set.of();
+        }
+        return new HashSet<>(creditoRepository.findClienteIdsConCreditosVencidos(clienteIds));
+    }
+
+    private Map<Long, CreditoResumenPorCliente> loadResumenMap(List<Long> clienteIds) {
+        if (clienteIds == null || clienteIds.isEmpty()) {
+            return Map.of();
+        }
+        return creditoRepository.resumenPorClientes(clienteIds).stream()
+                .collect(Collectors.toMap(CreditoResumenPorCliente::getClienteId, r -> r));
+    }
+
+    private CuentaCreditoListResponse enrichWithResumen(
+            CuentaCreditoListResponse dto,
+            Map<Long, CreditoResumenPorCliente> resumenMap,
+            Set<Long> clientesConVencidos
+    ) {
+        CreditoResumenPorCliente resumen = resumenMap.get(dto.getClienteId());
+        if (resumen != null) {
+            dto.setCantidadCreditos(resumen.getCantidadCreditos() != null
+                    ? resumen.getCantidadCreditos().intValue() : 0);
+            dto.setTotalCreditosSacados(resumen.getTotalCreditosSacados());
+            dto.setTotalPagado(resumen.getTotalPagado());
+        } else {
+            dto.setCantidadCreditos(0);
+            dto.setTotalCreditosSacados(BigDecimal.ZERO);
+            dto.setTotalPagado(BigDecimal.ZERO);
+        }
+        dto.setTieneCreditosVencidos(clientesConVencidos.contains(dto.getClienteId()));
+        return dto;
+    }
+
+    private void aplicarResumenCreditos(
+            ClienteCreditosResponse response,
+            List<Credito> creditos
+    ) {
+        BigDecimal totalCreditos = BigDecimal.ZERO;
+        BigDecimal totalPagado = BigDecimal.ZERO;
+        int cantidad = 0;
+        for (Credito c : creditos) {
+            if (c.getEstado() == Credito.EstadoCredito.CANCELADO) {
+                continue;
+            }
+            cantidad++;
+            BigDecimal importe = c.getImporte() != null ? c.getImporte() : BigDecimal.ZERO;
+            BigDecimal saldo = c.getSaldo() != null ? c.getSaldo() : BigDecimal.ZERO;
+            totalCreditos = totalCreditos.add(importe);
+            totalPagado = totalPagado.add(importe.subtract(saldo).max(BigDecimal.ZERO));
+        }
+        response.setCantidadCreditos(cantidad);
+        response.setTotalCreditosSacados(totalCreditos);
+        response.setTotalPagado(totalPagado);
     }
 
     @Transactional(readOnly = true)
@@ -100,6 +208,21 @@ public class CreditoCuentaService {
             cuotaRepository.save(q);
             pagadoPorCreditoId.merge(q.getCredito().getId(), saldoPendiente, BigDecimal::add);
             actualizadas.add(mapCuota(q, q));
+
+            PagoCuota pagoCuota = new PagoCuota();
+            pagoCuota.setCuota(q);
+            pagoCuota.setMonto(saldoPendiente);
+            pagoCuota.setMetodoPago(request.getMetodoPago() != null ? request.getMetodoPago() : "EFECTIVO");
+            pagoCuota.setEstado(PagoCuota.EstadoPagoCuota.ACTIVO);
+            if (request.getMetodoPago() != null && request.getMetodoPago().equalsIgnoreCase("EFECTIVO")) {
+                MovimientoFinanciero movimiento = registrarIngresoCaja(
+                        request.getCuentaFinancieraId(),
+                        saldoPendiente,
+                        "Cobro cuota " + q.getNumero() + " crédito " + q.getCredito().getNumero()
+                );
+                pagoCuota.setMovimientoFinanciero(movimiento);
+            }
+            pagoCuotaRepository.save(pagoCuota);
         }
 
         BigDecimal montoAplicado = totalCuotas;
@@ -126,10 +249,6 @@ public class CreditoCuentaService {
             creditoCuentaRepository.save(cuentaCredito);
         }
 
-        if (request.getMetodoPago() != null && request.getMetodoPago().equalsIgnoreCase("EFECTIVO")) {
-            registrarIngresoCaja(request.getCuentaFinancieraId(), montoAplicado, "Cobro cuotas crédito");
-        }
-
         PagoCuotasResponse response = new PagoCuotasResponse();
         response.setTotalCuotas(totalCuotas);
         response.setMontoEntregado(request.getMontoEntregado());
@@ -137,6 +256,117 @@ public class CreditoCuentaService {
         response.setCambio(request.getMontoEntregado().subtract(montoAplicado));
         response.setCuotasActualizadas(actualizadas);
         return response;
+    }
+
+    @Transactional(readOnly = true)
+    public List<PagoCuotaResponse> listarPagosPorCuenta(Long cuentaId) {
+        Cuenta cuenta = creditoCuentaRepository.findById(cuentaId)
+                .orElseThrow(() -> new RuntimeException("Cuenta no encontrada"));
+        return pagoCuotaRepository.findByCuentaIdOrderByCreatedAtDesc(cuentaId).stream()
+                .map(this::mapPagoCuota)
+                .collect(Collectors.toList());
+    }
+
+    @Transactional
+    public List<PagoCuotaResponse> listarPagosPorCuentaConBackfill(Long cuentaId) {
+        Cuenta cuenta = creditoCuentaRepository.findById(cuentaId)
+                .orElseThrow(() -> new RuntimeException("Cuenta no encontrada"));
+        backfillPagosDesdeCuotasPagadas(cuenta.getCliente().getId());
+        return pagoCuotaRepository.findByCuentaIdOrderByCreatedAtDesc(cuentaId).stream()
+                .map(this::mapPagoCuota)
+                .collect(Collectors.toList());
+    }
+
+    private void backfillPagosDesdeCuotasPagadas(Long clienteId) {
+        List<Cuota> cuotasSinPago = pagoCuotaRepository.findPagadasSinPagoActivo(
+                clienteId,
+                Cuota.EstadoCuota.PAGADA,
+                PagoCuota.EstadoPagoCuota.ACTIVO
+        );
+        for (Cuota cuota : cuotasSinPago) {
+            BigDecimal montoCuota = cuota.getMonto() != null ? cuota.getMonto() : BigDecimal.ZERO;
+            if (montoCuota.compareTo(BigDecimal.ZERO) <= 0) {
+                continue;
+            }
+            PagoCuota pago = new PagoCuota();
+            pago.setCuota(cuota);
+            pago.setMonto(montoCuota);
+            pago.setMetodoPago("HISTORICO");
+            pago.setEstado(PagoCuota.EstadoPagoCuota.ACTIVO);
+            pagoCuotaRepository.save(pago);
+        }
+    }
+
+    @Transactional
+    public PagoCuotaResponse anularPago(Long pagoId, String motivo) {
+        PagoCuota pago = pagoCuotaRepository.findByIdWithDetalle(pagoId)
+                .orElseThrow(() -> new RuntimeException("Pago no encontrado"));
+        if (pago.getEstado() == PagoCuota.EstadoPagoCuota.ANULADO) {
+            throw new RuntimeException("El pago ya fue anulado");
+        }
+
+        Cuota cuota = pago.getCuota();
+        Credito credito = cuota.getCredito();
+        BigDecimal monto = pago.getMonto() != null ? pago.getMonto() : BigDecimal.ZERO;
+        if (monto.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new RuntimeException("El pago no tiene monto válido");
+        }
+        if (cuota.getEstado() != Cuota.EstadoCuota.PAGADA) {
+            throw new RuntimeException("La cuota " + cuota.getNumero() + " no está pagada");
+        }
+
+        cuota.setSaldo(monto);
+        cuota.setEstado(Cuota.EstadoCuota.PENDIENTE);
+        cuotaRepository.save(cuota);
+
+        List<Cuota> cuotasCredito = cuotaRepository.findByCreditoIdIn(List.of(credito.getId()));
+        BigDecimal saldoCred = credito.getSaldo() != null ? credito.getSaldo() : BigDecimal.ZERO;
+        credito.setSaldo(saldoCred.add(monto));
+        actualizarEstadoCredito(credito, cuotasCredito);
+        creditoRepository.save(credito);
+
+        Long clienteId = credito.getCliente().getId();
+        Cuenta cuentaCredito = creditoCuentaRepository
+                .findByClienteIdAndSucursalIdAndActivoTrue(clienteId, credito.getSucursal().getId())
+                .orElse(null);
+        if (cuentaCredito != null) {
+            BigDecimal saldoCuenta = cuentaCredito.getSaldoActual() != null
+                    ? cuentaCredito.getSaldoActual() : BigDecimal.ZERO;
+            cuentaCredito.setSaldoActual(saldoCuenta.add(monto));
+            creditoCuentaRepository.save(cuentaCredito);
+        }
+
+        if (pago.getMovimientoFinanciero() != null) {
+            registrarEgresoCaja(
+                    pago.getMovimientoFinanciero().getCuenta().getId(),
+                    monto,
+                    "Anulación cobro cuota " + cuota.getNumero()
+            );
+        }
+
+        pago.setEstado(PagoCuota.EstadoPagoCuota.ANULADO);
+        pago.setMotivoAnulacion(motivo);
+        pago.setFechaAnulacion(LocalDateTime.now());
+        PagoCuota anulado = pagoCuotaRepository.save(pago);
+        return mapPagoCuota(anulado);
+    }
+
+    private PagoCuotaResponse mapPagoCuota(PagoCuota pago) {
+        Cuota cuota = pago.getCuota();
+        Credito credito = cuota.getCredito();
+        PagoCuotaResponse dto = new PagoCuotaResponse();
+        dto.setId(pago.getId());
+        dto.setCuotaId(cuota.getId());
+        dto.setCuotaNumero(cuota.getNumero());
+        dto.setCreditoId(credito.getId());
+        dto.setCreditoNumero(credito.getNumero());
+        dto.setMonto(pago.getMonto());
+        dto.setMetodoPago(pago.getMetodoPago());
+        dto.setEstado(pago.getEstado() != null ? pago.getEstado().name() : PagoCuota.EstadoPagoCuota.ACTIVO.name());
+        dto.setCreatedAt(pago.getCreatedAt());
+        dto.setFechaAnulacion(pago.getFechaAnulacion());
+        dto.setMotivoAnulacion(pago.getMotivoAnulacion());
+        return dto;
     }
 
     private ClienteCreditosResponse construirClienteCreditos(Cuenta cuenta) {
@@ -168,9 +398,11 @@ public class CreditoCuentaService {
         response.setClienteNombre(cliente.getNombre());
         response.setClienteApellido(cliente.getApellido());
         response.setClienteDni(cliente.getDni());
+        response.setClienteTelefono(cliente.getTelefono());
         response.setSucursalId(cuenta.getSucursal().getId());
         response.setSaldoCuenta(saldoCuenta);
         response.setLimiteCredito(cuenta.getLimiteCredito());
+        aplicarResumenCreditos(response, creditos);
         response.setCreditosActivos(activos);
         response.setCreditosCancelados(cancelados);
         return response;
@@ -200,6 +432,7 @@ public class CreditoCuentaService {
         dto.setDescripcion(credito.getDescripcion());
         dto.setVentaId(credito.getVenta() != null ? credito.getVenta().getId() : null);
         dto.setNumeroFactura(credito.getVenta() != null ? credito.getVenta().getNumeroFactura() : null);
+        dto.setCreatedAt(credito.getCreatedAt());
         dto.setFechaVencimiento(cuotasOrdenadas.stream()
                 .filter(q -> {
                     String est = estadoCuotaEfectivo(q);
@@ -238,10 +471,14 @@ public class CreditoCuentaService {
         }
     }
 
+    private static final BigDecimal PORCENTAJE_RECARGO = BigDecimal.valueOf(0.10);
+
     private CuotaCreditoResponse mapCuota(Cuota q, Cuota ref) {
         BigDecimal monto = ref.getMonto() != null ? ref.getMonto() : BigDecimal.ZERO;
+        BigDecimal recargo = calcularRecargo(ref);
         BigDecimal saldo = ref.getSaldo() != null ? ref.getSaldo() : BigDecimal.ZERO;
-        BigDecimal pago = monto.subtract(saldo).max(BigDecimal.ZERO);
+        BigDecimal totalCuota = monto.add(recargo);
+        BigDecimal pago = totalCuota.subtract(saldo).max(BigDecimal.ZERO);
 
         CuotaCreditoResponse dto = new CuotaCreditoResponse();
         dto.setId(ref.getId());
@@ -262,8 +499,8 @@ public class CreditoCuentaService {
         if (!"VENCIDA".equals(estadoCuotaEfectivo(q))) {
             return BigDecimal.ZERO;
         }
-        BigDecimal saldo = q.getSaldo() != null ? q.getSaldo() : q.getMonto();
-        return saldo.multiply(BigDecimal.valueOf(0.02)).setScale(2, java.math.RoundingMode.HALF_UP);
+        BigDecimal monto = q.getMonto() != null ? q.getMonto() : BigDecimal.ZERO;
+        return monto.multiply(PORCENTAJE_RECARGO).setScale(2, java.math.RoundingMode.HALF_UP);
     }
 
     private Integer calcularDiasAtraso(Cuota q) {
@@ -290,6 +527,7 @@ public class CreditoCuentaService {
         dto.setClienteNombre(cliente.getNombre());
         dto.setClienteApellido(cliente.getApellido());
         dto.setClienteDni(cliente.getDni());
+        dto.setClienteTelefono(cliente.getTelefono());
         dto.setSucursalId(cuenta.getSucursal().getId());
         dto.setSucursalNombre(cuenta.getSucursal().getNombre());
         dto.setSaldoActual(saldoActual);
@@ -298,7 +536,7 @@ public class CreditoCuentaService {
         return dto;
     }
 
-    private void registrarIngresoCaja(Long cuentaFinancieraId, BigDecimal monto, String descripcion) {
+    private MovimientoFinanciero registrarIngresoCaja(Long cuentaFinancieraId, BigDecimal monto, String descripcion) {
         CuentaFinanciera cuenta = null;
         if (cuentaFinancieraId != null) {
             cuenta = cuentaFinancieraRepository.findById(cuentaFinancieraId)
@@ -307,7 +545,7 @@ public class CreditoCuentaService {
             cuenta = cuentaFinancieraRepository.findFirstByTipoAndActivoTrue(CuentaFinanciera.TipoCuenta.CAJA)
                     .orElse(null);
         }
-        if (cuenta == null) return;
+        if (cuenta == null) return null;
 
         BigDecimal saldoAnterior = cuenta.getSaldoActual() != null ? cuenta.getSaldoActual() : BigDecimal.ZERO;
         BigDecimal saldoNuevo = saldoAnterior.add(monto);
@@ -318,6 +556,29 @@ public class CreditoCuentaService {
         movimiento.setCuenta(cuenta);
         movimiento.setNumero("MV-" + UUID.randomUUID().toString().replace("-", ""));
         movimiento.setTipo(MovimientoFinanciero.TipoMovimiento.INGRESO);
+        movimiento.setMonto(monto);
+        movimiento.setSaldoAnterior(saldoAnterior);
+        movimiento.setSaldoNuevo(saldoNuevo);
+        movimiento.setDescripcion(descripcion);
+        movimiento.setResponsable("sistema");
+        return movimientoFinancieroRepository.save(movimiento);
+    }
+
+    private void registrarEgresoCaja(Long cuentaFinancieraId, BigDecimal monto, String descripcion) {
+        if (cuentaFinancieraId == null || monto == null || monto.compareTo(BigDecimal.ZERO) <= 0) {
+            return;
+        }
+        CuentaFinanciera cuenta = cuentaFinancieraRepository.findById(cuentaFinancieraId)
+                .orElseThrow(() -> new RuntimeException("Cuenta financiera no encontrada"));
+        BigDecimal saldoAnterior = cuenta.getSaldoActual() != null ? cuenta.getSaldoActual() : BigDecimal.ZERO;
+        BigDecimal saldoNuevo = saldoAnterior.subtract(monto).max(BigDecimal.ZERO);
+        cuenta.setSaldoActual(saldoNuevo);
+        cuentaFinancieraRepository.save(cuenta);
+
+        MovimientoFinanciero movimiento = new MovimientoFinanciero();
+        movimiento.setCuenta(cuenta);
+        movimiento.setNumero("MV-" + UUID.randomUUID().toString().replace("-", ""));
+        movimiento.setTipo(MovimientoFinanciero.TipoMovimiento.EGRESO);
         movimiento.setMonto(monto);
         movimiento.setSaldoAnterior(saldoAnterior);
         movimiento.setSaldoNuevo(saldoNuevo);

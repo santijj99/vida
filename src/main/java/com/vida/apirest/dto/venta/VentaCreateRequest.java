@@ -1,5 +1,6 @@
 package com.vida.apirest.dto.venta;
 
+import com.vida.apirest.dto.afip.EmitirFacturaAFIPRequest;
 import lombok.Data;
 
 import java.time.LocalDateTime;
@@ -16,4 +17,6 @@ public class VentaCreateRequest {
     private String metodoPago;
     private List<VentaDetalleRequest> detalles;
     private List<PagoVentaRequest> pagos;
+    /** Datos de facturación ARCA/AFIP cuando el pago lo requiere. */
+    private EmitirFacturaAFIPRequest facturaAfip;
 }
