@@ -45,7 +45,12 @@ import com.vida.apirest.repositories.StockRepository;
 import com.vida.apirest.repositories.VentaCambioArticuloRepository;
 import com.vida.apirest.repositories.VentaRepository;
 import com.vida.apirest.repositories.VarianteArticuloRepository;
+import com.vida.apirest.dto.afip.FacturaAFIPResponse;
+import com.vida.apirest.model.afip.FacturaAFIP;
+import com.vida.apirest.servicies.afip.FacturaAFIPService;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -65,6 +70,8 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class VentaService {
 
+    private static final Logger log = LoggerFactory.getLogger(VentaService.class);
+
     private final VentaRepository ventaRepository;
     private final ClienteRepository clienteRepository;
     private final ArticuloRepository articuloRepository;
@@ -79,6 +86,7 @@ public class VentaService {
     private final CreditoRepository creditoRepository;
     private final MovimientoFinancieroRepository movimientoFinancieroRepository;
     private final VentaCambioArticuloRepository ventaCambioArticuloRepository;
+    private final FacturaAFIPService facturaAFIPService;
 
     @Transactional
     public VentaResponse registrarVenta(VentaCreateRequest request) {
@@ -284,8 +292,21 @@ public class VentaService {
             }
         }
 
-        return mapVentaResponse(ventaRepository.findById(ventaGuardada.getId())
-                .orElseThrow(() -> new RuntimeException("Error al recuperar la venta registrada")));
+        Venta ventaCompleta = ventaRepository.findByIdWithDetalles(ventaGuardada.getId())
+                .orElseThrow(() -> new RuntimeException("Error al recuperar la venta registrada"));
+        FacturaAFIP facturaArca = facturaAFIPService.intentarFacturarVenta(
+                ventaCompleta.getId(), request.getFacturaAfip());
+
+        VentaResponse response = mapVentaResponse(ventaCompleta);
+        if (facturaArca != null && facturaArca.getIdFacturaAFIP() != null) {
+            try {
+                response.setFacturaAfip(facturaAFIPService.obtenerDetalle(facturaArca.getIdFacturaAFIP()));
+            } catch (Exception e) {
+                log.warn("No se pudo adjuntar detalle AFIP en la respuesta de venta {}: {}",
+                        ventaCompleta.getId(), e.getMessage());
+            }
+        }
+        return response;
     }
 
     @Transactional(readOnly = true)
