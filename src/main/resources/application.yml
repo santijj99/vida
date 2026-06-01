@@ -19,3 +19,22 @@ spring:
     properties:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
+
+afip:
+  enabled: true
+  homologacion: false
+  cuit: "27242400068"
+  pto-vta: 3
+  cbte-tipo: 6
+  token-xml-path: classpath:certificados/TA.xml
+  auto-facturar-en-venta: true
+  validar-token-en-login: true
+  php-script-path: "C:/Users/santi/OneDrive/Documentos/NetBeansProjects/ATHLAND/ARCHIVOS AFIP VEIJOS/certificados/wsaa-client.php"
+  php-script-path-homologacion: "C:/Users/santi/OneDrive/Documentos/NetBeansProjects/ATHLAND/testing/wsaa-client.php"
+  empresa:
+    razon-social: "ATHLAND S.R.L."
+    direccion: ""
+    cuit: "27242400068"
+    condicion-iva: "IVA Responsable Inscripto"
+    iibb: ""
+    inicio-actividad: ""
