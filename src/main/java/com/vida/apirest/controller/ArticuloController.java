@@ -1,26 +1,35 @@
 package com.vida.apirest.controller;
 
+import java.util.List;
+import java.util.Map;
+
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
 import com.vida.apirest.dto.ariticulo.ArticuloCompactResponse;
-import com.vida.apirest.dto.common.PageResponse;
 import com.vida.apirest.dto.ariticulo.ArticuloCreateRequest;
 import com.vida.apirest.dto.ariticulo.ArticuloFiltrosResponse;
-import com.vida.apirest.dto.ariticulo.ArticuloParaVentaResponse;
 import com.vida.apirest.dto.ariticulo.ArticuloTablaRowResponse;
 import com.vida.apirest.dto.ariticulo.VariantCreateRequest;
 import com.vida.apirest.dto.ariticulo.VarianteCompactResponse;
+import com.vida.apirest.dto.common.PageResponse;
 import com.vida.apirest.model.almacen.Deposito;
 import com.vida.apirest.model.almacen.Sucursal;
 import com.vida.apirest.model.articulo.Articulo;
 import com.vida.apirest.repositories.DepositoRepository;
 import com.vida.apirest.repositories.SucursalRepository;
 import com.vida.apirest.servicies.ArticuloService;
-import lombok.RequiredArgsConstructor;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
 
-import java.util.List;
-import java.util.Map;
+import lombok.RequiredArgsConstructor;
 
 @RestController
 @RequestMapping("/api/articulos")
@@ -30,12 +39,6 @@ public class ArticuloController {
     private final ArticuloService articuloService;
     private final DepositoRepository depositoRepository;
     private final SucursalRepository sucursalRepository;
-
-//    @PostMapping
-//    public ResponseEntity<Articulo> createArticulo(@RequestBody ArticuloCreateRequest request) {
-//        Articulo articulo = articuloService.createArticulo(request);
-//        return ResponseEntity.ok(articulo);
-//    }
 
     @GetMapping("/lista")
     public ResponseEntity<List<ArticuloCompactResponse>> listAll() {
@@ -85,6 +88,53 @@ public class ArticuloController {
             Articulo articulo = articuloService.createArticulo(request);
             return ResponseEntity.status(HttpStatus.CREATED).body(
                     articuloService.getCompactById(articulo.getId()));
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
+                    "message", e.getMessage(),
+                    "statusCode", HttpStatus.BAD_REQUEST.value()
+            ));
+        }
+    }
+
+  @PutMapping("/{articuloId:[0-9]+}/variantes/{varianteId:[0-9]+}")
+    public ResponseEntity<?> actualizarVarianteUnica(
+            @PathVariable Long articuloId,
+            @PathVariable Long varianteId,
+            @RequestBody VariantCreateRequest request 
+    ) {
+        try {
+            VarianteCompactResponse varianteActualizada = articuloService.actualizarVarianteUnica(articuloId, varianteId, request);
+            return ResponseEntity.ok(varianteActualizada);
+            
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
+                    "message", e.getMessage(),
+                    "statusCode", HttpStatus.BAD_REQUEST.value()
+            ));
+        }
+    }
+
+   @PutMapping("/{id:[0-9]+}/archivar")
+    public ResponseEntity<?> softDeleteArticulo(@PathVariable Long id) {
+        try {
+            articuloService.softDeleteArticulo(id);
+            return ResponseEntity.ok(Map.of("message", "Artículo archivado correctamente"));
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
+                    "message", e.getMessage(),
+                    "statusCode", HttpStatus.BAD_REQUEST.value()
+            ));
+        }
+    }
+
+    @DeleteMapping("/{articuloId:[0-9]+}/variantes/{varianteId:[0-9]+}")
+    public ResponseEntity<?> softDeleteVariante(
+            @PathVariable Long articuloId,
+            @PathVariable Long varianteId
+    ) {
+        try {
+            articuloService.softDeleteVariante(articuloId, varianteId);
+            return ResponseEntity.ok(Map.of("message", "Variante archivada correctamente"));
         } catch (RuntimeException e) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
                     "message", e.getMessage(),
@@ -181,5 +231,45 @@ public class ArticuloController {
     @GetMapping("/by-color")
     public ResponseEntity<List<Articulo>> getByColor(@RequestParam String color) {
         return ResponseEntity.ok(articuloService.getByColor(color));
+    }
+
+    @GetMapping("/archivados")
+    public ResponseEntity<List<ArticuloCompactResponse>> getArchivados() {
+        return ResponseEntity.ok(articuloService.getArticulosArchivados());
+    }
+
+    @PutMapping("/{id:[0-9]+}/restaurar")
+    public ResponseEntity<?> restaurarArticulo(@PathVariable Long id) {
+        try {
+            articuloService.restaurarArticulo(id);
+            return ResponseEntity.ok(Map.of("message", "Artículo restaurado correctamente"));
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
+                    "message", e.getMessage(),
+                    "statusCode", HttpStatus.BAD_REQUEST.value()
+            ));
+        }
+    }
+
+@GetMapping("/{id:[0-9]+}/variantes/archivadas")
+    public ResponseEntity<?> getVariantesArchivadas(@PathVariable Long id) {
+        try {
+            return ResponseEntity.ok(articuloService.getVariantesArchivadas(id));
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("message", e.getMessage()));
+        }
+    }
+
+    @PutMapping("/{articuloId:[0-9]+}/variantes/{varianteId:[0-9]+}/restaurar")
+    public ResponseEntity<?> restaurarVariante(
+            @PathVariable Long articuloId, 
+            @PathVariable Long varianteId
+    ) {
+        try {
+            articuloService.restaurarVariante(articuloId, varianteId);
+            return ResponseEntity.ok(Map.of("message", "Variante restaurada correctamente"));
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", e.getMessage()));
+        }
     }
 }
