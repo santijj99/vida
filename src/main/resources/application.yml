@@ -1,15 +1,13 @@
 server:
   port: 3000
-  address: localhost
+  address: 0.0.0.0
 
 spring:
   application:
     name: apirest
 
   datasource:
-    url: jdbc:postgresql://localhost:5433/db_punto
-    username: postgres
-    password: 1234
+    url: jdbc:postgresql://ep-noisy-wildflower-acnenufm-pooler.sa-east-1.aws.neon.tech/neondb?user=neondb_owner&password=npg_KszX8HyOTk4B&sslmode=require&channelBinding=require
     driver-class-name: org.postgresql.Driver
 
   jpa:
