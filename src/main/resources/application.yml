@@ -1,24 +1,35 @@
 server:
   port: 3000
-  address: localhost
+  address: 0.0.0.0
 
 spring:
   application:
     name: apirest
 
+  main:
+    banner-mode: off
+
   datasource:
-    url: jdbc:postgresql://localhost:5432/db_punto
-    username: postgres
-    password: 1234
+    url: jdbc:postgresql://ep-noisy-wildflower-acnenufm-pooler.sa-east-1.aws.neon.tech/neondb?user=neondb_owner&password=npg_KszX8HyOTk4B&sslmode=require&channelBinding=require
     driver-class-name: org.postgresql.Driver
 
   jpa:
     hibernate:
       ddl-auto: update
-    show-sql: true
+    show-sql: false
     properties:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: false
+
+logging:
+  level:
+    root: WARN
+    com.vida.apirest: WARN
+    org.springframework: WARN
+    org.hibernate: WARN
+    org.hibernate.SQL: WARN
+    org.hibernate.orm.jdbc.bind: WARN
 
 afip:
   enabled: true

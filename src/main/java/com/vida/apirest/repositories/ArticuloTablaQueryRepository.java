@@ -203,6 +203,8 @@ public class ArticuloTablaQueryRepository {
             String categoria, String subCategoria, String genero, String marca, String q) {
         StringBuilder where = new StringBuilder();
         Map<String, Object> params = new HashMap<>();
+        where.append(" AND a.estado != 'ARCHIVADO'");
+        where.append(" AND v.estado != 'INACTIVO'");
 
         appendExactFilter(where, params, "cat.nombre", "categoria", categoria);
         appendExactFilter(where, params, "g.nombre", "genero", genero);
@@ -230,6 +232,9 @@ public class ArticuloTablaQueryRepository {
     private FilterSql buildVentaFilters(Long sucursalId, String q) {
         StringBuilder where = new StringBuilder();
         Map<String, Object> params = new HashMap<>();
+        where.append(" AND a.estado != 'ARCHIVADO'");
+        where.append(" AND v.estado != 'INACTIVO'");
+        
         params.put("sucursalId", sucursalId);
         appendSearchFilter(where, params, q,
                 "a.codigo", "a.modelo", "m.nombre", "tal.numero", "col.nombre", "v.codigo_barras");

@@ -30,12 +30,18 @@ public class OrdenDeCompraDetalle {
     @JoinColumn(name = "orden_id", nullable = false)
     private OrdenDeCompra ordenDeCompra;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "articulo_id", nullable = false)
-    private Articulo articulo;
+    @Column(name = "articulo_id", nullable = false)
+    private Long articuloId;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "variante_id")
+    @JoinColumn(name = "articulo_id", insertable = false, updatable = false)
+    private Articulo articulo;
+
+    @Column(name = "variante_id")
+    private Long varianteId;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "variante_id", insertable = false, updatable = false)
     private VarianteArticulo variante;
 
     @Column(name = "cantidad_solicitada", nullable = false)
@@ -47,6 +53,12 @@ public class OrdenDeCompraDetalle {
     @Column(name = "precio_unitario", nullable = false, precision = 15, scale = 2)
     private BigDecimal precioUnitario;
 
+    @Column(name = "margen_porcentaje", precision = 7, scale = 2)
+    private BigDecimal margenPorcentaje;
+
+    @Column(name = "precio_venta", precision = 15, scale = 2)
+    private BigDecimal precioVenta;
+
     @Column(name = "descuento_porcentaje", precision = 5, scale = 2)
     private BigDecimal descuentoPorcentaje = BigDecimal.ZERO;
 
@@ -55,4 +67,10 @@ public class OrdenDeCompraDetalle {
 
     @Column(name = "observaciones", columnDefinition = "TEXT")
     private String observaciones;
+
+    @Column(name = "item_en_sistema", nullable = false)
+    private Boolean itemEnSistema = true;
+
+    @Column(name = "catalogo_activo", nullable = false)
+    private Boolean catalogoActivo = true;
 }
