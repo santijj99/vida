@@ -93,13 +93,15 @@ public class ArticuloService {
                 categoria, subCategoria, genero, marca, q, page, size);
     }
 
-    @Transactional(readOnly = true)
+@Transactional(readOnly = true)
     public ArticuloFiltrosResponse obtenerFiltrosTabla() {
         return new ArticuloFiltrosResponse(
                 categoriaRepository.findDistinctNombres(),
                 taxonRepository.findDistinctNombresUsadosEnArticulos(),
                 generoRepository.findDistinctNombres(),
-                marcaRepository.findDistinctNombres()
+                marcaRepository.findDistinctNombres(),
+                talleRepository.findDistinctNumeros(), // Añadimos los talles
+                colorRepository.findDistinctNombres()  // Añadimos los colores
         );
     }
 
