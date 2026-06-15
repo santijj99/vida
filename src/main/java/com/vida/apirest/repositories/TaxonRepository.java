@@ -9,6 +9,8 @@ import java.util.Optional;
 public interface TaxonRepository extends JpaRepository<Taxon, Long> {
     Optional<Taxon> findByNombre(String nombre);
 
+    List<Taxon> findAllByOrderByNombreAsc();
+
     @org.springframework.data.jpa.repository.Query("""
             SELECT DISTINCT t.nombre FROM Taxon t
             WHERE EXISTS (

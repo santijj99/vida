@@ -76,6 +76,7 @@ public class ArticuloService {
     private final DepositoRepository depositoRepository;
     private final SucursalRepository sucursalRepository;
     private final ArticuloTablaQueryRepository articuloTablaQueryRepository;
+    private final PromocionService promocionService;
 
     @Transactional(readOnly = true)
     public List<ArticuloCompactResponse> findAllCompact() {
@@ -762,7 +763,34 @@ public class ArticuloService {
         if (!sucursalRepository.existsById(sucursalId)) {
             throw new RuntimeException("Sucursal no encontrada con ID: " + sucursalId);
         }
-        return articuloTablaQueryRepository.findParaVentaPage(sucursalId, q, page, size);
+        PageResponse<ArticuloParaVentaResponse> resultado = articuloTablaQueryRepository.findParaVentaPage(sucursalId, q, page, size);
+        aplicarPreciosPromocionales(resultado.getContent());
+        return resultado;
+    }
+
+    private void aplicarPreciosPromocionales(List<ArticuloParaVentaResponse> items) {
+        if (items == null || items.isEmpty()) {
+            return;
+        }
+        Map<Long, BigDecimal> preciosLista = new java.util.HashMap<>();
+        for (ArticuloParaVentaResponse item : items) {
+            if (item.getVarianteId() != null && item.getPrecio() != null) {
+                preciosLista.put(item.getVarianteId(), item.getPrecio());
+            }
+        }
+        Map<Long, BigDecimal> preciosPromo = promocionService.resolverPreciosVenta(preciosLista);
+        for (ArticuloParaVentaResponse item : items) {
+            BigDecimal precioLista = item.getPrecio();
+            BigDecimal precioPromo = preciosPromo.get(item.getVarianteId());
+            if (precioPromo != null && precioLista != null && precioPromo.compareTo(precioLista) < 0) {
+                item.setPrecioLista(precioLista);
+                item.setPrecio(precioPromo);
+                item.setEnPromocion(true);
+            } else {
+                item.setPrecioLista(null);
+                item.setEnPromocion(false);
+            }
+        }
     }
 
     private Integer getCantidadDisponibleEnSucursal(Long articuloId, Long varianteId, Long sucursalId) {
@@ -842,10 +870,22 @@ public class ArticuloService {
             Taxon subCat = resolverTaxon(request.getSubCategoria());
             vincularTaxonArticulo(articulo.getId(), subCat);
         }
-        articulo.setCodigo(request.getCodigo());
-        articulo.setModelo(request.getModelo());
-        articulo.setDescripcion(request.getDescripcion());
-        if (request.getVariantes() != null) {
+        if (request.getCodigo() != null && !request.getCodigo().isBlank()) {
+            String codigo = request.getCodigo().trim();
+            articuloRepository.findByCodigo(codigo)
+                    .filter(existente -> !existente.getId().equals(id))
+                    .ifPresent(existente -> {
+                        throw new RuntimeException("Ya existe un artículo con el código: " + codigo);
+                    });
+            articulo.setCodigo(codigo);
+        }
+        if (request.getModelo() != null) {
+            articulo.setModelo(request.getModelo().trim());
+        }
+        if (request.getDescripcion() != null) {
+            articulo.setDescripcion(request.getDescripcion().trim());
+        }
+        if (request.getVariantes() != null && articulo.getVariantes() != null) {
             List<Long> idsVariantesRecibidas = new ArrayList<>();
 
             for (VarianteUpdateRequest varReq : request.getVariantes()) {

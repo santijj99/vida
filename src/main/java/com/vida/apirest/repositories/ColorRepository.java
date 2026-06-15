@@ -9,6 +9,9 @@ import java.util.Optional;
 
 public interface ColorRepository extends JpaRepository<Color, Long> {
     Optional<Color> findByNombre(String nombre);
+
+    List<Color> findAllByOrderByNombreAsc();
+
     @Query("SELECT DISTINCT c.nombre FROM Color c ORDER BY c.nombre ASC")
     List<String> findDistinctNombres();
 }

@@ -7,11 +7,13 @@ import com.vida.apirest.model.auth.Usuario;
 import com.vida.apirest.model.auth.UsuarioHasRoles;
 import com.vida.apirest.model.auth.id.UsuarioRoleId;
 import com.vida.apirest.model.empresa.Empresa;
+import com.vida.apirest.model.finanzas.CuentaFinanciera;
 import com.vida.apirest.model.finanzas.Moneda;
 import com.vida.apirest.model.persona.Empleado;
 import com.vida.apirest.repositories.DepositoRepository;
 import com.vida.apirest.repositories.EmpleadoRepository;
 import com.vida.apirest.repositories.EmpresaRepository;
+import com.vida.apirest.repositories.FinanzasCuentaFinancieraRepository;
 import com.vida.apirest.repositories.MonedaRepository;
 import com.vida.apirest.repositories.RoleRepository;
 import com.vida.apirest.repositories.SucursalRepository;
@@ -37,6 +39,7 @@ public class DataInitializer {
     private final EmpresaRepository empresaRepository;
     private final SucursalRepository sucursalRepository;
     private final DepositoRepository depositoRepository;
+    private final FinanzasCuentaFinancieraRepository cuentaFinancieraRepository;
     private final UsuarioRepository usuarioRepository;
     private final UsuarioHasRoleRepository usuarioHasRoleRepository;
     private final PasswordEncoder passwordEncoder;
@@ -208,6 +211,39 @@ public class DataInitializer {
         };
     }
 
+    @Bean
+    @Order(9)
+    public CommandLineRunner seedCaja() {
+        return args -> {
+            Sucursal sucursalCentral = sucursalRepository.findByCodigo("SUC001").orElse(null);
+            Moneda monedaArs = monedaRepository.findByCodigo("ARS").orElse(null);
+            Empleado empleadoResponsable = empleadoRepository.findByDni("43336577").orElse(null);
+
+            if (sucursalCentral == null || monedaArs == null) {
+                return;
+            }
+
+            CuentaFinanciera cuenta = cuentaFinancieraRepository.findByNumero("CAJ001")
+                    .orElseGet(() -> cuentaFinancieraRepository.save(
+                            createCuentaFinanciera(
+                                    sucursalCentral,
+                                    monedaArs,
+                                    "Caja Principal",
+                                    "CAJ001",
+                                    CuentaFinanciera.TipoCuenta.CAJA,
+                                    BigDecimal.ZERO,
+                                    empleadoResponsable,
+                                    true
+                            )
+                    ));
+
+            if (cuenta.getEmpleadoResponsable() == null && empleadoResponsable != null) {
+                cuenta.setEmpleadoResponsable(empleadoResponsable);
+                cuentaFinancieraRepository.save(cuenta);
+            }
+        };
+    }
+
     private Deposito createDeposito(Sucursal sucursal, String nombre, String codigo, String ubicacion, String descripcion, Deposito.Tipo tipo, Integer capacidadMaxima, String responsable, boolean activo) {
         Deposito deposito = new Deposito();
         deposito.setSucursal(sucursal);
@@ -220,6 +256,29 @@ public class DataInitializer {
         deposito.setResponsable(responsable);
         deposito.setActivo(activo);
         return deposito;
+    }
+
+    private CuentaFinanciera createCuentaFinanciera(
+            Sucursal sucursal,
+            Moneda moneda,
+            String nombre,
+            String numero,
+            CuentaFinanciera.TipoCuenta tipo,
+            BigDecimal saldoInicial,
+            Empleado empleadoResponsable,
+            boolean activo
+    ) {
+        CuentaFinanciera cuenta = new CuentaFinanciera();
+        cuenta.setSucursal(sucursal);
+        cuenta.setMoneda(moneda);
+        cuenta.setNombre(nombre);
+        cuenta.setNumero(numero);
+        cuenta.setTipo(tipo);
+        cuenta.setSaldoInicial(saldoInicial);
+        cuenta.setSaldoActual(saldoInicial);
+        cuenta.setEmpleadoResponsable(empleadoResponsable);
+        cuenta.setActivo(activo);
+        return cuenta;
     }
 
     private Moneda createMoneda(String codigo, String nombre, String simbolo, BigDecimal tasaCambio,

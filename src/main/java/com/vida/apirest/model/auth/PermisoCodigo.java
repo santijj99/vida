@@ -36,6 +36,10 @@ public final class PermisoCodigo {
     public static final String VER_CAJA = "VER_CAJA";
     public static final String VER_ARTICULOS = "VER_ARTICULOS";
     public static final String VER_CATEGORIAS = "VER_CATEGORIAS";
+    public static final String VER_SUBCATEGORIAS = "VER_SUBCATEGORIAS";
+    public static final String VER_TALLES = "VER_TALLES";
+    public static final String VER_COLORES = "VER_COLORES";
+    public static final String VER_GENEROS = "VER_GENEROS";
     public static final String VER_PROMOCIONES = "VER_PROMOCIONES";
     public static final String VER_CLIENTES = "VER_CLIENTES";
     public static final String VER_PROVEEDORES = "VER_PROVEEDORES";
@@ -59,6 +63,10 @@ public final class PermisoCodigo {
                 VER_CAJA,
                 VER_ARTICULOS,
                 VER_CATEGORIAS,
+                VER_SUBCATEGORIAS,
+                VER_TALLES,
+                VER_COLORES,
+                VER_GENEROS,
                 VER_PROMOCIONES,
                 VER_CLIENTES,
                 VER_PROVEEDORES,
@@ -78,6 +86,10 @@ public final class PermisoCodigo {
                 VER_CAJA,
                 VER_ARTICULOS,
                 VER_CATEGORIAS,
+                VER_SUBCATEGORIAS,
+                VER_TALLES,
+                VER_COLORES,
+                VER_GENEROS,
                 VER_PROMOCIONES,
                 VER_CLIENTES,
                 VER_PROVEEDORES,

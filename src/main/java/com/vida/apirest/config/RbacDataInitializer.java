@@ -69,6 +69,10 @@ public class RbacDataInitializer {
             catalogo.put(PermisoCodigo.VER_CAJA, new PermisoSeed("Navegación", "Ver Caja", "Sección Caja del menú lateral"));
             catalogo.put(PermisoCodigo.VER_ARTICULOS, new PermisoSeed("Navegación", "Ver Artículos", "Submenú Artículos en Productos"));
             catalogo.put(PermisoCodigo.VER_CATEGORIAS, new PermisoSeed("Navegación", "Ver Categorías", "Submenú Categorías en Productos"));
+            catalogo.put(PermisoCodigo.VER_SUBCATEGORIAS, new PermisoSeed("Navegación", "Ver Subcategorías", "Submenú Subcategorías en Productos"));
+            catalogo.put(PermisoCodigo.VER_TALLES, new PermisoSeed("Navegación", "Ver Talles", "Submenú Talles en Productos"));
+            catalogo.put(PermisoCodigo.VER_COLORES, new PermisoSeed("Navegación", "Ver Colores", "Submenú Colores en Productos"));
+            catalogo.put(PermisoCodigo.VER_GENEROS, new PermisoSeed("Navegación", "Ver Géneros", "Submenú Géneros en Productos"));
             catalogo.put(PermisoCodigo.VER_PROMOCIONES, new PermisoSeed("Navegación", "Ver Promociones", "Submenú Promociones en Productos"));
             catalogo.put(PermisoCodigo.VER_CLIENTES, new PermisoSeed("Navegación", "Ver Clientes", "Sección Clientes del menú lateral"));
             catalogo.put(PermisoCodigo.VER_PROVEEDORES, new PermisoSeed("Navegación", "Ver Proveedores", "Submenú Proveedores"));

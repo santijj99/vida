@@ -9,6 +9,8 @@ import java.util.Optional;
 public interface CategoriaRepository extends JpaRepository<Categoria, Long> {
     Optional<Categoria> findByNombre(String nombre);
 
+    List<Categoria> findAllByOrderByNombreAsc();
+
     @org.springframework.data.jpa.repository.Query("SELECT DISTINCT c.nombre FROM Categoria c ORDER BY c.nombre")
     List<String> findDistinctNombres();
 }
