@@ -301,6 +301,8 @@ public class ArticuloTablaQueryRepository {
                     toString(r[6]),
                     toString(r[7]),
                     toBigDecimal(r[8]),
+                    null,
+                    false,
                     toInteger(r[9])
             ));
         }

@@ -9,6 +9,9 @@ import java.util.List;
 
 public interface TalleRepository extends JpaRepository<Talle, Long> {
     Optional<Talle> findByPaisAndNumero(Talle.Pais pais, String numero);
+
+    List<Talle> findAllByOrderByPaisAscNumeroAsc();
+
     @Query("SELECT DISTINCT t.numero FROM Talle t ORDER BY t.numero ASC")
     List<String> findDistinctNumeros();
 }

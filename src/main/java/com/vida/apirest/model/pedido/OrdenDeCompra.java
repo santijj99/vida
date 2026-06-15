@@ -1,7 +1,7 @@
 package com.vida.apirest.model.pedido;
 
 import com.vida.apirest.model.almacen.Sucursal;
-import com.vida.apirest.model.terceros.Tercero;
+import com.vida.apirest.model.persona.Proveedor;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -11,8 +11,8 @@ import org.hibernate.annotations.UpdateTimestamp;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
-import java.util.HashSet;
-import java.util.Set;
+import java.util.ArrayList;
+import java.util.List;
 
 @Data
 @NoArgsConstructor
@@ -48,7 +48,7 @@ public class OrdenDeCompra {
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "proveedor_id", nullable = false)
-    private Tercero proveedor;
+    private Proveedor proveedor;
 
     @Column(name = "numero", nullable = false, length = 50, unique = true)
     private String numero;
@@ -95,7 +95,7 @@ public class OrdenDeCompra {
     @Column(name = "updated_at", nullable = false)
     private LocalDateTime updatedAt;
 
-    // Relaciones
     @OneToMany(mappedBy = "ordenDeCompra", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
-    private Set<OrdenDeCompraDetalle> detalles = new HashSet<>();
+    @OrderBy("id ASC")
+    private List<OrdenDeCompraDetalle> detalles = new ArrayList<>();
 }

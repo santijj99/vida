@@ -3,8 +3,11 @@ package com.vida.apirest.servicies;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 import org.springframework.data.jpa.domain.Specification;
@@ -21,6 +24,8 @@ import com.vida.apirest.dto.ariticulo.VariantCreateRequest;
 import com.vida.apirest.dto.ariticulo.VarianteCompactResponse;
 import com.vida.apirest.dto.ariticulo.VarianteUpdateRequest;
 import com.vida.apirest.dto.common.PageResponse;
+import com.vida.apirest.dto.pedido.OrdenCompraDetalleRequest;
+import com.vida.apirest.dto.pedido.OrdenCompraVarianteLookupResponse;
 import com.vida.apirest.model.almacen.Deposito;
 import com.vida.apirest.model.almacen.Stock;
 import com.vida.apirest.model.almacen.Sucursal;
@@ -71,6 +76,7 @@ public class ArticuloService {
     private final DepositoRepository depositoRepository;
     private final SucursalRepository sucursalRepository;
     private final ArticuloTablaQueryRepository articuloTablaQueryRepository;
+    private final PromocionService promocionService;
 
     @Transactional(readOnly = true)
     public List<ArticuloCompactResponse> findAllCompact() {
@@ -191,12 +197,129 @@ public class ArticuloService {
                 .collect(Collectors.toList());
     }
 
+    public record ResultadoPedidoVariante(
+            Long articuloId,
+            Long varianteId,
+            boolean catalogoActivo,
+            boolean creadoNuevo
+    ) {}
+
     @Transactional
     public Articulo createArticulo(ArticuloCreateRequest request) {
         if (request.getVariantes() == null || request.getVariantes().isEmpty()) {
             throw new RuntimeException("Debe agregar al menos una variante (talle, color, precio y cantidad)");
         }
 
+        Articulo articulo = crearArticuloCatalogo(request);
+        Deposito deposito = resolverDeposito(request.getDepositoId());
+        Sucursal sucursal = resolverSucursal(request.getSucursalId());
+
+        for (var variantReq : request.getVariantes()) {
+            crearVariante(articulo, variantReq, deposito, sucursal);
+        }
+
+        return articulo;
+    }
+
+    /**
+     * Misma lógica que el modal de artículos: crea artículo/variante ACTIVOS con historial de precio y stock.
+     */
+    @Transactional
+    public ResultadoPedidoVariante resolverOCrearParaPedido(
+            OrdenCompraDetalleRequest req,
+            Long sucursalId,
+            Long depositoId
+    ) {
+        if (req.getVarianteId() != null) {
+            VarianteArticulo variante = varianteArticuloRepository.findByIdWithRelations(req.getVarianteId())
+                    .orElseThrow(() -> new RuntimeException("Variante no encontrada con ID: " + req.getVarianteId()));
+            boolean activo = esCatalogoActivo(variante);
+            return new ResultadoPedidoVariante(variante.getArticuloId(), variante.getId(), activo, false);
+        }
+
+        if (req.getCodigoBarras() != null && !req.getCodigoBarras().isBlank()) {
+            Optional<VarianteArticulo> porBarras = varianteArticuloRepository.findByCodigoBarrasWithRelations(
+                    req.getCodigoBarras().trim());
+            if (porBarras.isPresent()) {
+                VarianteArticulo variante = porBarras.get();
+                boolean activo = esCatalogoActivo(variante);
+                return new ResultadoPedidoVariante(variante.getArticuloId(), variante.getId(), activo, false);
+            }
+        }
+
+        validarLineaNuevaPedido(req);
+        VariantCreateRequest variantReq = toVariantCreateRequest(req);
+        Deposito deposito = resolverDeposito(depositoId);
+        Sucursal sucursal = resolverSucursal(sucursalId);
+
+        Optional<Articulo> articuloOpt = articuloRepository.findByCodigo(req.getCodigoArticulo().trim());
+        if (articuloOpt.isEmpty()) {
+            ArticuloCreateRequest artReq = toArticuloCreateRequest(req);
+            Articulo articulo = crearArticuloCatalogo(artReq);
+            VarianteArticulo variante = crearVariante(articulo, variantReq, deposito, sucursal);
+            return new ResultadoPedidoVariante(articulo.getId(), variante.getId(), true, true);
+        }
+
+        Articulo articulo = articuloOpt.get();
+        Optional<VarianteArticulo> existente = buscarVarianteActiva(articulo.getId(), req);
+        if (existente.isPresent()) {
+            VarianteArticulo variante = existente.get();
+            return new ResultadoPedidoVariante(articulo.getId(), variante.getId(), esCatalogoActivo(variante), false);
+        }
+
+        VarianteArticulo variante = crearVariante(articulo, variantReq, deposito, sucursal);
+        return new ResultadoPedidoVariante(articulo.getId(), variante.getId(), true, true);
+    }
+
+    @Transactional(readOnly = true)
+    public OrdenCompraVarianteLookupResponse buscarVariantePorCodigoBarras(String codigo) {
+        if (codigo == null || codigo.isBlank()) {
+            throw new RuntimeException("Código de barras requerido");
+        }
+        VarianteArticulo variante = varianteArticuloRepository.findByCodigoBarrasWithRelations(codigo.trim())
+                .orElseThrow(() -> new RuntimeException("Variante no encontrada con código de barras: " + codigo));
+        return toVarianteLookup(variante);
+    }
+
+    @Transactional(readOnly = true)
+    public List<OrdenCompraVarianteLookupResponse> resolverVariantesPorCodigos(List<String> codigos) {
+        if (codigos == null || codigos.isEmpty()) {
+            return List.of();
+        }
+        List<String> normalizados = codigos.stream()
+                .filter(Objects::nonNull)
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .distinct()
+                .collect(Collectors.toList());
+        if (normalizados.isEmpty()) {
+            return List.of();
+        }
+
+        Map<String, VarianteArticulo> porCodigo = new HashMap<>();
+        for (VarianteArticulo variante : varianteArticuloRepository.findByCodigoBarrasIn(normalizados)) {
+            if (variante.getCodigoBarras() != null) {
+                porCodigo.putIfAbsent(variante.getCodigoBarras(), variante);
+            }
+        }
+
+        List<OrdenCompraVarianteLookupResponse> result = new ArrayList<>();
+        for (String codigo : normalizados) {
+            VarianteArticulo variante = porCodigo.get(codigo);
+            if (variante != null) {
+                result.add(toVarianteLookup(variante));
+            } else {
+                OrdenCompraVarianteLookupResponse vacio = new OrdenCompraVarianteLookupResponse();
+                vacio.setCodigoBarras(codigo);
+                vacio.setEnSistema(false);
+                vacio.setCatalogoActivo(false);
+                result.add(vacio);
+            }
+        }
+        return result;
+    }
+
+    private Articulo crearArticuloCatalogo(ArticuloCreateRequest request) {
         Marca marca = marcaRepository.findByNombre(request.getMarca())
                 .orElseGet(() -> {
                     Marca newMarca = new Marca();
@@ -230,31 +353,151 @@ public class ArticuloService {
 
         Taxon subCategoriaArticulo = resolverTaxon(request.getSubCategoria());
         vincularTaxonArticulo(articulo.getId(), subCategoriaArticulo);
-
-        Deposito deposito;
-        Sucursal sucursal;
-        
-        if (request.getDepositoId() != null) {
-            deposito = depositoRepository.findById(request.getDepositoId())
-                    .orElseThrow(() -> new RuntimeException("Depósito no encontrado con ID: " + request.getDepositoId()));
-        } else {
-            deposito = depositoRepository.findAll().stream().findFirst()
-                    .orElseThrow(() -> new RuntimeException("No hay depósitos disponibles."));
-        }
-        
-        if (request.getSucursalId() != null) {
-            sucursal = sucursalRepository.findById(request.getSucursalId())
-                    .orElseThrow(() -> new RuntimeException("Sucursal no encontrada con ID: " + request.getSucursalId()));
-        } else {
-            sucursal = sucursalRepository.findAll().stream().findFirst()
-                    .orElseThrow(() -> new RuntimeException("No hay sucursales disponibles."));
-        }
-
-        for (var variantReq : request.getVariantes()) {
-            crearVariante(articulo, variantReq, deposito, sucursal);
-        }
-
         return articulo;
+    }
+
+    private Deposito resolverDeposito(Long depositoId) {
+        if (depositoId != null) {
+            return depositoRepository.findById(depositoId)
+                    .orElseThrow(() -> new RuntimeException("Depósito no encontrado con ID: " + depositoId));
+        }
+        return depositoRepository.findAll().stream().findFirst()
+                .orElseThrow(() -> new RuntimeException("No hay depósitos disponibles."));
+    }
+
+    private Sucursal resolverSucursal(Long sucursalId) {
+        if (sucursalId != null) {
+            return sucursalRepository.findById(sucursalId)
+                    .orElseThrow(() -> new RuntimeException("Sucursal no encontrada con ID: " + sucursalId));
+        }
+        return sucursalRepository.findAll().stream().findFirst()
+                .orElseThrow(() -> new RuntimeException("No hay sucursales disponibles."));
+    }
+
+    private void validarLineaNuevaPedido(OrdenCompraDetalleRequest req) {
+        if (req.getCodigoArticulo() == null || req.getCodigoArticulo().isBlank()) {
+            throw new RuntimeException("Código de artículo requerido para ítems nuevos");
+        }
+        if (req.getMarca() == null || req.getMarca().isBlank()) {
+            throw new RuntimeException("Marca requerida para ítems nuevos");
+        }
+        if (req.getCategoria() == null || req.getCategoria().isBlank()) {
+            throw new RuntimeException("Categoría requerida para ítems nuevos");
+        }
+        if (req.getGenero() == null || req.getGenero().isBlank()) {
+            throw new RuntimeException("Género requerido para ítems nuevos");
+        }
+        if (req.getModelo() == null || req.getModelo().isBlank()) {
+            throw new RuntimeException("Modelo requerido para ítems nuevos");
+        }
+        if (req.getColor() == null || req.getColor().isBlank()) {
+            throw new RuntimeException("Color requerido para ítems nuevos");
+        }
+        if (req.getTalle() == null || req.getTalle().isBlank()) {
+            throw new RuntimeException("Talle requerido para ítems nuevos");
+        }
+        if (req.getPrecioUnitario() == null || req.getPrecioUnitario().compareTo(BigDecimal.ZERO) <= 0) {
+            throw new RuntimeException("El costo unitario debe ser mayor a cero");
+        }
+        if (req.getPrecioVenta() == null || req.getPrecioVenta().compareTo(BigDecimal.ZERO) <= 0) {
+            throw new RuntimeException("El precio de venta debe ser mayor a cero");
+        }
+        if (req.getCantidadSolicitada() == null || req.getCantidadSolicitada() <= 0) {
+            throw new RuntimeException("La cantidad solicitada debe ser mayor a cero");
+        }
+    }
+
+    private ArticuloCreateRequest toArticuloCreateRequest(OrdenCompraDetalleRequest req) {
+        ArticuloCreateRequest artReq = new ArticuloCreateRequest();
+        artReq.setMarca(req.getMarca().trim());
+        artReq.setCategoria(req.getCategoria().trim());
+        artReq.setSubCategoria(req.getSubCategoria());
+        artReq.setGenero(req.getGenero().trim());
+        artReq.setCodigo(req.getCodigoArticulo().trim());
+        artReq.setModelo(req.getModelo().trim());
+        return artReq;
+    }
+
+    private VariantCreateRequest toVariantCreateRequest(OrdenCompraDetalleRequest req) {
+        VariantCreateRequest variantReq = new VariantCreateRequest();
+        variantReq.setPais(req.getPaisTalle() != null && !req.getPaisTalle().isBlank() ? req.getPaisTalle().trim() : "AR");
+        variantReq.setTalleNumero(req.getTalle().trim());
+        variantReq.setColor(req.getColor().trim());
+        if (req.getCodigoBarras() != null && !req.getCodigoBarras().isBlank()) {
+            variantReq.setCodigoBarras(req.getCodigoBarras().trim());
+        }
+        variantReq.setPrecio(req.getPrecioVenta());
+        variantReq.setCosto(req.getPrecioUnitario());
+        variantReq.setCantidad(req.getCantidadSolicitada());
+        return variantReq;
+    }
+
+    private Optional<VarianteArticulo> buscarVarianteActiva(Long articuloId, OrdenCompraDetalleRequest req) {
+        Color color = colorRepository.findByNombre(req.getColor().trim())
+                .orElse(null);
+        if (color == null) {
+            return Optional.empty();
+        }
+
+        Talle.Pais pais;
+        try {
+            String paisStr = req.getPaisTalle() != null && !req.getPaisTalle().isBlank()
+                    ? req.getPaisTalle().trim() : "AR";
+            pais = Talle.Pais.valueOf(paisStr.toUpperCase());
+        } catch (IllegalArgumentException e) {
+            return Optional.empty();
+        }
+
+        Talle talle = talleRepository.findByPaisAndNumero(pais, req.getTalle().trim())
+                .orElse(null);
+        if (talle == null) {
+            return Optional.empty();
+        }
+
+        return varianteArticuloRepository.findByArticuloIdAndColorIdAndTalleIdAndEstado(
+                articuloId,
+                color.getId(),
+                talle.getId(),
+                VarianteArticulo.EstadoVariante.ACTIVO);
+    }
+
+    private boolean esCatalogoActivo(VarianteArticulo variante) {
+        if (variante.getEstado() != VarianteArticulo.EstadoVariante.ACTIVO) {
+            return false;
+        }
+        Articulo articulo = variante.getArticulo();
+        return articulo != null && articulo.getEstado() == Articulo.EstadoProducto.ACTIVO;
+    }
+
+    private OrdenCompraVarianteLookupResponse toVarianteLookup(VarianteArticulo variante) {
+        Articulo articulo = variante.getArticulo();
+        OrdenCompraVarianteLookupResponse dto = new OrdenCompraVarianteLookupResponse();
+        dto.setVarianteId(variante.getId());
+        dto.setArticuloId(articulo != null ? articulo.getId() : variante.getArticuloId());
+        dto.setCodigoBarras(variante.getCodigoBarras());
+        if (articulo != null) {
+            dto.setCodigoArticulo(articulo.getCodigo());
+            dto.setModelo(articulo.getModelo());
+            dto.setMarca(articulo.getMarca() != null ? articulo.getMarca().getNombre() : null);
+            dto.setCategoria(articulo.getCategoria() != null ? articulo.getCategoria().getNombre() : null);
+            dto.setGenero(articulo.getGenero() != null ? articulo.getGenero().getNombre() : null);
+            dto.setSubCategoria(obtenerSubCategoria(articulo));
+        }
+        if (variante.getColor() != null) {
+            dto.setColor(variante.getColor().getNombre());
+        }
+        if (variante.getTalle() != null) {
+            dto.setTalle(variante.getTalle().getNumero());
+            dto.setPaisTalle(variante.getTalle().getPais() != null ? variante.getTalle().getPais().name() : "AR");
+        }
+        dto.setPrecioReferencia(getPrecioActual(variante.getId()));
+        dto.setPrecioCosto(historialPrecioRepository.findFirstByVarianteArticuloIdOrderByFechaDesc(variante.getId())
+                .map(HistorialPrecio::getCostoNuevo)
+                .orElse(null));
+        boolean activo = esCatalogoActivo(variante);
+        dto.setCatalogoActivo(activo);
+        dto.setEnSistema(true);
+        return dto;
     }
 
     @Transactional
@@ -520,7 +763,34 @@ public class ArticuloService {
         if (!sucursalRepository.existsById(sucursalId)) {
             throw new RuntimeException("Sucursal no encontrada con ID: " + sucursalId);
         }
-        return articuloTablaQueryRepository.findParaVentaPage(sucursalId, q, page, size);
+        PageResponse<ArticuloParaVentaResponse> resultado = articuloTablaQueryRepository.findParaVentaPage(sucursalId, q, page, size);
+        aplicarPreciosPromocionales(resultado.getContent());
+        return resultado;
+    }
+
+    private void aplicarPreciosPromocionales(List<ArticuloParaVentaResponse> items) {
+        if (items == null || items.isEmpty()) {
+            return;
+        }
+        Map<Long, BigDecimal> preciosLista = new java.util.HashMap<>();
+        for (ArticuloParaVentaResponse item : items) {
+            if (item.getVarianteId() != null && item.getPrecio() != null) {
+                preciosLista.put(item.getVarianteId(), item.getPrecio());
+            }
+        }
+        Map<Long, BigDecimal> preciosPromo = promocionService.resolverPreciosVenta(preciosLista);
+        for (ArticuloParaVentaResponse item : items) {
+            BigDecimal precioLista = item.getPrecio();
+            BigDecimal precioPromo = preciosPromo.get(item.getVarianteId());
+            if (precioPromo != null && precioLista != null && precioPromo.compareTo(precioLista) < 0) {
+                item.setPrecioLista(precioLista);
+                item.setPrecio(precioPromo);
+                item.setEnPromocion(true);
+            } else {
+                item.setPrecioLista(null);
+                item.setEnPromocion(false);
+            }
+        }
     }
 
     private Integer getCantidadDisponibleEnSucursal(Long articuloId, Long varianteId, Long sucursalId) {
@@ -600,10 +870,22 @@ public class ArticuloService {
             Taxon subCat = resolverTaxon(request.getSubCategoria());
             vincularTaxonArticulo(articulo.getId(), subCat);
         }
-        articulo.setCodigo(request.getCodigo());
-        articulo.setModelo(request.getModelo());
-        articulo.setDescripcion(request.getDescripcion());
-        if (request.getVariantes() != null) {
+        if (request.getCodigo() != null && !request.getCodigo().isBlank()) {
+            String codigo = request.getCodigo().trim();
+            articuloRepository.findByCodigo(codigo)
+                    .filter(existente -> !existente.getId().equals(id))
+                    .ifPresent(existente -> {
+                        throw new RuntimeException("Ya existe un artículo con el código: " + codigo);
+                    });
+            articulo.setCodigo(codigo);
+        }
+        if (request.getModelo() != null) {
+            articulo.setModelo(request.getModelo().trim());
+        }
+        if (request.getDescripcion() != null) {
+            articulo.setDescripcion(request.getDescripcion().trim());
+        }
+        if (request.getVariantes() != null && articulo.getVariantes() != null) {
             List<Long> idsVariantesRecibidas = new ArrayList<>();
 
             for (VarianteUpdateRequest varReq : request.getVariantes()) {

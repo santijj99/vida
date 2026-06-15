@@ -1,6 +1,7 @@
 package com.vida.apirest.model.finanzas;
 
 import com.vida.apirest.model.almacen.Sucursal;
+import com.vida.apirest.model.persona.Empleado;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -21,7 +22,8 @@ import java.time.LocalDateTime;
         name = "cuenta_financiera",
         indexes = {
                 @Index(name = "ix_cuenta_sucursal", columnList = "sucursal_id"),
-                @Index(name = "ix_cuenta_numero", columnList = "numero", unique = true)
+                @Index(name = "ix_cuenta_numero", columnList = "numero", unique = true),
+                @Index(name = "ix_cuenta_empleado", columnList = "empleado_id")
         }
 )
 public class CuentaFinanciera {
@@ -60,8 +62,9 @@ public class CuentaFinanciera {
     @Column(name = "saldo_actual", precision = 15, scale = 2, nullable = false)
     private BigDecimal saldoActual = BigDecimal.ZERO;
 
-    @Column(name = "persona_responsable", length = 255)
-    private String personaResponsable;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "empleado_id")
+    private Empleado empleadoResponsable;
 
     @Column(name = "activo", nullable = false)
     private Boolean activo = true;

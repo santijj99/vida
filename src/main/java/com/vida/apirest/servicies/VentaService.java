@@ -87,6 +87,7 @@ public class VentaService {
     private final MovimientoFinancieroRepository movimientoFinancieroRepository;
     private final VentaCambioArticuloRepository ventaCambioArticuloRepository;
     private final FacturaAFIPService facturaAFIPService;
+    private final PromocionService promocionService;
 
     @Transactional
     public VentaResponse registrarVenta(VentaCreateRequest request) {
@@ -669,6 +670,14 @@ public class VentaService {
         if (variante == null) {
             return null;
         }
+        BigDecimal precioLista = obtenerPrecioListaDesdeVariante(variante);
+        if (precioLista == null) {
+            return null;
+        }
+        return promocionService.resolverPrecioVenta(variante.getId(), precioLista);
+    }
+
+    private BigDecimal obtenerPrecioListaDesdeVariante(VarianteArticulo variante) {
         if (variante.getHistorialPrecios() != null && !variante.getHistorialPrecios().isEmpty()) {
             return variante.getHistorialPrecios().stream()
                     .max((a, b) -> a.getFecha().compareTo(b.getFecha()))

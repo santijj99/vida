@@ -6,6 +6,9 @@ spring:
   application:
     name: apirest
 
+  main:
+    banner-mode: off
+
   datasource:
     url: jdbc:postgresql://ep-noisy-wildflower-acnenufm-pooler.sa-east-1.aws.neon.tech/neondb?user=neondb_owner&password=npg_KszX8HyOTk4B&sslmode=require&channelBinding=require
     driver-class-name: org.postgresql.Driver
@@ -13,10 +16,20 @@ spring:
   jpa:
     hibernate:
       ddl-auto: update
-    show-sql: true
+    show-sql: false
     properties:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: false
+
+logging:
+  level:
+    root: WARN
+    com.vida.apirest: WARN
+    org.springframework: WARN
+    org.hibernate: WARN
+    org.hibernate.SQL: WARN
+    org.hibernate.orm.jdbc.bind: WARN
 
 afip:
   enabled: true

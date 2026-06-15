@@ -19,5 +19,7 @@ public class ArticuloParaVentaResponse {
     private String color;
     private String codigoBarras;
     private BigDecimal precio;
+    private BigDecimal precioLista;
+    private Boolean enPromocion;
     private Integer stockDisponible;
 }

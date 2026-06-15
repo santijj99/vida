@@ -19,6 +19,7 @@ import com.vida.apirest.dto.ariticulo.ArticuloCompactResponse;
 import com.vida.apirest.dto.ariticulo.ArticuloCreateRequest;
 import com.vida.apirest.dto.ariticulo.ArticuloFiltrosResponse;
 import com.vida.apirest.dto.ariticulo.ArticuloTablaRowResponse;
+import com.vida.apirest.dto.ariticulo.ArticuloUpdateRequest;
 import com.vida.apirest.dto.ariticulo.VariantCreateRequest;
 import com.vida.apirest.dto.ariticulo.VarianteCompactResponse;
 import com.vida.apirest.dto.common.PageResponse;
@@ -88,6 +89,22 @@ public class ArticuloController {
             Articulo articulo = articuloService.createArticulo(request);
             return ResponseEntity.status(HttpStatus.CREATED).body(
                     articuloService.getCompactById(articulo.getId()));
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
+                    "message", e.getMessage(),
+                    "statusCode", HttpStatus.BAD_REQUEST.value()
+            ));
+        }
+    }
+
+    @PutMapping("/{id:[0-9]+}")
+    public ResponseEntity<?> updateArticulo(
+            @PathVariable Long id,
+            @RequestBody ArticuloUpdateRequest request
+    ) {
+        try {
+            articuloService.updateArticulo(id, request);
+            return ResponseEntity.ok(articuloService.getCompactById(id));
         } catch (RuntimeException e) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
                     "message", e.getMessage(),
