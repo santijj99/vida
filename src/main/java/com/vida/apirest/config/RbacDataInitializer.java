@@ -58,6 +58,8 @@ public class RbacDataInitializer {
             Map<String, PermisoSeed> catalogo = new LinkedHashMap<>();
             catalogo.put(PermisoCodigo.LEER_STOCK, new PermisoSeed("Stock", "Leer stock", "Listar stock (GET /api/stock)"));
             catalogo.put(PermisoCodigo.ELIMINAR_STOCK, new PermisoSeed("Stock", "Eliminar stock", "Eliminar stock (DELETE /api/stock/{id})"));
+            catalogo.put(PermisoCodigo.TRANSFERIR_STOCK, new PermisoSeed("Stock", "Transferir stock", "Transferencias entre depósitos (POST /api/transferencias-stock)"));
+            catalogo.put(PermisoCodigo.VER_TRANSFERENCIAS_STOCK, new PermisoSeed("Navegación", "Ver Transferencias de stock", "Pantalla de transferencias entre depósitos"));
             catalogo.put(PermisoCodigo.LEER_USUARIOS, new PermisoSeed("Usuarios", "Leer usuarios", "Listar usuarios (GET /usuario)"));
             catalogo.put(PermisoCodigo.CREAR_USUARIOS, new PermisoSeed("Usuarios", "Crear usuarios", "Alta de usuarios (POST /usuario/admin/create)"));
             catalogo.put(PermisoCodigo.MODIFICAR_USUARIOS, new PermisoSeed("Usuarios", "Modificar usuarios", "Asignar rol (POST /usuario/{id}/asignar-rol/{rolId})"));
@@ -134,8 +136,11 @@ public class RbacDataInitializer {
             if (deposito != null) {
                 assignPermissions(deposito, List.of(
                         PermisoCodigo.LEER_STOCK,
+                        PermisoCodigo.TRANSFERIR_STOCK,
+                        PermisoCodigo.VER_TRANSFERENCIAS_STOCK,
                         PermisoCodigo.VER_DASHBOARD,
-                        PermisoCodigo.VER_ARTICULOS
+                        PermisoCodigo.VER_ARTICULOS,
+                        PermisoCodigo.VER_ORGANIZACION
                 ));
             }
 

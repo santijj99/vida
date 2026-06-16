@@ -16,6 +16,12 @@ public final class PermisoCodigo {
     /** DELETE /api/stock/{id} */
     public static final String ELIMINAR_STOCK = "ELIMINAR_STOCK";
 
+    /** POST /api/transferencias-stock */
+    public static final String TRANSFERIR_STOCK = "TRANSFERIR_STOCK";
+
+    /** Menú transferencias de stock */
+    public static final String VER_TRANSFERENCIAS_STOCK = "VER_TRANSFERENCIAS_STOCK";
+
     /** GET /usuario */
     public static final String LEER_USUARIOS = "LEER_USUARIOS";
 
@@ -53,6 +59,8 @@ public final class PermisoCodigo {
         return List.of(
                 LEER_STOCK,
                 ELIMINAR_STOCK,
+                TRANSFERIR_STOCK,
+                VER_TRANSFERENCIAS_STOCK,
                 LEER_USUARIOS,
                 CREAR_USUARIOS,
                 MODIFICAR_USUARIOS,
@@ -73,6 +81,7 @@ public final class PermisoCodigo {
                 VER_PEDIDOS,
                 VER_CUENTAS,
                 VER_ORGANIZACION,
+                VER_TRANSFERENCIAS_STOCK,
                 VER_EMPLEADOS,
                 VER_ARCA
         );
@@ -96,6 +105,7 @@ public final class PermisoCodigo {
                 VER_PEDIDOS,
                 VER_CUENTAS,
                 VER_ORGANIZACION,
+                VER_TRANSFERENCIAS_STOCK,
                 VER_EMPLEADOS,
                 VER_ARCA
         );
