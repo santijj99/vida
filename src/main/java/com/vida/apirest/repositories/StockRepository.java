@@ -11,6 +11,7 @@ public interface StockRepository extends JpaRepository<Stock, Long> {
     Optional<Stock> findByArticuloIdAndVarianteIdAndSucursalId(Long articuloId, Long varianteId, Long sucursalId);
     Optional<Stock> findByArticuloIdAndSucursalId(Long articuloId, Long sucursalId);
     Optional<Stock> findByVarianteIdAndSucursalId(Long varianteId, Long sucursalId);
+    Optional<Stock> findByDepositoIdAndArticuloIdAndVarianteId(Long depositoId, Long articuloId, Long varianteId);
     List<Stock> findAllByArticulo_IdAndVariante_Id(Long articuloId, Long varianteId);
 
     @Query("""

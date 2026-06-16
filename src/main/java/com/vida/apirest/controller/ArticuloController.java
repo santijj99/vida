@@ -76,11 +76,12 @@ public class ArticuloController {
             @RequestParam(required = false) String genero,
             @RequestParam(required = false) String marca,
             @RequestParam(required = false) String q,
+            @RequestParam(required = false) Long depositoId,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "15") int size
     ) {
         return ResponseEntity.ok(articuloService.findTablaPage(
-                categoria, subCategoria, genero, marca, q, page, size));
+                categoria, subCategoria, genero, marca, q, depositoId, page, size));
     }
 
     @PostMapping

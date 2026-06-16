@@ -52,8 +52,12 @@ public class DepositoController {
 
     @GetMapping
     @Transactional(readOnly = true)
-    public ResponseEntity<List<DepositoResponse>> getAllDepositos() {
-        return ResponseEntity.ok(depositoRepository.findAll().stream()
+    public ResponseEntity<List<DepositoResponse>> getAllDepositos(
+            @RequestParam(required = false) Long sucursalId) {
+        List<Deposito> depositos = sucursalId != null
+                ? depositoRepository.findBySucursalIdOrderByNombreAsc(sucursalId)
+                : depositoRepository.findAll();
+        return ResponseEntity.ok(depositos.stream()
                 .map(this::toResponse)
                 .collect(Collectors.toList()));
     }

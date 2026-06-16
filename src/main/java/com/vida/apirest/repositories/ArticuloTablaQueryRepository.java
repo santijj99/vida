@@ -29,17 +29,35 @@ public class ArticuloTablaQueryRepository {
             String genero,
             String marca,
             String q,
+            Long depositoId,
             int page,
             int size
     ) {
         int safeSize = normalizeSize(size);
         int safePage = Math.max(page, 0);
-        FilterSql filters = buildTablaFilters(categoria, subCategoria, genero, marca, q);
+        FilterSql filters = buildTablaFilters(categoria, subCategoria, genero, marca, q, depositoId);
 
-        long total = countTabla(filters);
+        long total = countTabla(filters, depositoId);
         if (total == 0) {
             return PageResponse.of(List.of(), safePage, safeSize, 0);
         }
+
+        String stockJoin = depositoId != null
+                ? """
+                INNER JOIN stock s_dep ON s_dep.deposito_id = :depositoId
+                    AND s_dep.variante_id = v.id
+                    AND s_dep.articulo_id = a.id
+                """
+                : "";
+
+        String cantidadExpr = depositoId != null
+                ? "COALESCE(s_dep.cantidad_disponible, 0)"
+                : """
+                    COALESCE((
+                        SELECT SUM(s.cantidad_disponible) FROM stock s
+                        WHERE s.articulo_id = a.id AND s.variante_id = v.id
+                    ), 0)
+                    """;
 
         String sql = """
                 SELECT
@@ -63,12 +81,15 @@ public class ArticuloTablaQueryRepository {
                          ORDER BY hp.fecha DESC LIMIT 1),
                         lp.precio
                     ) AS precio,
-                    COALESCE((
-                        SELECT SUM(s.cantidad_disponible) FROM stock s
-                        WHERE s.articulo_id = a.id AND s.variante_id = v.id
-                    ), 0) AS cantidad
+                    """
+                + cantidadExpr
+                + """
+                 AS cantidad
                 FROM variante_articulo v
                 INNER JOIN articulo a ON a.id = v.articulo_id
+                """
+                + stockJoin
+                + """
                 LEFT JOIN marca m ON m.id = a.marca_id
                 LEFT JOIN categoria cat ON cat.id = a.categoria_id
                 LEFT JOIN genero g ON g.id = a.genero_id
@@ -76,7 +97,9 @@ public class ArticuloTablaQueryRepository {
                 LEFT JOIN color col ON col.id = v.color_id
                 LEFT JOIN lista_precio lp ON lp.id = v.lista_precio_id
                 WHERE 1 = 1
-                """ + filters.whereClause() + """
+                """
+                + filters.whereClause()
+                + """
                 ORDER BY a.codigo ASC, v.id ASC
                 LIMIT :limit OFFSET :offset
                 """;
@@ -156,11 +179,19 @@ public class ArticuloTablaQueryRepository {
         return PageResponse.of(content, safePage, safeSize, total);
     }
 
-    private long countTabla(FilterSql filters) {
+    private long countTabla(FilterSql filters, Long depositoId) {
+        String stockJoin = depositoId != null
+                ? """
+                INNER JOIN stock s_dep ON s_dep.deposito_id = :depositoId
+                    AND s_dep.variante_id = v.id
+                    AND s_dep.articulo_id = a.id
+                """
+                : "";
         String sql = """
                 SELECT COUNT(*)
                 FROM variante_articulo v
                 INNER JOIN articulo a ON a.id = v.articulo_id
+                """ + stockJoin + """
                 LEFT JOIN marca m ON m.id = a.marca_id
                 LEFT JOIN categoria cat ON cat.id = a.categoria_id
                 LEFT JOIN genero g ON g.id = a.genero_id
@@ -200,11 +231,15 @@ public class ArticuloTablaQueryRepository {
     }
 
     private FilterSql buildTablaFilters(
-            String categoria, String subCategoria, String genero, String marca, String q) {
+            String categoria, String subCategoria, String genero, String marca, String q, Long depositoId) {
         StringBuilder where = new StringBuilder();
         Map<String, Object> params = new HashMap<>();
         where.append(" AND a.estado != 'ARCHIVADO'");
         where.append(" AND v.estado != 'INACTIVO'");
+
+        if (depositoId != null) {
+            params.put("depositoId", depositoId);
+        }
 
         appendExactFilter(where, params, "cat.nombre", "categoria", categoria);
         appendExactFilter(where, params, "g.nombre", "genero", genero);

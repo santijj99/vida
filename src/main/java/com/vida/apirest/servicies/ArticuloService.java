@@ -92,11 +92,12 @@ public class ArticuloService {
             String genero,
             String marca,
             String q,
+            Long depositoId,
             int page,
             int size
     ) {
         return articuloTablaQueryRepository.findTablaPage(
-                categoria, subCategoria, genero, marca, q, page, size);
+                categoria, subCategoria, genero, marca, q, depositoId, page, size);
     }
 
 @Transactional(readOnly = true)
