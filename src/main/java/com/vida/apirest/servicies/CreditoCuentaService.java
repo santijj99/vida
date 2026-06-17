@@ -2,6 +2,9 @@ package com.vida.apirest.servicies;
 
 import com.vida.apirest.dto.credito.*;
 import com.vida.apirest.dto.common.PageResponse;
+import com.vida.apirest.dto.dashboard.DashboardCuotaPorEstadoResponse;
+import com.vida.apirest.dto.dashboard.DashboardCuentaCreditoItemResponse;
+import com.vida.apirest.dto.dashboard.DashboardCreditosResumenResponse;
 import com.vida.apirest.model.credito.Credito;
 import com.vida.apirest.model.credito.Cuota;
 import com.vida.apirest.model.credito.Cuenta;
@@ -13,10 +16,12 @@ import com.vida.apirest.repositories.CreditoResumenPorCliente;
 import com.vida.apirest.repositories.CreditoRepository;
 import com.vida.apirest.repositories.CuotaRepository;
 import com.vida.apirest.repositories.CuentaRepository;
+import com.vida.apirest.repositories.DashboardQueryRepository;
 import com.vida.apirest.repositories.FinanzasCuentaFinancieraRepository;
 import com.vida.apirest.repositories.MovimientoFinancieroRepository;
 import com.vida.apirest.repositories.PagoCuotaRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -32,6 +37,7 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class CreditoCuentaService {
 
     private static final int DEFAULT_PAGE_SIZE = 15;
@@ -43,6 +49,7 @@ public class CreditoCuentaService {
     private final FinanzasCuentaFinancieraRepository cuentaFinancieraRepository;
     private final MovimientoFinancieroRepository movimientoFinancieroRepository;
     private final PagoCuotaRepository pagoCuotaRepository;
+    private final DashboardQueryRepository dashboardQueryRepository;
 
     @Transactional(readOnly = true)
     public List<CuentaCreditoListResponse> listarCuentas(Long sucursalId) {
@@ -181,7 +188,9 @@ public class CreditoCuentaService {
             if (!q.getCredito().getCliente().getId().equals(clienteId)) {
                 throw new RuntimeException("Todas las cuotas deben pertenecer al mismo cliente");
             }
-            if (q.getEstado() == Cuota.EstadoCuota.PAGADA || q.getEstado() == Cuota.EstadoCuota.CANCELADA) {
+            if (q.getEstado() == Cuota.EstadoCuota.PAGADA
+                    || q.getEstado() == Cuota.EstadoCuota.CANCELADA
+                    || q.getEstado() == Cuota.EstadoCuota.ELIMINADA) {
                 throw new RuntimeException("La cuota " + q.getNumero() + " ya está cerrada");
             }
             BigDecimal saldo = q.getSaldo() != null ? q.getSaldo() : q.getMonto();
@@ -505,7 +514,9 @@ public class CreditoCuentaService {
 
     private Integer calcularDiasAtraso(Cuota q) {
         if (q.getFechaVencimiento() == null) return 0;
-        if (q.getEstado() == Cuota.EstadoCuota.PAGADA || q.getEstado() == Cuota.EstadoCuota.CANCELADA) {
+        if (q.getEstado() == Cuota.EstadoCuota.PAGADA
+                || q.getEstado() == Cuota.EstadoCuota.CANCELADA
+                || q.getEstado() == Cuota.EstadoCuota.ELIMINADA) {
             return 0;
         }
         if (!"VENCIDA".equals(estadoCuotaEfectivo(q)) && q.getEstado() != Cuota.EstadoCuota.PENDIENTE) {
@@ -534,6 +545,100 @@ public class CreditoCuentaService {
         dto.setLimiteCredito(cuenta.getLimiteCredito());
         dto.setActivo(cuenta.getActivo());
         return dto;
+    }
+
+    @Transactional(readOnly = true)
+    public DashboardCreditosResumenResponse resumenParaDashboard() {
+        log.info("[Dashboard] Iniciando resumen de créditos (global)");
+        long t0 = System.currentTimeMillis();
+
+        List<Cuenta> cuentas = creditoCuentaRepository.findAllActivasWithCliente();
+        log.info("[Dashboard] Cuentas activas cargadas: {}", cuentas.size());
+
+        List<Long> clienteIds = cuentas.stream().map(c -> c.getCliente().getId()).distinct().toList();
+        Set<Long> clientesVencidos = loadClientesConVencidos(clienteIds);
+        Set<Long> clientesActivos = new HashSet<>(creditoRepository.findClienteIdsConCreditosActivos());
+        Map<Long, CreditoResumenPorCliente> resumenMap = loadResumenMap(clienteIds);
+
+        BigDecimal saldoTotalCuentas = BigDecimal.ZERO;
+        long cuentasConVencidos = 0;
+        long cuentasAlDia = 0;
+        Set<Long> clientesContadosVencidos = new HashSet<>();
+        Set<Long> clientesContadosAlDia = new HashSet<>();
+
+        Map<Long, DashboardCuentaCreditoItemResponse> porCliente = new LinkedHashMap<>();
+        for (Cuenta cuenta : cuentas) {
+            BigDecimal saldo = cuenta.getSaldoActual() != null ? cuenta.getSaldoActual() : BigDecimal.ZERO;
+            saldoTotalCuentas = saldoTotalCuentas.add(saldo);
+            Long clienteId = cuenta.getCliente().getId();
+            boolean vencidos = clientesVencidos.contains(clienteId);
+            if (vencidos && clientesContadosVencidos.add(clienteId)) {
+                cuentasConVencidos++;
+            } else if (!vencidos && clientesActivos.contains(clienteId) && clientesContadosAlDia.add(clienteId)) {
+                cuentasAlDia++;
+            }
+
+            CreditoResumenPorCliente resumen = resumenMap.get(clienteId);
+            int cantCreditos = resumen != null && resumen.getCantidadCreditos() != null
+                    ? resumen.getCantidadCreditos().intValue() : 0;
+
+            Cliente cliente = cuenta.getCliente();
+            String nombreCliente = ((cliente.getNombre() != null ? cliente.getNombre() : "") + " "
+                    + (cliente.getApellido() != null ? cliente.getApellido() : "")).trim();
+
+            DashboardCuentaCreditoItemResponse existente = porCliente.get(clienteId);
+            if (existente == null) {
+                if (saldo.compareTo(BigDecimal.ZERO) > 0 || vencidos || cantCreditos > 0) {
+                    porCliente.put(clienteId, new DashboardCuentaCreditoItemResponse(
+                            cuenta.getId(),
+                            cuenta.getNumero(),
+                            nombreCliente,
+                            cliente.getDni(),
+                            saldo,
+                            vencidos,
+                            cantCreditos
+                    ));
+                }
+            } else {
+                existente.setSaldoActual(existente.getSaldoActual().add(saldo));
+                existente.setTieneCreditosVencidos(existente.isTieneCreditosVencidos() || vencidos);
+            }
+        }
+
+        List<DashboardCuentaCreditoItemResponse> cuentasItems = new ArrayList<>(porCliente.values());
+        cuentasItems.sort(Comparator.comparing(DashboardCuentaCreditoItemResponse::getSaldoActual).reversed());
+        if (cuentasItems.size() > 8) {
+            cuentasItems = new ArrayList<>(cuentasItems.subList(0, 8));
+        }
+
+        List<DashboardCuotaPorEstadoResponse> cuotasPorEstado;
+        try {
+            Map<String, DashboardCuotaPorEstadoResponse> porEstado = dashboardQueryRepository.resumenCuotasPorEstado()
+                    .stream()
+                    .collect(Collectors.toMap(DashboardCuotaPorEstadoResponse::getEstado, e -> e, (a, b) -> a));
+            cuotasPorEstado = new ArrayList<>();
+            for (Cuota.EstadoCuota estado : Cuota.EstadoCuota.values()) {
+                cuotasPorEstado.add(porEstado.getOrDefault(
+                        estado.name(),
+                        new DashboardCuotaPorEstadoResponse(estado.name(), 0, BigDecimal.ZERO)
+                ));
+            }
+            log.info("[Dashboard] Cuotas por estado: {}", cuotasPorEstado);
+        } catch (Exception e) {
+            log.error("[Dashboard] Error al calcular totales de cuotas por estado", e);
+            throw new RuntimeException("No se pudo calcular el resumen de cuotas: " + e.getMessage(), e);
+        }
+
+        DashboardCreditosResumenResponse resumen = new DashboardCreditosResumenResponse();
+        resumen.setCuentasActivas(porCliente.size());
+        resumen.setCuentasAlDia(cuentasAlDia);
+        resumen.setCuentasConVencidos(cuentasConVencidos);
+        resumen.setSaldoTotalCuentas(saldoTotalCuentas);
+        resumen.setCuotasPorEstado(cuotasPorEstado);
+        resumen.setCuentas(cuentasItems);
+        log.info("[Dashboard] Resumen créditos listo en {} ms — clientes={}, alDía={}, vencidos={}",
+                System.currentTimeMillis() - t0, porCliente.size(), cuentasAlDia, cuentasConVencidos);
+        return resumen;
     }
 
     private MovimientoFinanciero registrarIngresoCaja(Long cuentaFinancieraId, BigDecimal monto, String descripcion) {
