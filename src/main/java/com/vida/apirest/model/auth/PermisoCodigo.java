@@ -51,6 +51,8 @@ public final class PermisoCodigo {
     public static final String VER_PROVEEDORES = "VER_PROVEEDORES";
     public static final String VER_PEDIDOS = "VER_PEDIDOS";
     public static final String VER_CUENTAS = "VER_CUENTAS";
+    public static final String VER_GASTOS = "VER_GASTOS";
+    public static final String GESTIONAR_GASTOS = "GESTIONAR_GASTOS";
     public static final String VER_ORGANIZACION = "VER_ORGANIZACION";
     public static final String VER_EMPLEADOS = "VER_EMPLEADOS";
     public static final String VER_ARCA = "VER_ARCA";
@@ -80,6 +82,8 @@ public final class PermisoCodigo {
                 VER_PROVEEDORES,
                 VER_PEDIDOS,
                 VER_CUENTAS,
+                VER_GASTOS,
+                GESTIONAR_GASTOS,
                 VER_ORGANIZACION,
                 VER_TRANSFERENCIAS_STOCK,
                 VER_EMPLEADOS,
@@ -104,6 +108,8 @@ public final class PermisoCodigo {
                 VER_PROVEEDORES,
                 VER_PEDIDOS,
                 VER_CUENTAS,
+                VER_GASTOS,
+                GESTIONAR_GASTOS,
                 VER_ORGANIZACION,
                 VER_TRANSFERENCIAS_STOCK,
                 VER_EMPLEADOS,

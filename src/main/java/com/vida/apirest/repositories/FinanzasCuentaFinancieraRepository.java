@@ -10,4 +10,5 @@ public interface FinanzasCuentaFinancieraRepository extends JpaRepository<Cuenta
     Optional<CuentaFinanciera> findFirstByTipoAndActivoTrue(CuentaFinanciera.TipoCuenta tipo);
     List<CuentaFinanciera> findByTipoAndActivoTrue(CuentaFinanciera.TipoCuenta tipo);
     Optional<CuentaFinanciera> findByNumero(String numero);
+    List<CuentaFinanciera> findBySucursalIdAndActivoTrueOrderByNombreAsc(Long sucursalId);
 }
