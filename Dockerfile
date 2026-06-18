@@ -14,7 +14,8 @@ WORKDIR /app
 
 COPY --from=build /app/target/apirest-0.0.1-SNAPSHOT.jar app.jar
 
-ENV PORT=3000
-EXPOSE 3000
+ENV PORT=8080
+ENV JAVA_OPTS="-XX:MaxRAMPercentage=75.0 -XX:+UseSerialGC -Djava.security.egd=file:/dev/./urandom"
+EXPOSE 8080
 
-ENTRYPOINT ["sh", "-c", "java -jar app.jar --server.port=${PORT}"]
+ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar app.jar --server.port=${PORT}"]

@@ -16,7 +16,6 @@ spring:
     show-sql: false
     properties:
       hibernate:
-        dialect: org.hibernate.dialect.PostgreSQLDialect
         format_sql: false
 
 logging:
@@ -27,6 +26,7 @@ logging:
     com.vida.apirest: WARN
     org.springframework: WARN
     org.hibernate: WARN
+    org.hibernate.orm.deprecation: ERROR
     org.apache.catalina: WARN
     org.apache.tomcat: WARN
     com.zaxxer.hikari: WARN
