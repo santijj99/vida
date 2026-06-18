@@ -15,9 +15,8 @@ WORKDIR /app
 COPY --from=build /app/target/apirest-0.0.1-SNAPSHOT.jar app.jar
 
 ENV SPRING_PROFILES_ACTIVE=prod
-# Railway hobby ~512MB: heap acotado + SerialGC (menos overhead que G1)
-ENV JAVA_OPTS="-XX:+UseContainerSupport -Xms96m -Xmx320m -XX:MaxMetaspaceSize=96m -XX:ReservedCodeCacheSize=48m -XX:+UseSerialGC -Djava.security.egd=file:/dev/./urandom"
 
 EXPOSE 8080
 
-ENTRYPOINT ["sh", "-c", "echo \"Iniciando en puerto ${PORT:-8080}\" && exec java $JAVA_OPTS -jar app.jar"]
+# Igual que en Render: la JVM ajusta memoria sola según el contenedor
+ENTRYPOINT ["sh", "-c", "exec java -XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0 -jar app.jar"]

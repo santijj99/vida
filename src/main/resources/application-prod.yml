@@ -1,26 +1,3 @@
-spring:
-  main:
-    lazy-initialization: true
-
-  jpa:
-    open-in-view: false
-    properties:
-      hibernate:
-        jdbc:
-          batch_size: 10
-
-  datasource:
-    hikari:
-      maximum-pool-size: 3
-      minimum-idle: 1
-
-server:
-  tomcat:
-    threads:
-      max: 10
-      min-spare: 2
-    max-connections: 20
-
 afip:
   enabled: false
   validar-token-en-login: false
