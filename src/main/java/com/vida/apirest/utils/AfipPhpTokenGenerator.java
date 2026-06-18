@@ -4,6 +4,7 @@ import com.vida.apirest.config.AfipProperties;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 import java.io.BufferedReader;
@@ -13,6 +14,7 @@ import java.io.InputStreamReader;
 
 @Component
 @RequiredArgsConstructor
+@ConditionalOnProperty(name = "afip.enabled", havingValue = "true")
 public class AfipPhpTokenGenerator {
 
     private static final Logger log = LoggerFactory.getLogger(AfipPhpTokenGenerator.class);

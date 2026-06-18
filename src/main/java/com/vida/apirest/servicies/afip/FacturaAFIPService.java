@@ -12,6 +12,7 @@ import com.vida.apirest.repositories.*;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -27,6 +28,7 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@ConditionalOnProperty(name = "afip.enabled", havingValue = "true")
 public class FacturaAFIPService {
 
     private static final Logger log = LoggerFactory.getLogger(FacturaAFIPService.class);

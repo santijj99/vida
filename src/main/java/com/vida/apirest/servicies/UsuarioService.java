@@ -58,7 +58,7 @@ public class UsuarioService {
     @Autowired
     private PermissionResolverService permissionResolverService;
 
-    @Autowired
+    @Autowired(required = false)
     private AFIPTokenValidatorService afipTokenValidatorService;
 
     @Autowired
@@ -195,7 +195,8 @@ public class UsuarioService {
     }
 
     private TokenValidationResponse validarTokenAfipEnLogin() {
-        if (!afipProperties.isEnabled() || !afipProperties.isValidarTokenEnLogin()) {
+        if (!afipProperties.isEnabled() || !afipProperties.isValidarTokenEnLogin()
+                || afipTokenValidatorService == null) {
             return null;
         }
         try {

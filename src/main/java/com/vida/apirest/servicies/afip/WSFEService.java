@@ -2,6 +2,7 @@ package com.vida.apirest.servicies.afip;
 
 import com.vida.apirest.config.AfipProperties;
 import lombok.RequiredArgsConstructor;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 
 import java.io.BufferedReader;
@@ -20,6 +21,7 @@ import java.security.cert.X509Certificate;
 
 @Service
 @RequiredArgsConstructor
+@ConditionalOnProperty(name = "afip.enabled", havingValue = "true")
 public class WSFEService {
 
     private static final String WSFE_URL_HOMOLOGACION = "https://wswhomo.afip.gov.ar/wsfev1/service.asmx";

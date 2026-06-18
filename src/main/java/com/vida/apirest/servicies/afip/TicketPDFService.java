@@ -15,6 +15,7 @@ import com.vida.apirest.model.afip.FacturaAFIP;
 import com.vida.apirest.model.afip.FacturaItemAFIP;
 import com.vida.apirest.model.afip.FacturaIvaAFIP;
 import lombok.RequiredArgsConstructor;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 
 import javax.imageio.ImageIO;
@@ -29,6 +30,7 @@ import java.util.Date;
 
 @Service
 @RequiredArgsConstructor
+@ConditionalOnProperty(name = "afip.enabled", havingValue = "true")
 public class TicketPDFService {
 
     private final AfipProperties afipProperties;

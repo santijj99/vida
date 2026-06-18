@@ -51,6 +51,7 @@ import com.vida.apirest.servicies.afip.FacturaAFIPService;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -86,7 +87,7 @@ public class VentaService {
     private final CreditoRepository creditoRepository;
     private final MovimientoFinancieroRepository movimientoFinancieroRepository;
     private final VentaCambioArticuloRepository ventaCambioArticuloRepository;
-    private final FacturaAFIPService facturaAFIPService;
+    private final ObjectProvider<FacturaAFIPService> facturaAFIPServiceProvider;
     private final PromocionService promocionService;
 
     @Transactional
@@ -295,11 +296,13 @@ public class VentaService {
 
         Venta ventaCompleta = ventaRepository.findByIdWithDetalles(ventaGuardada.getId())
                 .orElseThrow(() -> new RuntimeException("Error al recuperar la venta registrada"));
-        FacturaAFIP facturaArca = facturaAFIPService.intentarFacturarVenta(
-                ventaCompleta.getId(), request.getFacturaAfip());
+        FacturaAFIPService facturaAFIPService = facturaAFIPServiceProvider.getIfAvailable();
+        FacturaAFIP facturaArca = facturaAFIPService != null
+                ? facturaAFIPService.intentarFacturarVenta(ventaCompleta.getId(), request.getFacturaAfip())
+                : null;
 
         VentaResponse response = mapVentaResponse(ventaCompleta);
-        if (facturaArca != null && facturaArca.getIdFacturaAFIP() != null) {
+        if (facturaAFIPService != null && facturaArca != null && facturaArca.getIdFacturaAFIP() != null) {
             try {
                 response.setFacturaAfip(facturaAFIPService.obtenerDetalle(facturaArca.getIdFacturaAFIP()));
             } catch (Exception e) {
