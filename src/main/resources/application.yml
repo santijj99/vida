@@ -6,9 +6,6 @@ spring:
   application:
     name: apirest
 
-  main:
-    banner-mode: off
-
   datasource:
     url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://ep-noisy-wildflower-acnenufm-pooler.sa-east-1.aws.neon.tech/neondb?user=neondb_owner&password=npg_KszX8HyOTk4B&sslmode=require&channelBinding=require}
     driver-class-name: org.postgresql.Driver
@@ -25,14 +22,14 @@ spring:
 logging:
   level:
     root: WARN
-    com.vida.apirest: INFO
-    com.vida.apirest.controller.DashboardController: INFO
-    com.vida.apirest.servicies.DashboardService: INFO
-    com.vida.apirest.servicies.CreditoCuentaService: INFO
+    org.springframework.boot: INFO
+    com.vida.apirest.ApirestApplication: INFO
+    com.vida.apirest: WARN
     org.springframework: WARN
     org.hibernate: WARN
-    org.hibernate.SQL: WARN
-    org.hibernate.orm.jdbc.bind: WARN
+    org.apache.catalina: WARN
+    org.apache.tomcat: WARN
+    com.zaxxer.hikari: WARN
 
 afip:
   enabled: true
