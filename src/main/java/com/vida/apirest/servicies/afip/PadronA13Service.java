@@ -4,6 +4,7 @@ import com.vida.apirest.config.AfipProperties;
 import com.vida.apirest.utils.AFIPTokenLoader;
 import com.vida.apirest.utils.AfipPhpTokenGenerator;
 import lombok.RequiredArgsConstructor;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 
 import java.io.BufferedReader;
@@ -26,6 +27,7 @@ import java.security.cert.X509Certificate;
  */
 @Service
 @RequiredArgsConstructor
+@ConditionalOnProperty(name = "afip.enabled", havingValue = "true")
 public class PadronA13Service {
 
     private static final String SERVICE = "ws_sr_padron_a13";

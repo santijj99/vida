@@ -9,10 +9,12 @@ import com.vida.apirest.repositories.ClienteRepository;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 
 @Service
 @RequiredArgsConstructor
+@ConditionalOnProperty(name = "afip.enabled", havingValue = "true")
 public class ReceptorAfipConsultaService {
 
     private static final Logger log = LoggerFactory.getLogger(ReceptorAfipConsultaService.class);

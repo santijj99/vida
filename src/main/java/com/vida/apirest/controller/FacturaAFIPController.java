@@ -12,6 +12,7 @@ import com.vida.apirest.servicies.afip.AfipConfigService;
 import com.vida.apirest.servicies.afip.FacturaAFIPService;
 import com.vida.apirest.servicies.afip.ReceptorAfipConsultaService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -24,6 +25,7 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/facturas-afip")
 @RequiredArgsConstructor
+@ConditionalOnProperty(name = "afip.enabled", havingValue = "true")
 public class FacturaAFIPController {
 
     private final FacturaAFIPService facturaAFIPService;

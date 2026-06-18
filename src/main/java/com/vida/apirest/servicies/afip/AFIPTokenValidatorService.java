@@ -7,6 +7,7 @@ import com.vida.apirest.utils.AfipTokenPathResolver;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 
 import java.io.BufferedReader;
@@ -23,6 +24,7 @@ import java.util.List;
 
 @Service
 @RequiredArgsConstructor
+@ConditionalOnProperty(name = "afip.enabled", havingValue = "true")
 public class AFIPTokenValidatorService {
 
     private static final Logger log = LoggerFactory.getLogger(AFIPTokenValidatorService.class);
