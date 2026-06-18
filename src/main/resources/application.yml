@@ -25,7 +25,10 @@ spring:
 logging:
   level:
     root: WARN
-    com.vida.apirest: WARN
+    com.vida.apirest: INFO
+    com.vida.apirest.controller.DashboardController: INFO
+    com.vida.apirest.servicies.DashboardService: INFO
+    com.vida.apirest.servicies.CreditoCuentaService: INFO
     org.springframework: WARN
     org.hibernate: WARN
     org.hibernate.SQL: WARN

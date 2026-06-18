@@ -2,6 +2,7 @@ package com.vida.apirest.repositories;
 
 import com.vida.apirest.dto.dashboard.DashboardArticuloTopResponse;
 import com.vida.apirest.dto.dashboard.DashboardClienteTopResponse;
+import com.vida.apirest.dto.dashboard.DashboardCuotaPorEstadoResponse;
 import com.vida.apirest.dto.dashboard.DashboardValorStockResponse;
 import com.vida.apirest.dto.dashboard.DashboardVentaMetodoPagoResponse;
 import jakarta.persistence.EntityManager;
@@ -167,6 +168,41 @@ public class DashboardQueryRepository {
                 toBigDecimal(row[1]),
                 toBigDecimal(row[2])
         );
+    }
+
+    public List<DashboardCuotaPorEstadoResponse> resumenCuotasPorEstado() {
+        String sql = """
+                SELECT
+                    q.estado,
+                    COUNT(*) AS cantidad,
+                    COALESCE(SUM(
+                        CASE q.estado
+                            WHEN 'PAGADA' THEN COALESCE(q.monto, 0)
+                            WHEN 'CANCELADA' THEN COALESCE(q.monto, 0)
+                            WHEN 'ELIMINADA' THEN COALESCE(q.monto, 0)
+                            WHEN 'VENCIDA' THEN COALESCE(q.saldo, 0)
+                                + ROUND(COALESCE(q.monto, 0) * 0.10, 2)
+                            WHEN 'PENDIENTE' THEN COALESCE(q.saldo, q.monto, 0)
+                            ELSE 0
+                        END
+                    ), 0) AS total
+                FROM cuota q
+                GROUP BY q.estado
+                ORDER BY q.estado
+                """;
+
+        Query query = entityManager.createNativeQuery(sql);
+        @SuppressWarnings("unchecked")
+        List<Object[]> rows = query.getResultList();
+        List<DashboardCuotaPorEstadoResponse> result = new ArrayList<>(rows.size());
+        for (Object[] row : rows) {
+            result.add(new DashboardCuotaPorEstadoResponse(
+                    toString(row[0]),
+                    toLong(row[1]),
+                    toBigDecimal(row[2])
+            ));
+        }
+        return result;
     }
 
     private static String whereVentasValidas(Long sucursalId, String sucursalColumn) {

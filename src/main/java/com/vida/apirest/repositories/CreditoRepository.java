@@ -34,4 +34,10 @@ public interface CreditoRepository extends JpaRepository<Credito, Long> {
             AND c.estado = com.vida.apirest.model.credito.Credito.EstadoCredito.VENCIDO
             """)
     List<Long> findClienteIdsConCreditosVencidos(@Param("clienteIds") Collection<Long> clienteIds);
+
+    @Query("""
+            SELECT DISTINCT c.cliente.id FROM Credito c
+            WHERE c.estado = com.vida.apirest.model.credito.Credito.EstadoCredito.ACTIVO
+            """)
+    List<Long> findClienteIdsConCreditosActivos();
 }

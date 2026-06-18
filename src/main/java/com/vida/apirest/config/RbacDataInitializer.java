@@ -80,6 +80,8 @@ public class RbacDataInitializer {
             catalogo.put(PermisoCodigo.VER_PROVEEDORES, new PermisoSeed("Navegación", "Ver Proveedores", "Submenú Proveedores"));
             catalogo.put(PermisoCodigo.VER_PEDIDOS, new PermisoSeed("Navegación", "Ver Pedidos", "Submenú Pedidos en Proveedores"));
             catalogo.put(PermisoCodigo.VER_CUENTAS, new PermisoSeed("Navegación", "Ver Cuentas", "Sección Cuentas del menú lateral"));
+            catalogo.put(PermisoCodigo.VER_GASTOS, new PermisoSeed("Finanzas", "Ver gastos", "Listar gastos (GET /api/gastos)"));
+            catalogo.put(PermisoCodigo.GESTIONAR_GASTOS, new PermisoSeed("Finanzas", "Gestionar gastos", "Alta, pago y cancelación de gastos"));
             catalogo.put(PermisoCodigo.VER_ORGANIZACION, new PermisoSeed("Navegación", "Ver Organización", "Empresas, sucursales, depósitos, cajas y monedas"));
             catalogo.put(PermisoCodigo.VER_EMPLEADOS, new PermisoSeed("Navegación", "Ver Empleados", "Sección Empleados del menú lateral"));
             catalogo.put(PermisoCodigo.VER_ARCA, new PermisoSeed("Navegación", "Ver ARCA", "Sección ARCA del menú lateral"));
@@ -130,7 +132,9 @@ public class RbacDataInitializer {
                         PermisoCodigo.VER_CAJA,
                         PermisoCodigo.VER_ARTICULOS,
                         PermisoCodigo.VER_CLIENTES,
-                        PermisoCodigo.VER_CUENTAS
+                        PermisoCodigo.VER_CUENTAS,
+                        PermisoCodigo.VER_GASTOS,
+                        PermisoCodigo.GESTIONAR_GASTOS
                 ));
             }
             if (deposito != null) {

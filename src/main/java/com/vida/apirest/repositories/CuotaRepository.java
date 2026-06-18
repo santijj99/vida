@@ -14,4 +14,7 @@ public interface CuotaRepository extends JpaRepository<Cuota, Long> {
 
     @Query("SELECT q FROM Cuota q WHERE q.credito.id IN :creditoIds ORDER BY q.credito.id, q.fechaVencimiento")
     List<Cuota> findByCreditoIdIn(@Param("creditoIds") List<Long> creditoIds);
+
+    @Query("SELECT q FROM Cuota q JOIN FETCH q.credito cr WHERE cr.estado IN ('ACTIVO', 'VENCIDO')")
+    List<Cuota> findAbiertas();
 }

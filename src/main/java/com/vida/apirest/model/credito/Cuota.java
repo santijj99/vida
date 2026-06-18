@@ -24,7 +24,7 @@ import java.time.LocalDateTime;
 )
 public class Cuota {
 
-    public enum EstadoCuota { PENDIENTE, PAGADA, VENCIDA, CANCELADA }
+    public enum EstadoCuota { PENDIENTE, PAGADA, VENCIDA, CANCELADA, ELIMINADA }
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
