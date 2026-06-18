@@ -14,7 +14,10 @@ WORKDIR /app
 
 COPY --from=build /app/target/apirest-0.0.1-SNAPSHOT.jar app.jar
 
-ENV PORT=3000
-EXPOSE 3000
+ENV SPRING_PROFILES_ACTIVE=prod
+# Railway hobby ~512MB: heap acotado + SerialGC (menos overhead que G1)
+ENV JAVA_OPTS="-XX:+UseContainerSupport -Xms96m -Xmx320m -XX:MaxMetaspaceSize=96m -XX:ReservedCodeCacheSize=48m -XX:+UseSerialGC -Djava.security.egd=file:/dev/./urandom"
 
-ENTRYPOINT ["sh", "-c", "java -jar app.jar --server.port=${PORT}"]
+EXPOSE 8080
+
+ENTRYPOINT ["sh", "-c", "exec java $JAVA_OPTS -jar app.jar --server.address=0.0.0.0 --server.port=${PORT:-8080}"]
