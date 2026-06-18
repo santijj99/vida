@@ -20,4 +20,4 @@ ENV JAVA_OPTS="-XX:+UseContainerSupport -Xms96m -Xmx320m -XX:MaxMetaspaceSize=96
 
 EXPOSE 8080
 
-ENTRYPOINT ["sh", "-c", "exec java $JAVA_OPTS -jar app.jar --server.address=0.0.0.0 --server.port=${PORT:-8080}"]
+ENTRYPOINT ["sh", "-c", "echo \"Iniciando en puerto ${PORT:-8080}\" && exec java $JAVA_OPTS -jar app.jar"]
