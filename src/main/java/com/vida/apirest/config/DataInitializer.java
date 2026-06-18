@@ -23,6 +23,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Profile;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.core.annotation.Order;
 
@@ -30,6 +31,7 @@ import java.math.BigDecimal;
 import java.util.List;
 
 @Configuration
+@Profile("!prod")
 @RequiredArgsConstructor
 public class DataInitializer {
 

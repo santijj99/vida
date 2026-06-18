@@ -1,9 +1,37 @@
 spring:
+  main:
+    lazy-initialization: true
+
+  sql:
+    init:
+      mode: never
+
+  datasource:
+    hikari:
+      maximum-pool-size: 2
+      minimum-idle: 1
+
   jpa:
     hibernate:
-      ddl-auto: validate
+      ddl-auto: none
     open-in-view: false
+    defer-datasource-initialization: true
+    properties:
+      hibernate:
+        boot:
+          allow_jdbc_metadata_access: false
+        hbm2ddl:
+          auto: none
+
+  data:
+    jpa:
+      repositories:
+        bootstrap-mode: deferred
 
 logging:
   level:
     org.hibernate.orm.deprecation: ERROR
+
+afip:
+  enabled: false
+  validar-token-en-login: false
