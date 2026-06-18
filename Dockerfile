@@ -14,6 +14,6 @@ WORKDIR /app
 
 COPY --from=build /app/target/apirest-0.0.1-SNAPSHOT.jar app.jar
 
-ENV JAVA_OPTS="-Xms96m -Xmx300m -XX:MaxMetaspaceSize=128m -XX:+UseSerialGC -XX:MaxDirectMemorySize=32m -Djava.security.egd=file:/dev/./urandom"
+ENV JAVA_OPTS="-Xms128m -Xmx384m -XX:MaxMetaspaceSize=128m -XX:+UseG1GC -Djava.security.egd=file:/dev/./urandom"
 
 ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar app.jar --server.port=${PORT:-3000}"]

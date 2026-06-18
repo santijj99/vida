@@ -1,21 +1,15 @@
 spring:
-  main:
-    lazy-initialization: true
-
-  sql:
-    init:
-      mode: never
-
   datasource:
     hikari:
-      maximum-pool-size: 2
-      minimum-idle: 1
+      maximum-pool-size: 5
+      minimum-idle: 2
+      connection-timeout: 20000
+      max-lifetime: 300000
 
   jpa:
     hibernate:
       ddl-auto: none
     open-in-view: false
-    defer-datasource-initialization: true
     properties:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
@@ -24,10 +18,14 @@ spring:
         hbm2ddl:
           auto: none
 
-  data:
-    jpa:
-      repositories:
-        bootstrap-mode: deferred
+  sql:
+    init:
+      mode: never
+
+server:
+  tomcat:
+    connection-timeout: 60s
+    keep-alive-timeout: 30s
 
 logging:
   level:
