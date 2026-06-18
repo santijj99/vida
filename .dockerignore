@@ -1,0 +1,12 @@
+target/
+.git/
+.gitignore
+.idea/
+*.iml
+nbproject/
+nb-configuration.xml
+.mvn/wrapper/maven-wrapper.jar
+DockerFile
+*.md
+.env
+.env.*
