@@ -14,7 +14,8 @@ public class CorsConfig implements WebMvcConfigurer {
                     "http://localhost:*",
                     "http://127.0.0.1:*",
                     "http://192.168.100.18:*",
-                    "https://*.onrender.com"
+                    "https://*.onrender.com",
+                    "https://*.netlify.app"
                 )
                 .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
                 .allowedHeaders("*")
