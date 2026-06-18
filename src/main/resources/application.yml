@@ -1,5 +1,5 @@
 server:
-  port: 3000
+  port: ${PORT:3000}
   address: 0.0.0.0
 
 spring:
@@ -10,7 +10,7 @@ spring:
     banner-mode: off
 
   datasource:
-    url: jdbc:postgresql://ep-noisy-wildflower-acnenufm-pooler.sa-east-1.aws.neon.tech/neondb?user=neondb_owner&password=npg_KszX8HyOTk4B&sslmode=require&channelBinding=require
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://ep-noisy-wildflower-acnenufm-pooler.sa-east-1.aws.neon.tech/neondb?user=neondb_owner&password=npg_KszX8HyOTk4B&sslmode=require&channelBinding=require}
     driver-class-name: org.postgresql.Driver
 
   jpa:
