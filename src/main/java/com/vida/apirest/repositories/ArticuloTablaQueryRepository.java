@@ -20,6 +20,36 @@ public class ArticuloTablaQueryRepository {
     private static final int MAX_PAGE_SIZE = 100;
     private static final int DEFAULT_PAGE_SIZE = 15;
 
+    private static final String LATERAL_PRECIO = """
+            LEFT JOIN LATERAL (
+                SELECT hp2.precio_nuevo
+                FROM historial_precio hp2
+                WHERE hp2.variante_articulo_id = v.id
+                ORDER BY hp2.fecha DESC
+                LIMIT 1
+            ) hp ON TRUE
+            """;
+
+    private static final String LATERAL_SUBCATEGORIA = """
+            LEFT JOIN LATERAL (
+                SELECT t.nombre
+                FROM taxon_articulo ta
+                JOIN taxon t ON t.id = ta.taxon_id
+                WHERE ta.articulo_id = a.id
+                ORDER BY t.id
+                LIMIT 1
+            ) sub ON TRUE
+            """;
+
+    private static final String LATERAL_STOCK_TOTAL = """
+            LEFT JOIN LATERAL (
+                SELECT COALESCE(SUM(s.cantidad_disponible), 0) AS cantidad
+                FROM stock s
+                WHERE s.articulo_id = a.id
+                  AND s.variante_id = v.id
+            ) stock_tot ON TRUE
+            """;
+
     @PersistenceContext
     private EntityManager entityManager;
 
@@ -52,12 +82,9 @@ public class ArticuloTablaQueryRepository {
 
         String cantidadExpr = depositoId != null
                 ? "COALESCE(s_dep.cantidad_disponible, 0)"
-                : """
-                    COALESCE((
-                        SELECT SUM(s.cantidad_disponible) FROM stock s
-                        WHERE s.articulo_id = a.id AND s.variante_id = v.id
-                    ), 0)
-                    """;
+                : "stock_tot.cantidad";
+
+        String stockLateral = depositoId != null ? "" : LATERAL_STOCK_TOTAL;
 
         String sql = """
                 SELECT
@@ -67,20 +94,12 @@ public class ArticuloTablaQueryRepository {
                     m.nombre AS marca,
                     a.modelo,
                     cat.nombre AS categoria,
-                    (SELECT t.nombre FROM taxon_articulo ta
-                     JOIN taxon t ON t.id = ta.taxon_id
-                     WHERE ta.articulo_id = a.id
-                     ORDER BY t.id LIMIT 1) AS sub_categoria,
+                    sub.nombre AS sub_categoria,
                     g.nombre AS genero,
                     tal.numero AS talle,
                     col.nombre AS color,
                     v.codigo_barras,
-                    COALESCE(
-                        (SELECT hp.precio_nuevo FROM historial_precio hp
-                         WHERE hp.variante_articulo_id = v.id
-                         ORDER BY hp.fecha DESC LIMIT 1),
-                        lp.precio
-                    ) AS precio,
+                    COALESCE(hp.precio_nuevo, lp.precio) AS precio,
                     """
                 + cantidadExpr
                 + """
@@ -96,6 +115,11 @@ public class ArticuloTablaQueryRepository {
                 LEFT JOIN talle tal ON tal.id = v.talle_id
                 LEFT JOIN color col ON col.id = v.color_id
                 LEFT JOIN lista_precio lp ON lp.id = v.lista_precio_id
+                """
+                + LATERAL_PRECIO
+                + LATERAL_SUBCATEGORIA
+                + stockLateral
+                + """
                 WHERE 1 = 1
                 """
                 + filters.whereClause()
@@ -140,12 +164,7 @@ public class ArticuloTablaQueryRepository {
                     tal.numero AS talle,
                     col.nombre AS color,
                     v.codigo_barras,
-                    COALESCE(
-                        (SELECT hp.precio_nuevo FROM historial_precio hp
-                         WHERE hp.variante_articulo_id = v.id
-                         ORDER BY hp.fecha DESC LIMIT 1),
-                        lp.precio
-                    ) AS precio,
+                    COALESCE(hp.precio_nuevo, lp.precio) AS precio,
                     s.cantidad_disponible AS stock
                 FROM stock s
                 INNER JOIN variante_articulo v ON v.id = s.variante_id
@@ -154,16 +173,16 @@ public class ArticuloTablaQueryRepository {
                 LEFT JOIN talle tal ON tal.id = v.talle_id
                 LEFT JOIN color col ON col.id = v.color_id
                 LEFT JOIN lista_precio lp ON lp.id = v.lista_precio_id
+                """
+                + LATERAL_PRECIO
+                + """
                 WHERE s.sucursal_id = :sucursalId
                   AND s.variante_id IS NOT NULL
                   AND s.cantidad_disponible > 0
-                """ + filters.whereClause() + """
-                AND COALESCE(
-                    (SELECT hp.precio_nuevo FROM historial_precio hp
-                     WHERE hp.variante_articulo_id = v.id
-                     ORDER BY hp.fecha DESC LIMIT 1),
-                    lp.precio
-                ) > 0
+                """
+                + filters.whereClause()
+                + """
+                AND COALESCE(hp.precio_nuevo, lp.precio) > 0
                 ORDER BY a.codigo ASC, v.id ASC
                 LIMIT :limit OFFSET :offset
                 """;
@@ -180,6 +199,8 @@ public class ArticuloTablaQueryRepository {
     }
 
     private long countTabla(FilterSql filters, Long depositoId) {
+        boolean needsDimensionJoins = necesitaJoinsDimension(filters);
+
         String stockJoin = depositoId != null
                 ? """
                 INNER JOIN stock s_dep ON s_dep.deposito_id = :depositoId
@@ -187,18 +208,25 @@ public class ArticuloTablaQueryRepository {
                     AND s_dep.articulo_id = a.id
                 """
                 : "";
-        String sql = """
-                SELECT COUNT(*)
+
+        StringBuilder joins = new StringBuilder();
+        joins.append("""
                 FROM variante_articulo v
                 INNER JOIN articulo a ON a.id = v.articulo_id
-                """ + stockJoin + """
+                """);
+        joins.append(stockJoin);
+
+        if (needsDimensionJoins) {
+            joins.append("""
                 LEFT JOIN marca m ON m.id = a.marca_id
                 LEFT JOIN categoria cat ON cat.id = a.categoria_id
                 LEFT JOIN genero g ON g.id = a.genero_id
                 LEFT JOIN talle tal ON tal.id = v.talle_id
                 LEFT JOIN color col ON col.id = v.color_id
-                WHERE 1 = 1
-                """ + filters.whereClause();
+                """);
+        }
+
+        String sql = "SELECT COUNT(*) " + joins + " WHERE 1 = 1 " + filters.whereClause();
         Query query = entityManager.createNativeQuery(sql);
         filters.applyParams(query);
         return ((Number) query.getSingleResult()).longValue();
@@ -214,16 +242,16 @@ public class ArticuloTablaQueryRepository {
                 LEFT JOIN talle tal ON tal.id = v.talle_id
                 LEFT JOIN color col ON col.id = v.color_id
                 LEFT JOIN lista_precio lp ON lp.id = v.lista_precio_id
+                """
+                + LATERAL_PRECIO
+                + """
                 WHERE s.sucursal_id = :sucursalId
                   AND s.variante_id IS NOT NULL
                   AND s.cantidad_disponible > 0
-                """ + filters.whereClause() + """
-                AND COALESCE(
-                    (SELECT hp.precio_nuevo FROM historial_precio hp
-                     WHERE hp.variante_articulo_id = v.id
-                     ORDER BY hp.fecha DESC LIMIT 1),
-                    lp.precio
-                ) > 0
+                """
+                + filters.whereClause()
+                + """
+                AND COALESCE(hp.precio_nuevo, lp.precio) > 0
                 """;
         Query query = entityManager.createNativeQuery(sql);
         filters.applyParams(query);
@@ -269,7 +297,7 @@ public class ArticuloTablaQueryRepository {
         Map<String, Object> params = new HashMap<>();
         where.append(" AND a.estado != 'ARCHIVADO'");
         where.append(" AND v.estado != 'INACTIVO'");
-        
+
         params.put("sucursalId", sucursalId);
         appendSearchFilter(where, params, q,
                 "a.codigo", "a.modelo", "m.nombre", "tal.numero", "col.nombre", "v.codigo_barras");
@@ -290,15 +318,84 @@ public class ArticuloTablaQueryRepository {
         if (q == null || q.isBlank()) {
             return;
         }
-        where.append(" AND (");
+
+        String trimmed = q.trim();
+        String[] tokens = trimmed.split("\\s+");
+        boolean incluyeMarcaModelo = contiene(columns, "m.nombre") && contiene(columns, "a.modelo");
+
+        if (tokens.length == 1) {
+            where.append(" AND (");
+            appendCoincidenciaEnColumnas(where, columns, "q");
+            if (incluyeMarcaModelo) {
+                appendCoincidenciaMarcaModeloConcatenado(where, "q");
+            }
+            where.append(")");
+            params.put("q", "%" + trimmed + "%");
+            return;
+        }
+
+        params.put("qFull", "%" + trimmed + "%");
+
+        if (incluyeMarcaModelo && tokens.length == 2) {
+            where.append("""
+                     AND (
+                        (COALESCE(m.nombre, '') ILIKE :q0 AND COALESCE(a.modelo, '') ILIKE :q1)
+                        OR (COALESCE(m.nombre, '') ILIKE :q1 AND COALESCE(a.modelo, '') ILIKE :q0)
+                        OR (COALESCE(m.nombre, '') || ' ' || COALESCE(a.modelo, '')) ILIKE :qFull
+                        OR (COALESCE(a.modelo, '') || ' ' || COALESCE(m.nombre, '')) ILIKE :qFull
+                     )
+                    """);
+            params.put("q0", "%" + tokens[0] + "%");
+            params.put("q1", "%" + tokens[1] + "%");
+            return;
+        }
+
+        for (int i = 0; i < tokens.length; i++) {
+            String param = "q" + i;
+            where.append(" AND (");
+            appendCoincidenciaEnColumnas(where, columns, param);
+            if (incluyeMarcaModelo) {
+                appendCoincidenciaMarcaModeloConcatenado(where, param);
+            }
+            where.append(")");
+            params.put(param, "%" + tokens[i] + "%");
+        }
+    }
+
+    private static boolean necesitaJoinsDimension(FilterSql filters) {
+        if (filters.params().containsKey("categoria")
+                || filters.params().containsKey("genero")
+                || filters.params().containsKey("marca")) {
+            return true;
+        }
+        return filters.params().keySet().stream()
+                .anyMatch(k -> k.equals("q") || k.startsWith("q"));
+    }
+
+    private static boolean contiene(String[] columns, String column) {
+        for (String c : columns) {
+            if (c.equals(column)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static void appendCoincidenciaEnColumnas(
+            StringBuilder where, String[] columns, String paramName) {
         for (int i = 0; i < columns.length; i++) {
             if (i > 0) {
                 where.append(" OR ");
             }
-            where.append("LOWER(COALESCE(").append(columns[i]).append(", '')) LIKE LOWER(:q)");
+            where.append("COALESCE(").append(columns[i]).append(", '') ILIKE :").append(paramName);
         }
-        where.append(")");
-        params.put("q", "%" + q.trim() + "%");
+    }
+
+    private static void appendCoincidenciaMarcaModeloConcatenado(StringBuilder where, String paramName) {
+        where.append(" OR (COALESCE(m.nombre, '') || ' ' || COALESCE(a.modelo, '')) ILIKE :")
+                .append(paramName);
+        where.append(" OR (COALESCE(a.modelo, '') || ' ' || COALESCE(m.nombre, '')) ILIKE :")
+                .append(paramName);
     }
 
     private List<ArticuloTablaRowResponse> mapTablaRows(List<Object[]> rows) {
