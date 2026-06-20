@@ -52,6 +52,7 @@ import com.vida.apirest.repositories.TalleRepository;
 import com.vida.apirest.repositories.TaxonArticuloRepository;
 import com.vida.apirest.repositories.TaxonRepository;
 import com.vida.apirest.repositories.VarianteArticuloRepository;
+import com.vida.apirest.security.SucursalScopeService;
 import com.vida.apirest.utils.HistorialPrecioSupport;
 import com.vida.apirest.utils.ValidationUtils;
 
@@ -76,6 +77,7 @@ public class ArticuloService {
     private final SucursalRepository sucursalRepository;
     private final CatalogoResolverService catalogoResolverService;
     private final ArticuloConsultaService articuloConsultaService;
+    private final SucursalScopeService sucursalScopeService;
 
     @Transactional(readOnly = true)
     public PageResponse<ArticuloTablaRowResponse> findTablaPage(
@@ -325,6 +327,7 @@ public class ArticuloService {
 
     private Sucursal resolverSucursal(Long sucursalId) {
         if (sucursalId != null) {
+            sucursalScopeService.assertCanUse(sucursalId);
             return sucursalRepository.findById(sucursalId)
                     .orElseThrow(() -> new RuntimeException("Sucursal no encontrada con ID: " + sucursalId));
         }
@@ -531,8 +534,7 @@ public class ArticuloService {
 
     @Transactional(readOnly = true)
     Articulo requireArticuloWithDetalle(Long id) {
-        return articuloRepository.findByIdWithDetalle(id)
-                .orElseThrow(() -> new RuntimeException("Artículo no encontrado con id: " + id));
+        return articuloConsultaService.loadWithDetalle(id);
     }
 
     @Transactional(readOnly = true)

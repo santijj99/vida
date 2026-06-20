@@ -13,6 +13,7 @@ import com.vida.apirest.model.venta.PrestamoCondicional;
 import com.vida.apirest.model.venta.PrestamoCondicionalDetalle;
 import com.vida.apirest.model.venta.Venta;
 import com.vida.apirest.repositories.*;
+import com.vida.apirest.security.SucursalScopeService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -36,10 +37,12 @@ public class PrestamoCondicionalService {
     private final VentaService ventaService;
     private final PendienteDetalleResolver pendienteDetalleResolver;
     private final StockReservaService stockReservaService;
+    private final SucursalScopeService sucursalScopeService;
 
     @Transactional
     public PrestamoCondicionalResponse crear(PrestamoCondicionalCreateRequest request) {
         validarRequestBase(request);
+        sucursalScopeService.assertCanUse(request.getSucursalId());
 
         Cliente cliente = clienteRepository.findByDni(request.getClienteDni())
                 .orElseThrow(() -> new RuntimeException("Cliente no encontrado con DNI: " + request.getClienteDni()));
@@ -86,6 +89,7 @@ public class PrestamoCondicionalService {
 
     @Transactional(readOnly = true)
     public List<PrestamoCondicionalResponse> listar(Long sucursalId, String estado) {
+        Long scopedSucursalId = sucursalScopeService.enforceFilter(sucursalId);
         List<PrestamoCondicional.EstadoPrestamo> estados;
         if (estado == null || estado.isBlank() || "ACTIVOS".equalsIgnoreCase(estado)) {
             estados = List.of(
@@ -98,7 +102,7 @@ public class PrestamoCondicionalService {
                 throw new RuntimeException("Estado inválido: " + estado);
             }
         }
-        return prestamoRepository.findAllWithDetalles(sucursalId, estados)
+        return prestamoRepository.findAllWithDetalles(scopedSucursalId, estados)
                 .stream()
                 .map(this::mapResponse)
                 .collect(Collectors.toList());
@@ -305,8 +309,10 @@ public class PrestamoCondicionalService {
     }
 
     private PrestamoCondicional buscarPrestamo(Long id) {
-        return prestamoRepository.findByIdWithDetalles(id)
+        PrestamoCondicional prestamo = prestamoRepository.findByIdWithDetalles(id)
                 .orElseThrow(() -> new RuntimeException("Préstamo condicional no encontrado"));
+        sucursalScopeService.assertCanAccess(prestamo.getSucursal().getId());
+        return prestamo;
     }
 
     private void validarRequestBase(PrestamoCondicionalCreateRequest request) {

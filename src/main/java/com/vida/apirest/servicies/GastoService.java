@@ -11,6 +11,7 @@ import com.vida.apirest.model.finanzas.GastoPago;
 import com.vida.apirest.repositories.FinanzasCuentaFinancieraRepository;
 import com.vida.apirest.repositories.GastoRepository;
 import com.vida.apirest.repositories.SucursalRepository;
+import com.vida.apirest.security.SucursalScopeService;
 import com.vida.apirest.utils.PaginationUtils;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -35,14 +36,16 @@ public class GastoService {
     private final SucursalRepository sucursalRepository;
     private final FinanzasCuentaFinancieraRepository cuentaRepository;
     private final CajaMovimientoService cajaMovimientoService;
+    private final SucursalScopeService sucursalScopeService;
 
     @Transactional(readOnly = true)
     public PageResponse<GastoResponse> listar(
             Long sucursalId, String estado, Long categoriaId, String q, int page, int size) {
+        Long scopedSucursalId = sucursalScopeService.enforceFilter(sucursalId);
         PaginationUtils.PageParams params = PaginationUtils.normalize(page, size);
         EstadoGasto estadoEnum = parseEstado(estado);
         Pageable pageable = PageRequest.of(params.page(), params.size(), Sort.by(Sort.Direction.DESC, "createdAt"));
-        Page<Gasto> result = gastoRepository.searchPage(sucursalId, estadoEnum, categoriaId, q, pageable);
+        Page<Gasto> result = gastoRepository.searchPage(scopedSucursalId, estadoEnum, categoriaId, q, pageable);
         return PageResponse.from(result.map(this::mapResumen));
     }
 
@@ -54,6 +57,7 @@ public class GastoService {
     @Transactional
     public GastoResponse crear(GastoCreateRequest request) {
         validarCreate(request);
+        sucursalScopeService.assertCanUse(request.getSucursalId());
         Sucursal sucursal = sucursalRepository.findById(request.getSucursalId())
                 .orElseThrow(() -> new RuntimeException("Sucursal no encontrada: " + request.getSucursalId()));
         GastoCategoria categoria = gastoCategoriaService.buscarEntidad(request.getCategoriaId());
@@ -195,6 +199,7 @@ public class GastoService {
         if (sucursalId == null) {
             throw new RuntimeException("sucursalId es obligatorio");
         }
+        sucursalScopeService.assertCanUse(sucursalId);
         return cuentaRepository.findBySucursalIdAndActivoTrueOrderByNombreAsc(sucursalId).stream()
                 .map(this::mapCuenta)
                 .collect(Collectors.toList());
@@ -209,8 +214,10 @@ public class GastoService {
     }
 
     private Gasto buscarConRelaciones(Long id) {
-        return gastoRepository.findByIdWithRelations(id)
+        Gasto gasto = gastoRepository.findByIdWithRelations(id)
                 .orElseThrow(() -> new RuntimeException("Gasto no encontrado: " + id));
+        sucursalScopeService.assertCanAccess(gasto.getSucursal().getId());
+        return gasto;
     }
 
     private void validarCreate(GastoCreateRequest request) {

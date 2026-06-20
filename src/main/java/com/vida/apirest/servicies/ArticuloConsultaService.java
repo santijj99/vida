@@ -22,6 +22,7 @@ import com.vida.apirest.repositories.StockRepository;
 import com.vida.apirest.repositories.SucursalRepository;
 import com.vida.apirest.repositories.TalleRepository;
 import com.vida.apirest.repositories.TaxonRepository;
+import com.vida.apirest.security.SucursalScopeService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -50,6 +51,7 @@ public class ArticuloConsultaService {
     private final StockRepository stockRepository;
     private final SucursalRepository sucursalRepository;
     private final PromocionService promocionService;
+    private final SucursalScopeService sucursalScopeService;
 
     @Transactional(readOnly = true)
     public PageResponse<ArticuloTablaRowResponse> findTablaPage(
@@ -79,10 +81,21 @@ public class ArticuloConsultaService {
     }
 
     @Transactional(readOnly = true)
-    public ArticuloCompactResponse getCompactById(Long id) {
-        Articulo articulo = articuloRepository.findByIdWithDetalle(id)
+    public Articulo loadWithDetalle(Long id) {
+        Articulo articulo = articuloRepository.findByIdWithVariantes(id)
                 .orElseThrow(() -> new RuntimeException("Artículo no encontrado con id: " + id));
-        return toCompactResponse(articulo);
+        articuloRepository.findByIdWithTaxones(id)
+                .ifPresent(conTaxones -> {
+                    if (conTaxones.getTaxones() != null) {
+                        conTaxones.getTaxones().size();
+                    }
+                });
+        return articulo;
+    }
+
+    @Transactional(readOnly = true)
+    public ArticuloCompactResponse getCompactById(Long id) {
+        return toCompactResponse(loadWithDetalle(id));
     }
 
     @Transactional(readOnly = true)
@@ -90,6 +103,7 @@ public class ArticuloConsultaService {
         if (sucursalId == null) {
             throw new RuntimeException("Sucursal requerida para listar artículos de venta");
         }
+        sucursalScopeService.assertCanUse(sucursalId);
         if (!sucursalRepository.existsById(sucursalId)) {
             throw new RuntimeException("Sucursal no encontrada con ID: " + sucursalId);
         }

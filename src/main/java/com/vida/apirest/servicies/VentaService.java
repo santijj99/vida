@@ -44,6 +44,7 @@ import com.vida.apirest.repositories.StockRepository;
 import com.vida.apirest.repositories.VentaCambioArticuloRepository;
 import com.vida.apirest.repositories.VentaRepository;
 import com.vida.apirest.repositories.VarianteArticuloRepository;
+import com.vida.apirest.security.SucursalScopeService;
 import com.vida.apirest.dto.afip.FacturaAFIPResponse;
 import com.vida.apirest.model.afip.FacturaAFIP;
 import com.vida.apirest.servicies.afip.FacturaAFIPService;
@@ -88,6 +89,7 @@ public class VentaService {
     private final FacturaAFIPService facturaAFIPService;
     private final CajaMovimientoService cajaMovimientoService;
     private final VentaDetalleSupport ventaDetalleSupport;
+    private final SucursalScopeService sucursalScopeService;
 
     @Transactional
     public VentaResponse registrarVenta(VentaCreateRequest request) {
@@ -133,6 +135,7 @@ public class VentaService {
     }
 
     private Sucursal cargarSucursal(Long sucursalId) {
+        sucursalScopeService.assertCanUse(sucursalId);
         return sucursalRepository.findById(sucursalId)
                 .orElseThrow(() -> new RuntimeException("Sucursal no encontrada con ID: " + sucursalId));
     }
@@ -471,9 +474,10 @@ public class VentaService {
         LocalDateTime hastaExclusivo = hastaInclusive.plusDays(1).atStartOfDay();
 
         String estadoFilter = (estado == null || estado.isBlank()) ? null : estado.trim().toUpperCase();
+        Long scopedSucursalId = sucursalScopeService.enforceFilter(sucursalId);
         Pageable pageable = PageRequest.of(Math.max(page, 0), Math.max(size, 1));
         Page<Venta> result = ventaRepository.searchHistorial(
-                sucursalId,
+                scopedSucursalId,
                 estadoFilter,
                 desdeDt,
                 hastaExclusivo,
@@ -487,6 +491,7 @@ public class VentaService {
     public VentaResponse obtenerVenta(Long id) {
         Venta venta = ventaRepository.findByIdWithDetalles(id)
                 .orElseThrow(() -> new RuntimeException("Venta no encontrada con ID: " + id));
+        sucursalScopeService.assertCanAccess(venta.getSucursal().getId());
         return mapVentaResponseCompleto(venta);
     }
 
@@ -498,6 +503,7 @@ public class VentaService {
 
         Venta venta = ventaRepository.findByIdWithDetalles(id)
                 .orElseThrow(() -> new RuntimeException("Venta no encontrada con ID: " + id));
+        sucursalScopeService.assertCanAccess(venta.getSucursal().getId());
 
         if (venta.getEstado() == Venta.EstadoVenta.CANCELADA) {
             throw new RuntimeException("La venta ya está cancelada");
@@ -559,6 +565,7 @@ public class VentaService {
 
         Venta venta = ventaRepository.findByIdWithDetalles(ventaId)
                 .orElseThrow(() -> new RuntimeException("Venta no encontrada con ID: " + ventaId));
+        sucursalScopeService.assertCanAccess(venta.getSucursal().getId());
 
         if (venta.getEstado() == Venta.EstadoVenta.CANCELADA) {
             throw new RuntimeException("No se puede cambiar artículos en una venta cancelada");

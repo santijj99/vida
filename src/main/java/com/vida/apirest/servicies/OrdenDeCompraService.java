@@ -13,10 +13,12 @@ import com.vida.apirest.model.persona.Proveedor;
 import com.vida.apirest.repositories.OrdenDeCompraRepository;
 import com.vida.apirest.repositories.ProveedorRepository;
 import com.vida.apirest.repositories.SucursalRepository;
+import com.vida.apirest.security.SucursalScopeService;
 import com.vida.apirest.utils.PaginationUtils;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
@@ -38,14 +40,25 @@ public class OrdenDeCompraService {
     private final SucursalRepository sucursalRepository;
     private final ProveedorRepository proveedorRepository;
     private final ArticuloService articuloService;
+    private final SucursalScopeService sucursalScopeService;
 
     @Transactional(readOnly = true)
     public PageResponse<OrdenCompraResponse> findPage(String q, String estado, int page, int size) {
         PaginationUtils.PageParams params = PaginationUtils.normalize(page, size);
-        Page<OrdenDeCompra> result = ordenDeCompraRepository.searchPage(
-                blankToNull(q),
-                blankToNull(estado),
-                PageRequest.of(params.page(), params.size()));
+        Pageable pageable = PageRequest.of(params.page(), params.size());
+        String query = blankToNull(q);
+        String estadoFilter = blankToNull(estado);
+
+        Page<OrdenDeCompra> result;
+        if (sucursalScopeService.hasGlobalAccess()) {
+            result = ordenDeCompraRepository.searchPage(query, estadoFilter, pageable);
+        } else {
+            var allowed = sucursalScopeService.allowedSucursalIds();
+            if (allowed.isEmpty()) {
+                throw new com.vida.apirest.exception.ForbiddenException("No tiene sucursales asignadas");
+            }
+            result = ordenDeCompraRepository.searchPageBySucursalIds(query, estadoFilter, allowed, pageable);
+        }
         return PageResponse.from(result.map(this::toResponseResumido));
     }
 
@@ -53,6 +66,7 @@ public class OrdenDeCompraService {
     public OrdenCompraResponse findById(Long id) {
         OrdenDeCompra orden = ordenDeCompraRepository.findByIdWithRelations(id)
                 .orElseThrow(() -> new RuntimeException("Pedido no encontrado con ID: " + id));
+        sucursalScopeService.assertCanAccess(orden.getSucursal().getId());
         return toResponse(orden);
     }
 
@@ -72,6 +86,7 @@ public class OrdenDeCompraService {
         if (request.getDetalles() == null || request.getDetalles().isEmpty()) {
             throw new RuntimeException("Debe incluir al menos un ítem en el pedido");
         }
+        sucursalScopeService.assertCanUse(request.getSucursalId());
 
         Sucursal sucursal = sucursalRepository.findById(request.getSucursalId())
                 .orElseThrow(() -> new RuntimeException("Sucursal no encontrada"));
@@ -103,6 +118,7 @@ public class OrdenDeCompraService {
     public OrdenCompraResponse actualizar(Long id, OrdenCompraRequest request) {
         OrdenDeCompra orden = ordenDeCompraRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Pedido no encontrado con ID: " + id));
+        sucursalScopeService.assertCanAccess(orden.getSucursal().getId());
         if (orden.getEstado() != OrdenDeCompra.EstadoOrden.BORRADOR) {
             throw new RuntimeException("Solo se pueden editar pedidos en estado BORRADOR");
         }
@@ -110,6 +126,7 @@ public class OrdenDeCompraService {
         if (request.getDetalles() == null || request.getDetalles().isEmpty()) {
             throw new RuntimeException("Debe incluir al menos un ítem en el pedido");
         }
+        sucursalScopeService.assertCanUse(request.getSucursalId());
 
         Sucursal sucursal = sucursalRepository.findById(request.getSucursalId())
                 .orElseThrow(() -> new RuntimeException("Sucursal no encontrada"));
@@ -134,6 +151,7 @@ public class OrdenDeCompraService {
     public OrdenCompraResponse confirmar(Long id) {
         OrdenDeCompra orden = ordenDeCompraRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Pedido no encontrado con ID: " + id));
+        sucursalScopeService.assertCanAccess(orden.getSucursal().getId());
         if (orden.getEstado() != OrdenDeCompra.EstadoOrden.BORRADOR) {
             throw new RuntimeException("Solo se pueden confirmar pedidos en estado BORRADOR");
         }
@@ -146,6 +164,7 @@ public class OrdenDeCompraService {
     public OrdenCompraResponse cancelar(Long id) {
         OrdenDeCompra orden = ordenDeCompraRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Pedido no encontrado con ID: " + id));
+        sucursalScopeService.assertCanAccess(orden.getSucursal().getId());
         if (orden.getEstado() == OrdenDeCompra.EstadoOrden.CANCELADA
                 || orden.getEstado() == OrdenDeCompra.EstadoOrden.RECIBIDA_TOTAL) {
             throw new RuntimeException("No se puede cancelar el pedido en estado " + orden.getEstado());

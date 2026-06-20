@@ -18,14 +18,20 @@ public interface ArticuloRepository extends JpaRepository<Articulo, Long>, JpaSp
             LEFT JOIN FETCH a.marca
             LEFT JOIN FETCH a.categoria
             LEFT JOIN FETCH a.genero
-            LEFT JOIN FETCH a.taxones ta
-            LEFT JOIN FETCH ta.taxon
             LEFT JOIN FETCH a.variantes v
             LEFT JOIN FETCH v.color
             LEFT JOIN FETCH v.talle
             WHERE a.id = :id
             """)
-    Optional<Articulo> findByIdWithDetalle(@Param("id") Long id);
+    Optional<Articulo> findByIdWithVariantes(@Param("id") Long id);
+
+    @Query("""
+            SELECT DISTINCT a FROM Articulo a
+            LEFT JOIN FETCH a.taxones ta
+            LEFT JOIN FETCH ta.taxon
+            WHERE a.id = :id
+            """)
+    Optional<Articulo> findByIdWithTaxones(@Param("id") Long id);
 
     @Query("""
             SELECT DISTINCT a FROM Articulo a

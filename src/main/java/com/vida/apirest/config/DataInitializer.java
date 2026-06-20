@@ -3,13 +3,15 @@ package com.vida.apirest.config;
 import com.vida.apirest.model.almacen.Deposito;
 import com.vida.apirest.model.almacen.Sucursal;
 import com.vida.apirest.model.auth.Role;
+import com.vida.apirest.model.persona.Empleado;
 import com.vida.apirest.model.auth.Usuario;
 import com.vida.apirest.model.auth.UsuarioHasRoles;
+import com.vida.apirest.model.auth.UsuarioSucursal;
 import com.vida.apirest.model.auth.id.UsuarioRoleId;
+import com.vida.apirest.model.auth.id.UsuarioSucursalId;
 import com.vida.apirest.model.empresa.Empresa;
 import com.vida.apirest.model.finanzas.CuentaFinanciera;
 import com.vida.apirest.model.finanzas.Moneda;
-import com.vida.apirest.model.persona.Empleado;
 import com.vida.apirest.repositories.DepositoRepository;
 import com.vida.apirest.repositories.EmpleadoRepository;
 import com.vida.apirest.repositories.EmpresaRepository;
@@ -19,6 +21,7 @@ import com.vida.apirest.repositories.RoleRepository;
 import com.vida.apirest.repositories.SucursalRepository;
 import com.vida.apirest.repositories.UsuarioHasRoleRepository;
 import com.vida.apirest.repositories.UsuarioRepository;
+import com.vida.apirest.repositories.UsuarioSucursalRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.context.annotation.Bean;
@@ -44,6 +47,7 @@ public class DataInitializer {
     private final FinanzasCuentaFinancieraRepository cuentaFinancieraRepository;
     private final UsuarioRepository usuarioRepository;
     private final UsuarioHasRoleRepository usuarioHasRoleRepository;
+    private final UsuarioSucursalRepository usuarioSucursalRepository;
     private final PasswordEncoder passwordEncoder;
 
     @Bean
@@ -246,6 +250,27 @@ public class DataInitializer {
         };
     }
 
+    @Bean
+    @Order(10)
+    public CommandLineRunner seedUsuarioSucursales() {
+        return args -> {
+            Usuario santi = usuarioRepository.findByEmail("santi@gmail.com").orElse(null);
+            Usuario lucio = usuarioRepository.findByEmail("lucio@gmail.com").orElse(null);
+            Sucursal suc001 = sucursalRepository.findByCodigo("SUC001").orElse(null);
+            Sucursal suc002 = sucursalRepository.findByCodigo("SUC002").orElse(null);
+
+            if (santi != null && suc001 != null) {
+                vincularSucursalSiNoExiste(santi, suc001);
+            }
+            if (santi != null && suc002 != null) {
+                vincularSucursalSiNoExiste(santi, suc002);
+            }
+            if (lucio != null && suc001 != null) {
+                vincularSucursalSiNoExiste(lucio, suc001);
+            }
+        };
+    }
+
     private Deposito createDeposito(Sucursal sucursal, String nombre, String codigo, String ubicacion, String descripcion, Deposito.Tipo tipo, Integer capacidadMaxima, String responsable, boolean activo) {
         Deposito deposito = new Deposito();
         deposito.setSucursal(sucursal);
@@ -359,6 +384,12 @@ public class DataInitializer {
         userhasroles.setUsuario(usuario);
         userhasroles.setRole(roles);
         return userhasroles;
+    }
+
+    private void vincularSucursalSiNoExiste(Usuario usuario, Sucursal sucursal) {
+        if (!usuarioSucursalRepository.existsByUsuario_IdAndSucursal_Id(usuario.getId(), sucursal.getId())) {
+            usuarioSucursalRepository.save(new UsuarioSucursal(usuario, sucursal));
+        }
     }
 
 }

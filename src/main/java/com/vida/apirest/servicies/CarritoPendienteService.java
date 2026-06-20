@@ -12,6 +12,7 @@ import com.vida.apirest.model.venta.CarritoPendiente;
 import com.vida.apirest.model.venta.CarritoPendienteDetalle;
 import com.vida.apirest.model.venta.Venta;
 import com.vida.apirest.repositories.*;
+import com.vida.apirest.security.SucursalScopeService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -35,10 +36,12 @@ public class CarritoPendienteService {
     private final VentaService ventaService;
     private final PendienteDetalleResolver pendienteDetalleResolver;
     private final StockReservaService stockReservaService;
+    private final SucursalScopeService sucursalScopeService;
 
     @Transactional
     public CarritoPendienteResponse crear(CarritoPendienteCreateRequest request) {
         validarRequestBase(request);
+        sucursalScopeService.assertCanUse(request.getSucursalId());
 
         Cliente cliente = clienteRepository.findByDni(request.getClienteDni())
                 .orElseThrow(() -> new RuntimeException("Cliente no encontrado con DNI: " + request.getClienteDni()));
@@ -82,6 +85,7 @@ public class CarritoPendienteService {
 
     @Transactional(readOnly = true)
     public List<CarritoPendienteResponse> listar(Long sucursalId, String estado) {
+        Long scopedSucursalId = sucursalScopeService.enforceFilter(sucursalId);
         List<CarritoPendiente.EstadoCarrito> estados;
         if (estado == null || estado.isBlank() || "PENDIENTES".equalsIgnoreCase(estado)) {
             estados = List.of(CarritoPendiente.EstadoCarrito.PENDIENTE);
@@ -92,7 +96,7 @@ public class CarritoPendienteService {
                 throw new RuntimeException("Estado inválido: " + estado);
             }
         }
-        return carritoRepository.findAllWithDetalles(sucursalId, estados).stream()
+        return carritoRepository.findAllWithDetalles(scopedSucursalId, estados).stream()
                 .map(this::mapResponse)
                 .collect(Collectors.toList());
     }
@@ -215,8 +219,10 @@ public class CarritoPendienteService {
     }
 
     private CarritoPendiente buscarCarrito(Long id) {
-        return carritoRepository.findByIdWithDetalles(id)
+        CarritoPendiente carrito = carritoRepository.findByIdWithDetalles(id)
                 .orElseThrow(() -> new RuntimeException("Carrito pendiente no encontrado"));
+        sucursalScopeService.assertCanAccess(carrito.getSucursal().getId());
+        return carrito;
     }
 
     private void validarRequestBase(CarritoPendienteCreateRequest request) {

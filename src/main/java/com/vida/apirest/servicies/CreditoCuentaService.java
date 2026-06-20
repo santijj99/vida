@@ -20,6 +20,7 @@ import com.vida.apirest.repositories.DashboardQueryRepository;
 import com.vida.apirest.repositories.FinanzasCuentaFinancieraRepository;
 import com.vida.apirest.repositories.MovimientoFinancieroRepository;
 import com.vida.apirest.repositories.PagoCuotaRepository;
+import com.vida.apirest.security.SucursalScopeService;
 import com.vida.apirest.utils.PaginationUtils;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -47,11 +48,13 @@ public class CreditoCuentaService {
     private final PagoCuotaRepository pagoCuotaRepository;
     private final DashboardQueryRepository dashboardQueryRepository;
     private final CajaMovimientoService cajaMovimientoService;
+    private final SucursalScopeService sucursalScopeService;
 
     @Transactional(readOnly = true)
     public List<CuentaCreditoListResponse> listarCuentas(Long sucursalId) {
-        List<Cuenta> cuentas = sucursalId != null
-                ? creditoCuentaRepository.findActivasBySucursalWithCliente(sucursalId)
+        Long scopedSucursalId = sucursalScopeService.enforceFilter(sucursalId);
+        List<Cuenta> cuentas = scopedSucursalId != null
+                ? creditoCuentaRepository.findActivasBySucursalWithCliente(scopedSucursalId)
                 : creditoCuentaRepository.findAllActivasWithCliente();
         Map<Long, CreditoResumenPorCliente> resumenMap = loadResumenMap(
                 cuentas.stream().map(x -> x.getCliente().getId()).distinct().toList());
@@ -69,13 +72,14 @@ public class CreditoCuentaService {
         PaginationUtils.PageParams params = PaginationUtils.normalize(page, size);
         String query = PaginationUtils.normalizeQuery(q);
         String estadoFilter = normalizeEstadoCreditoFilter(estadoCredito);
+        Long scopedSucursalId = sucursalScopeService.enforceFilter(sucursalId);
         Pageable pageable = PageRequest.of(
                 params.page(),
                 params.size(),
                 Sort.by(Sort.Direction.DESC, "saldoActual")
         );
         Page<Cuenta> cuentaPage = creditoCuentaRepository.searchPage(
-                sucursalId, query, estadoFilter, pageable);
+                scopedSucursalId, query, estadoFilter, pageable);
         List<Long> clienteIds = cuentaPage.getContent().stream()
                 .map(c -> c.getCliente().getId()).distinct().toList();
         Map<Long, CreditoResumenPorCliente> resumenMap = loadResumenMap(clienteIds);
@@ -155,6 +159,7 @@ public class CreditoCuentaService {
     public ClienteCreditosResponse obtenerCreditosPorCuenta(Long cuentaId) {
         Cuenta cuenta = creditoCuentaRepository.findByIdWithCliente(cuentaId)
                 .orElseThrow(() -> new RuntimeException("Cuenta de crédito no encontrada"));
+        sucursalScopeService.assertCanAccess(cuenta.getSucursal().getId());
         return construirClienteCreditos(cuenta);
     }
 
@@ -162,6 +167,7 @@ public class CreditoCuentaService {
     public ClienteCreditosResponse obtenerCreditosPorCliente(Long clienteId) {
         Cuenta cuenta = creditoCuentaRepository.findActivaByClienteId(clienteId)
                 .orElseThrow(() -> new RuntimeException("Cuenta de crédito no encontrada para el cliente"));
+        sucursalScopeService.assertCanAccess(cuenta.getSucursal().getId());
         return construirClienteCreditos(cuenta);
     }
 
@@ -169,6 +175,7 @@ public class CreditoCuentaService {
     public PagoCuotasResponse pagarCuotas(PagoCuotasRequest request) {
         validarSolicitudPagoCuotas(request);
         List<Cuota> cuotas = cargarCuotasValidadas(request.getCuotaIds());
+        sucursalScopeService.assertCanAccess(cuotas.get(0).getCredito().getSucursal().getId());
         BigDecimal totalCuotas = calcularTotalPendiente(cuotas);
 
         if (request.getMontoEntregado().compareTo(totalCuotas) < 0) {
