@@ -20,34 +20,52 @@ public class ArticuloTablaQueryRepository {
     private static final int MAX_PAGE_SIZE = 100;
     private static final int DEFAULT_PAGE_SIZE = 15;
 
-    private static final String LATERAL_PRECIO = """
-            LEFT JOIN LATERAL (
-                SELECT hp2.precio_nuevo
-                FROM historial_precio hp2
-                WHERE hp2.variante_articulo_id = v.id
-                ORDER BY hp2.fecha DESC
-                LIMIT 1
-            ) hp ON TRUE
+    /** Precio vigente por variante (1 fila por variante, usa ix_hist_precio_variante_fecha). */
+    private static final String JOIN_PRECIO_ACTUAL = """
+            LEFT JOIN (
+                SELECT DISTINCT ON (hp.variante_articulo_id)
+                    hp.variante_articulo_id,
+                    hp.precio_nuevo
+                FROM historial_precio hp
+                ORDER BY hp.variante_articulo_id, hp.fecha DESC
+            ) hp ON hp.variante_articulo_id = v.id
             """;
 
-    private static final String LATERAL_SUBCATEGORIA = """
-            LEFT JOIN LATERAL (
-                SELECT t.nombre
+    /** Primera subcategoría por artículo (misma lógica que ORDER BY t.id LIMIT 1). */
+    private static final String JOIN_SUBCATEGORIA = """
+            LEFT JOIN (
+                SELECT DISTINCT ON (ta.articulo_id)
+                    ta.articulo_id,
+                    t.nombre
                 FROM taxon_articulo ta
                 JOIN taxon t ON t.id = ta.taxon_id
-                WHERE ta.articulo_id = a.id
-                ORDER BY t.id
-                LIMIT 1
-            ) sub ON TRUE
+                ORDER BY ta.articulo_id, t.id
+            ) sub ON sub.articulo_id = a.id
             """;
 
-    private static final String LATERAL_STOCK_TOTAL = """
-            LEFT JOIN LATERAL (
-                SELECT COALESCE(SUM(s.cantidad_disponible), 0) AS cantidad
+    /** Stock total agregado por variante (evita LATERAL por fila). */
+    private static final String JOIN_STOCK_TOTAL = """
+            LEFT JOIN (
+                SELECT s.articulo_id, s.variante_id,
+                       COALESCE(SUM(s.cantidad_disponible), 0) AS cantidad
                 FROM stock s
-                WHERE s.articulo_id = a.id
-                  AND s.variante_id = v.id
-            ) stock_tot ON TRUE
+                WHERE s.variante_id IS NOT NULL
+                GROUP BY s.articulo_id, s.variante_id
+            ) stock_tot ON stock_tot.articulo_id = a.id AND stock_tot.variante_id = v.id
+            """;
+
+    private static final String JOIN_VENTA_BUSQUEDA = """
+            LEFT JOIN marca m ON m.id = a.marca_id
+            LEFT JOIN talle tal ON tal.id = v.talle_id
+            LEFT JOIN color col ON col.id = v.color_id
+            """;
+
+    private static final String JOIN_TABLA_DIMENSIONES = """
+            LEFT JOIN marca m ON m.id = a.marca_id
+            LEFT JOIN categoria cat ON cat.id = a.categoria_id
+            LEFT JOIN genero g ON g.id = a.genero_id
+            LEFT JOIN talle tal ON tal.id = v.talle_id
+            LEFT JOIN color col ON col.id = v.color_id
             """;
 
     @PersistenceContext
@@ -84,7 +102,7 @@ public class ArticuloTablaQueryRepository {
                 ? "COALESCE(s_dep.cantidad_disponible, 0)"
                 : "stock_tot.cantidad";
 
-        String stockLateral = depositoId != null ? "" : LATERAL_STOCK_TOTAL;
+        String stockAggregateJoin = depositoId != null ? "" : JOIN_STOCK_TOTAL;
 
         String sql = """
                 SELECT
@@ -108,19 +126,16 @@ public class ArticuloTablaQueryRepository {
                 INNER JOIN articulo a ON a.id = v.articulo_id
                 """
                 + stockJoin
+                + JOIN_TABLA_DIMENSIONES
                 + """
-                LEFT JOIN marca m ON m.id = a.marca_id
-                LEFT JOIN categoria cat ON cat.id = a.categoria_id
-                LEFT JOIN genero g ON g.id = a.genero_id
-                LEFT JOIN talle tal ON tal.id = v.talle_id
-                LEFT JOIN color col ON col.id = v.color_id
                 LEFT JOIN lista_precio lp ON lp.id = v.lista_precio_id
                 """
-                + LATERAL_PRECIO
-                + LATERAL_SUBCATEGORIA
-                + stockLateral
+                + JOIN_PRECIO_ACTUAL
+                + JOIN_SUBCATEGORIA
+                + stockAggregateJoin
                 + """
-                WHERE 1 = 1
+                WHERE v.estado != 'INACTIVO'
+                  AND a.estado != 'ARCHIVADO'
                 """
                 + filters.whereClause()
                 + """
@@ -135,8 +150,7 @@ public class ArticuloTablaQueryRepository {
 
         @SuppressWarnings("unchecked")
         List<Object[]> rows = query.getResultList();
-        List<ArticuloTablaRowResponse> content = mapTablaRows(rows);
-        return PageResponse.of(content, safePage, safeSize, total);
+        return PageResponse.of(mapTablaRows(rows), safePage, safeSize, total);
     }
 
     public PageResponse<ArticuloParaVentaResponse> findParaVentaPage(
@@ -149,7 +163,7 @@ public class ArticuloTablaQueryRepository {
         int safePage = Math.max(page, 0);
         FilterSql filters = buildVentaFilters(sucursalId, q);
 
-        long total = countVenta(filters);
+        long total = countVenta(filters, tieneBusqueda(q));
         if (total == 0) {
             return PageResponse.of(List.of(), safePage, safeSize, 0);
         }
@@ -169,16 +183,18 @@ public class ArticuloTablaQueryRepository {
                 FROM stock s
                 INNER JOIN variante_articulo v ON v.id = s.variante_id
                 INNER JOIN articulo a ON a.id = s.articulo_id
-                LEFT JOIN marca m ON m.id = a.marca_id
-                LEFT JOIN talle tal ON tal.id = v.talle_id
-                LEFT JOIN color col ON col.id = v.color_id
+                """
+                + JOIN_VENTA_BUSQUEDA
+                + """
                 LEFT JOIN lista_precio lp ON lp.id = v.lista_precio_id
                 """
-                + LATERAL_PRECIO
+                + JOIN_PRECIO_ACTUAL
                 + """
                 WHERE s.sucursal_id = :sucursalId
                   AND s.variante_id IS NOT NULL
                   AND s.cantidad_disponible > 0
+                  AND v.estado != 'INACTIVO'
+                  AND a.estado != 'ARCHIVADO'
                 """
                 + filters.whereClause()
                 + """
@@ -194,13 +210,10 @@ public class ArticuloTablaQueryRepository {
 
         @SuppressWarnings("unchecked")
         List<Object[]> rows = query.getResultList();
-        List<ArticuloParaVentaResponse> content = mapVentaRows(rows);
-        return PageResponse.of(content, safePage, safeSize, total);
+        return PageResponse.of(mapVentaRows(rows), safePage, safeSize, total);
     }
 
     private long countTabla(FilterSql filters, Long depositoId) {
-        boolean needsDimensionJoins = necesitaJoinsDimension(filters);
-
         String stockJoin = depositoId != null
                 ? """
                 INNER JOIN stock s_dep ON s_dep.deposito_id = :depositoId
@@ -209,61 +222,72 @@ public class ArticuloTablaQueryRepository {
                 """
                 : "";
 
-        StringBuilder joins = new StringBuilder();
-        joins.append("""
+        String sql = """
+                SELECT COUNT(*)
                 FROM variante_articulo v
                 INNER JOIN articulo a ON a.id = v.articulo_id
-                """);
-        joins.append(stockJoin);
+                """
+                + stockJoin
+                + buildTablaDimensionJoins(filters)
+                + """
+                WHERE v.estado != 'INACTIVO'
+                  AND a.estado != 'ARCHIVADO'
+                """
+                + filters.whereClause();
 
-        if (needsDimensionJoins) {
-            joins.append("""
-                LEFT JOIN marca m ON m.id = a.marca_id
-                LEFT JOIN categoria cat ON cat.id = a.categoria_id
-                LEFT JOIN genero g ON g.id = a.genero_id
-                LEFT JOIN talle tal ON tal.id = v.talle_id
-                LEFT JOIN color col ON col.id = v.color_id
-                """);
-        }
-
-        String sql = "SELECT COUNT(*) " + joins + " WHERE 1 = 1 " + filters.whereClause();
         Query query = entityManager.createNativeQuery(sql);
         filters.applyParams(query);
         return ((Number) query.getSingleResult()).longValue();
     }
 
-    private long countVenta(FilterSql filters) {
+    private long countVenta(FilterSql filters, boolean conBusqueda) {
+        String busquedaJoins = conBusqueda ? JOIN_VENTA_BUSQUEDA : "";
+
         String sql = """
                 SELECT COUNT(*)
                 FROM stock s
                 INNER JOIN variante_articulo v ON v.id = s.variante_id
                 INNER JOIN articulo a ON a.id = s.articulo_id
-                LEFT JOIN marca m ON m.id = a.marca_id
-                LEFT JOIN talle tal ON tal.id = v.talle_id
-                LEFT JOIN color col ON col.id = v.color_id
+                """
+                + busquedaJoins
+                + """
                 LEFT JOIN lista_precio lp ON lp.id = v.lista_precio_id
                 """
-                + LATERAL_PRECIO
+                + JOIN_PRECIO_ACTUAL
                 + """
                 WHERE s.sucursal_id = :sucursalId
                   AND s.variante_id IS NOT NULL
                   AND s.cantidad_disponible > 0
+                  AND v.estado != 'INACTIVO'
+                  AND a.estado != 'ARCHIVADO'
                 """
                 + filters.whereClause()
                 + """
                 AND COALESCE(hp.precio_nuevo, lp.precio) > 0
                 """;
+
         Query query = entityManager.createNativeQuery(sql);
         filters.applyParams(query);
         return ((Number) query.getSingleResult()).longValue();
+    }
+
+    private static String buildTablaDimensionJoins(FilterSql filters) {
+        if (!necesitaJoinsDimension(filters)) {
+            return "";
+        }
+        return """
+                LEFT JOIN marca m ON m.id = a.marca_id
+                LEFT JOIN categoria cat ON cat.id = a.categoria_id
+                LEFT JOIN genero g ON g.id = a.genero_id
+                LEFT JOIN talle tal ON tal.id = v.talle_id
+                LEFT JOIN color col ON col.id = v.color_id
+                """;
     }
 
     private FilterSql buildTablaFilters(
             String categoria, String subCategoria, String genero, String marca, String q, Long depositoId) {
         StringBuilder where = new StringBuilder();
         Map<String, Object> params = new HashMap<>();
-        where.append(" AND a.estado != 'ARCHIVADO'");
-        where.append(" AND v.estado != 'INACTIVO'");
 
         if (depositoId != null) {
             params.put("depositoId", depositoId);
@@ -295,9 +319,6 @@ public class ArticuloTablaQueryRepository {
     private FilterSql buildVentaFilters(Long sucursalId, String q) {
         StringBuilder where = new StringBuilder();
         Map<String, Object> params = new HashMap<>();
-        where.append(" AND a.estado != 'ARCHIVADO'");
-        where.append(" AND v.estado != 'INACTIVO'");
-
         params.put("sucursalId", sucursalId);
         appendSearchFilter(where, params, q,
                 "a.codigo", "a.modelo", "m.nombre", "tal.numero", "col.nombre", "v.codigo_barras");
@@ -370,6 +391,10 @@ public class ArticuloTablaQueryRepository {
         }
         return filters.params().keySet().stream()
                 .anyMatch(k -> k.equals("q") || k.startsWith("q"));
+    }
+
+    private static boolean tieneBusqueda(String q) {
+        return q != null && !q.isBlank();
     }
 
     private static boolean contiene(String[] columns, String column) {

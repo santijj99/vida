@@ -54,8 +54,6 @@ import com.vida.apirest.repositories.TaxonArticuloRepository;
 import com.vida.apirest.repositories.TaxonRepository;
 import com.vida.apirest.repositories.VarianteArticuloRepository;
 
-import jakarta.persistence.criteria.Join;
-import jakarta.persistence.criteria.JoinType;
 import lombok.RequiredArgsConstructor;
 
 @Service
@@ -77,13 +75,6 @@ public class ArticuloService {
     private final SucursalRepository sucursalRepository;
     private final ArticuloTablaQueryRepository articuloTablaQueryRepository;
     private final PromocionService promocionService;
-
-    @Transactional(readOnly = true)
-    public List<ArticuloCompactResponse> findAllCompact() {
-        return articuloRepository.findAllWithDetalle().stream()
-                .map(this::toCompactResponse)
-                .collect(Collectors.toList());
-    }
 
     @Transactional(readOnly = true)
     public PageResponse<ArticuloTablaRowResponse> findTablaPage(
@@ -612,60 +603,8 @@ public class ArticuloService {
         return dto;
     }
 
-    public List<Articulo> searchArticulos(String codigo, String marca, String talleNumero, String color, String categoria, String modelo, String genero) {
-        Specification<Articulo> spec = (root, query, cb) -> {
-            List<jakarta.persistence.criteria.Predicate> predicates = new ArrayList<>();
-
-            // ¡NUEVO! Evitar devolver artículos archivados
-            predicates.add(cb.notEqual(root.get("estado"), Articulo.EstadoProducto.ARCHIVADO));
-
-            if (codigo != null && !codigo.isBlank()) {
-                predicates.add(cb.equal(cb.lower(root.get("codigo")), codigo.toLowerCase()));
-            }
-
-            if (marca != null && !marca.isBlank()) {
-                Join<Object, Object> marcaJoin = root.join("marca", JoinType.LEFT);
-                predicates.add(cb.like(cb.lower(marcaJoin.get("nombre")), "%" + marca.toLowerCase() + "%"));
-            }
-
-            if (categoria != null && !categoria.isBlank()) {
-                Join<Object, Object> catJoin = root.join("categoria", JoinType.LEFT);
-                predicates.add(cb.like(cb.lower(catJoin.get("nombre")), "%" + categoria.toLowerCase() + "%"));
-            }
-
-            if (modelo != null && !modelo.isBlank()) {
-                predicates.add(cb.like(cb.lower(root.get("modelo")), "%" + modelo.toLowerCase() + "%"));
-            }
-
-            if (genero != null && !genero.isBlank()) {
-                Join<Object, Object> genJoin = root.join("genero", JoinType.LEFT);
-                predicates.add(cb.like(cb.lower(genJoin.get("nombre")), "%" + genero.toLowerCase() + "%"));
-            }
-
-            if ((talleNumero != null && !talleNumero.isBlank()) || (color != null && !color.isBlank())) {
-                Join<Object, Object> variantesJoin = root.join("variantes", JoinType.LEFT);
-                
-                // ¡NUEVO! Evitar buscar en variantes inactivas
-                predicates.add(cb.notEqual(variantesJoin.get("estado"), VarianteArticulo.EstadoVariante.INACTIVO));
-
-                if (talleNumero != null && !talleNumero.isBlank()) {
-                    Join<Object, Object> talleJoin = variantesJoin.join("talle", JoinType.LEFT);
-                    predicates.add(cb.equal(talleJoin.get("numero"), talleNumero));
-                }
-                if (color != null && !color.isBlank()) {
-                    Join<Object, Object> colorJoin = variantesJoin.join("color", JoinType.LEFT);
-                    predicates.add(cb.like(cb.lower(colorJoin.get("nombre")), "%" + color.toLowerCase() + "%"));
-                }
-            }
-
-            return cb.and(predicates.toArray(new jakarta.persistence.criteria.Predicate[0]));
-        };
-
-        return articuloRepository.findAll(spec);
-    }
-
     @Transactional(readOnly = true)
-    public Articulo getArticuloById(Long id) {
+    Articulo getArticuloById(Long id) {
         return articuloRepository.findById(id).orElseThrow(() -> new RuntimeException("Artículo no encontrado con id: " + id));
     }
 
@@ -674,16 +613,6 @@ public class ArticuloService {
         Articulo articulo = articuloRepository.findByIdWithDetalle(id)
                 .orElseThrow(() -> new RuntimeException("Artículo no encontrado con id: " + id));
         return toCompactResponse(articulo);
-    }
-
-    public Articulo getByCodigo(String codigo) {
-        return articuloRepository.findByCodigo(codigo)
-                .orElseThrow(() -> new RuntimeException("Artículo no encontrado con código: " + codigo));
-    }
-
-    @Transactional(readOnly = true)
-    public ArticuloCompactResponse getByCodigoCompact(String codigo) {
-        return toCompactResponse(getByCodigo(codigo));
     }
 
     public ArticuloCompactResponse toCompactResponse(Articulo articulo) {
@@ -741,18 +670,6 @@ public class ArticuloService {
                 .map(Stock::getCantidadDisponible)
                 .filter(Objects::nonNull)
                 .reduce(0, Integer::sum);
-    }
-
-    public List<Articulo> getByMarca(String marca) {
-        return articuloRepository.findAllByMarcaNombreContainingIgnoreCase(marca);
-    }
-
-    public List<Articulo> getByTalle(String talleNumero) {
-        return articuloRepository.findAllByTalleNumero(talleNumero);
-    }
-
-    public List<Articulo> getByColor(String color) {
-        return articuloRepository.findAllByColorNombreContaining(color);
     }
 
     @Transactional(readOnly = true)

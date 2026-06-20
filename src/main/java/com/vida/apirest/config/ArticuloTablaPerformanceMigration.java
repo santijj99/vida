@@ -44,6 +44,15 @@ public class ArticuloTablaPerformanceMigration implements ApplicationRunner {
             CREATE INDEX IF NOT EXISTS ix_var_estado
                 ON variante_articulo (estado)
             """,
+            """
+            CREATE INDEX IF NOT EXISTS ix_stock_sucursal_venta
+                ON stock (sucursal_id, variante_id)
+                WHERE cantidad_disponible > 0 AND variante_id IS NOT NULL
+            """,
+            """
+            CREATE INDEX IF NOT EXISTS ix_stock_deposito_variante
+                ON stock (deposito_id, variante_id, articulo_id)
+            """,
     };
 
     /** Solo PostgreSQL: no se pueden modelar con JPA. */
