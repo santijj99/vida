@@ -3,6 +3,7 @@ package com.vida.apirest.repositories;
 import com.vida.apirest.dto.ariticulo.ArticuloParaVentaResponse;
 import com.vida.apirest.dto.ariticulo.ArticuloTablaRowResponse;
 import com.vida.apirest.dto.common.PageResponse;
+import com.vida.apirest.utils.PaginationUtils;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import jakarta.persistence.Query;
@@ -16,9 +17,6 @@ import java.util.Map;
 
 @Repository
 public class ArticuloTablaQueryRepository {
-
-    private static final int MAX_PAGE_SIZE = 100;
-    private static final int DEFAULT_PAGE_SIZE = 15;
 
     /** Precio vigente por variante (1 fila por variante, usa ix_hist_precio_variante_fecha). */
     private static final String JOIN_PRECIO_ACTUAL = """
@@ -81,8 +79,8 @@ public class ArticuloTablaQueryRepository {
             int page,
             int size
     ) {
-        int safeSize = normalizeSize(size);
-        int safePage = Math.max(page, 0);
+        int safeSize = PaginationUtils.normalizeSize(size);
+        int safePage = PaginationUtils.normalizePage(page);
         FilterSql filters = buildTablaFilters(categoria, subCategoria, genero, marca, q, depositoId);
 
         long total = countTabla(filters, depositoId);
@@ -159,8 +157,8 @@ public class ArticuloTablaQueryRepository {
             int page,
             int size
     ) {
-        int safeSize = normalizeSize(size);
-        int safePage = Math.max(page, 0);
+        int safeSize = PaginationUtils.normalizeSize(size);
+        int safePage = PaginationUtils.normalizePage(page);
         FilterSql filters = buildVentaFilters(sucursalId, q);
 
         long total = countVenta(filters, tieneBusqueda(q));
@@ -464,13 +462,6 @@ public class ArticuloTablaQueryRepository {
             ));
         }
         return result;
-    }
-
-    private int normalizeSize(int size) {
-        if (size <= 0) {
-            return DEFAULT_PAGE_SIZE;
-        }
-        return Math.min(size, MAX_PAGE_SIZE);
     }
 
     private Long toLong(Object v) {

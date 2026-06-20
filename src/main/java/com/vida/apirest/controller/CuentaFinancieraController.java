@@ -3,31 +3,26 @@ package com.vida.apirest.controller;
 import com.vida.apirest.dto.finanzas.CreateCuentaFinancieraRequest;
 import com.vida.apirest.dto.finanzas.CuentaFinancieraResponse;
 import com.vida.apirest.servicies.CuentaFinancieraService;
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
-import java.util.Map;
 
 @RestController
 @RequestMapping("/api/cuenta-financiera")
+@RequiredArgsConstructor
+@PreAuthorize("hasAuthority('VER_ORGANIZACION')")
 public class CuentaFinancieraController {
 
-    @Autowired
-    private CuentaFinancieraService cuentaFinancieraService;
+    private final CuentaFinancieraService cuentaFinancieraService;
 
     @PostMapping
-    public ResponseEntity<?> create(@RequestBody CreateCuentaFinancieraRequest request) {
-        try {
-            CuentaFinancieraResponse response = cuentaFinancieraService.createCuentaFinanciera(request);
-            return ResponseEntity.status(HttpStatus.CREATED).body(response);
-        } catch (RuntimeException e) {
-            String errorMessage = e.getMessage() != null ? e.getMessage() : "Error interno del servidor";
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                    .body(Map.of("message", errorMessage, "statusCode", HttpStatus.BAD_REQUEST.value()));
-        }
+    public ResponseEntity<CuentaFinancieraResponse> create(@RequestBody CreateCuentaFinancieraRequest request) {
+        CuentaFinancieraResponse response = cuentaFinancieraService.createCuentaFinanciera(request);
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
     @GetMapping
@@ -36,15 +31,8 @@ public class CuentaFinancieraController {
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<?> findById(@PathVariable Long id) {
-        try {
-            CuentaFinancieraResponse response = cuentaFinancieraService.findById(id);
-            return ResponseEntity.ok(response);
-        } catch (RuntimeException e) {
-            String errorMessage = e.getMessage() != null ? e.getMessage() : "Error interno del servidor";
-            return ResponseEntity.status(HttpStatus.NOT_FOUND)
-                    .body(Map.of("message", errorMessage, "statusCode", HttpStatus.NOT_FOUND.value()));
-        }
+    public ResponseEntity<CuentaFinancieraResponse> findById(@PathVariable Long id) {
+        return ResponseEntity.ok(cuentaFinancieraService.findById(id));
     }
 
     @GetMapping("/tipo/{tipo}")

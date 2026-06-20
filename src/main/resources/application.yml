@@ -6,12 +6,21 @@ server:
     mime-types: application/json,application/xml,text/html,text/plain
     min-response-size: 1024
 
+app:
+  jwt:
+    secret: ${JWT_SECRET:dev-only-change-me-before-production-min-32-chars}
+    expiration-hours: ${JWT_EXPIRATION_HOURS:24}
+  security:
+    allow-public-register: true
+
 spring:
   application:
     name: apirest
 
   datasource:
-    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://ep-noisy-wildflower-acnenufm-pooler.sa-east-1.aws.neon.tech/neondb?user=neondb_owner&password=npg_KszX8HyOTk4B&sslmode=require&channelBinding=require}
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/db_punto}
+    username: ${SPRING_DATASOURCE_USERNAME:postgres}
+    password: ${SPRING_DATASOURCE_PASSWORD:1234}
     driver-class-name: org.postgresql.Driver
 
   jpa:

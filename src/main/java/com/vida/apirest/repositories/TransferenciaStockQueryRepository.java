@@ -2,6 +2,7 @@ package com.vida.apirest.repositories;
 
 import com.vida.apirest.dto.almacen.StockDepositoResponse;
 import com.vida.apirest.dto.common.PageResponse;
+import com.vida.apirest.utils.PaginationUtils;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import jakarta.persistence.Query;
@@ -14,9 +15,6 @@ import java.util.List;
 @Repository
 public class TransferenciaStockQueryRepository {
 
-    private static final int DEFAULT_PAGE_SIZE = 15;
-    private static final int MAX_PAGE_SIZE = 100;
-
     @PersistenceContext
     private EntityManager entityManager;
 
@@ -26,8 +24,8 @@ public class TransferenciaStockQueryRepository {
             int page,
             int size
     ) {
-        int safeSize = normalizeSize(size);
-        int safePage = Math.max(page, 0);
+        int safeSize = PaginationUtils.normalizeSize(size);
+        int safePage = PaginationUtils.normalizePage(page);
         String filtro = buildFiltro(q);
 
         long total = countStock(depositoId, q);
@@ -131,11 +129,6 @@ public class TransferenciaStockQueryRepository {
             ));
         }
         return result;
-    }
-
-    private int normalizeSize(int size) {
-        if (size <= 0) return DEFAULT_PAGE_SIZE;
-        return Math.min(size, MAX_PAGE_SIZE);
     }
 
     private Long toLong(Object v) {

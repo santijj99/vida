@@ -13,6 +13,7 @@ import com.vida.apirest.model.persona.Proveedor;
 import com.vida.apirest.repositories.OrdenDeCompraRepository;
 import com.vida.apirest.repositories.ProveedorRepository;
 import com.vida.apirest.repositories.SucursalRepository;
+import com.vida.apirest.utils.PaginationUtils;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -40,10 +41,11 @@ public class OrdenDeCompraService {
 
     @Transactional(readOnly = true)
     public PageResponse<OrdenCompraResponse> findPage(String q, String estado, int page, int size) {
+        PaginationUtils.PageParams params = PaginationUtils.normalize(page, size);
         Page<OrdenDeCompra> result = ordenDeCompraRepository.searchPage(
                 blankToNull(q),
                 blankToNull(estado),
-                PageRequest.of(page, size));
+                PageRequest.of(params.page(), params.size()));
         return PageResponse.from(result.map(this::toResponseResumido));
     }
 

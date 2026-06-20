@@ -20,8 +20,8 @@ import com.vida.apirest.repositories.DashboardQueryRepository;
 import com.vida.apirest.repositories.FinanzasCuentaFinancieraRepository;
 import com.vida.apirest.repositories.MovimientoFinancieroRepository;
 import com.vida.apirest.repositories.PagoCuotaRepository;
+import com.vida.apirest.utils.PaginationUtils;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -37,11 +37,7 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
-@Slf4j
 public class CreditoCuentaService {
-
-    private static final int DEFAULT_PAGE_SIZE = 15;
-    private static final int MAX_PAGE_SIZE = 100;
 
     private final CuentaRepository creditoCuentaRepository;
     private final CreditoRepository creditoRepository;
@@ -50,6 +46,7 @@ public class CreditoCuentaService {
     private final MovimientoFinancieroRepository movimientoFinancieroRepository;
     private final PagoCuotaRepository pagoCuotaRepository;
     private final DashboardQueryRepository dashboardQueryRepository;
+    private final CajaMovimientoService cajaMovimientoService;
 
     @Transactional(readOnly = true)
     public List<CuentaCreditoListResponse> listarCuentas(Long sucursalId) {
@@ -69,13 +66,12 @@ public class CreditoCuentaService {
     public PageResponse<CuentaCreditoListResponse> listarCuentasPage(
             Long sucursalId, String q, String estadoCredito, int page, int size
     ) {
-        int safePage = Math.max(0, page);
-        int safeSize = Math.max(1, Math.min(size <= 0 ? DEFAULT_PAGE_SIZE : size, MAX_PAGE_SIZE));
-        String query = q == null ? "" : q.trim();
+        PaginationUtils.PageParams params = PaginationUtils.normalize(page, size);
+        String query = PaginationUtils.normalizeQuery(q);
         String estadoFilter = normalizeEstadoCreditoFilter(estadoCredito);
         Pageable pageable = PageRequest.of(
-                safePage,
-                safeSize,
+                params.page(),
+                params.size(),
                 Sort.by(Sort.Direction.DESC, "saldoActual")
         );
         Page<Cuenta> cuentaPage = creditoCuentaRepository.searchPage(
@@ -171,99 +167,129 @@ public class CreditoCuentaService {
 
     @Transactional
     public PagoCuotasResponse pagarCuotas(PagoCuotasRequest request) {
+        validarSolicitudPagoCuotas(request);
+        List<Cuota> cuotas = cargarCuotasValidadas(request.getCuotaIds());
+        BigDecimal totalCuotas = calcularTotalPendiente(cuotas);
+
+        if (request.getMontoEntregado().compareTo(totalCuotas) < 0) {
+            throw new RuntimeException("El monto entregado es menor al total de las cuotas seleccionadas");
+        }
+
+        Long clienteId = cuotas.get(0).getCredito().getCliente().getId();
+        Map<Long, BigDecimal> pagadoPorCreditoId = aplicarPagoACuotas(cuotas, request);
+        actualizarSaldosCreditos(pagadoPorCreditoId);
+        descontarSaldoCuentaCliente(clienteId, cuotas.get(0).getCredito().getSucursal().getId(), totalCuotas);
+
+        return construirRespuestaPagoCuotas(request, totalCuotas, cuotas);
+    }
+
+    private void validarSolicitudPagoCuotas(PagoCuotasRequest request) {
         if (request.getCuotaIds() == null || request.getCuotaIds().isEmpty()) {
             throw new RuntimeException("Seleccioná al menos una cuota");
         }
         if (request.getMontoEntregado() == null || request.getMontoEntregado().compareTo(BigDecimal.ZERO) <= 0) {
             throw new RuntimeException("El monto entregado debe ser mayor a cero");
         }
+    }
 
-        List<Cuota> cuotas = cuotaRepository.findByIdInWithCredito(request.getCuotaIds());
-        if (cuotas.size() != request.getCuotaIds().size()) {
+    private List<Cuota> cargarCuotasValidadas(List<Long> cuotaIds) {
+        List<Cuota> cuotas = cuotaRepository.findByIdInWithCredito(cuotaIds);
+        if (cuotas.size() != cuotaIds.size()) {
             throw new RuntimeException("Una o más cuotas no existen");
         }
 
         Long clienteId = cuotas.get(0).getCredito().getCliente().getId();
-        for (Cuota q : cuotas) {
-            if (!q.getCredito().getCliente().getId().equals(clienteId)) {
+        for (Cuota cuota : cuotas) {
+            if (!cuota.getCredito().getCliente().getId().equals(clienteId)) {
                 throw new RuntimeException("Todas las cuotas deben pertenecer al mismo cliente");
             }
-            if (q.getEstado() == Cuota.EstadoCuota.PAGADA
-                    || q.getEstado() == Cuota.EstadoCuota.CANCELADA
-                    || q.getEstado() == Cuota.EstadoCuota.ELIMINADA) {
-                throw new RuntimeException("La cuota " + q.getNumero() + " ya está cerrada");
+            if (cuota.getEstado() == Cuota.EstadoCuota.PAGADA
+                    || cuota.getEstado() == Cuota.EstadoCuota.CANCELADA
+                    || cuota.getEstado() == Cuota.EstadoCuota.ELIMINADA) {
+                throw new RuntimeException("La cuota " + cuota.getNumero() + " ya está cerrada");
             }
-            BigDecimal saldo = q.getSaldo() != null ? q.getSaldo() : q.getMonto();
+            BigDecimal saldo = cuota.getSaldo() != null ? cuota.getSaldo() : cuota.getMonto();
             if (saldo.compareTo(BigDecimal.ZERO) <= 0) {
-                throw new RuntimeException("La cuota " + q.getNumero() + " no tiene saldo pendiente");
+                throw new RuntimeException("La cuota " + cuota.getNumero() + " no tiene saldo pendiente");
             }
         }
+        return cuotas;
+    }
 
-        BigDecimal totalCuotas = cuotas.stream()
+    private BigDecimal calcularTotalPendiente(List<Cuota> cuotas) {
+        return cuotas.stream()
                 .map(q -> q.getSaldo() != null ? q.getSaldo() : q.getMonto())
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
 
-        if (request.getMontoEntregado().compareTo(totalCuotas) < 0) {
-            throw new RuntimeException("El monto entregado es menor al total de las cuotas seleccionadas");
-        }
-
+    private Map<Long, BigDecimal> aplicarPagoACuotas(List<Cuota> cuotas, PagoCuotasRequest request) {
         Map<Long, BigDecimal> pagadoPorCreditoId = new HashMap<>();
-        List<CuotaCreditoResponse> actualizadas = new ArrayList<>();
-
-        for (Cuota q : cuotas) {
-            BigDecimal saldoPendiente = q.getSaldo() != null ? q.getSaldo() : q.getMonto();
-            q.setSaldo(BigDecimal.ZERO);
-            q.setEstado(Cuota.EstadoCuota.PAGADA);
-            cuotaRepository.save(q);
-            pagadoPorCreditoId.merge(q.getCredito().getId(), saldoPendiente, BigDecimal::add);
-            actualizadas.add(mapCuota(q, q));
-
-            PagoCuota pagoCuota = new PagoCuota();
-            pagoCuota.setCuota(q);
-            pagoCuota.setMonto(saldoPendiente);
-            pagoCuota.setMetodoPago(request.getMetodoPago() != null ? request.getMetodoPago() : "EFECTIVO");
-            pagoCuota.setEstado(PagoCuota.EstadoPagoCuota.ACTIVO);
-            if (request.getMetodoPago() != null && request.getMetodoPago().equalsIgnoreCase("EFECTIVO")) {
-                MovimientoFinanciero movimiento = registrarIngresoCaja(
-                        request.getCuentaFinancieraId(),
-                        saldoPendiente,
-                        "Cobro cuota " + q.getNumero() + " crédito " + q.getCredito().getNumero()
-                );
-                pagoCuota.setMovimientoFinanciero(movimiento);
-            }
-            pagoCuotaRepository.save(pagoCuota);
+        for (Cuota cuota : cuotas) {
+            BigDecimal saldoPendiente = cuota.getSaldo() != null ? cuota.getSaldo() : cuota.getMonto();
+            cuota.setSaldo(BigDecimal.ZERO);
+            cuota.setEstado(Cuota.EstadoCuota.PAGADA);
+            cuotaRepository.save(cuota);
+            pagadoPorCreditoId.merge(cuota.getCredito().getId(), saldoPendiente, BigDecimal::add);
+            registrarPagoCuota(cuota, saldoPendiente, request);
         }
+        return pagadoPorCreditoId;
+    }
 
-        BigDecimal montoAplicado = totalCuotas;
+    private void registrarPagoCuota(Cuota cuota, BigDecimal monto, PagoCuotasRequest request) {
+        PagoCuota pagoCuota = new PagoCuota();
+        pagoCuota.setCuota(cuota);
+        pagoCuota.setMonto(monto);
+        pagoCuota.setMetodoPago(request.getMetodoPago() != null ? request.getMetodoPago() : "EFECTIVO");
+        pagoCuota.setEstado(PagoCuota.EstadoPagoCuota.ACTIVO);
+        if (request.getMetodoPago() != null && request.getMetodoPago().equalsIgnoreCase("EFECTIVO")) {
+            MovimientoFinanciero movimiento = registrarIngresoCaja(
+                    request.getCuentaFinancieraId(),
+                    monto,
+                    "Cobro cuota " + cuota.getNumero() + " crédito " + cuota.getCredito().getNumero()
+            );
+            pagoCuota.setMovimientoFinanciero(movimiento);
+        }
+        pagoCuotaRepository.save(pagoCuota);
+    }
+
+    private void actualizarSaldosCreditos(Map<Long, BigDecimal> pagadoPorCreditoId) {
         for (Map.Entry<Long, BigDecimal> entry : pagadoPorCreditoId.entrySet()) {
             Credito credito = creditoRepository.findById(entry.getKey())
                     .orElseThrow(() -> new RuntimeException("Crédito no encontrado"));
             List<Cuota> cuotasCredito = cuotaRepository.findByCreditoIdIn(List.of(credito.getId()));
-            BigDecimal pagado = entry.getValue();
             BigDecimal saldoCred = credito.getSaldo() != null ? credito.getSaldo() : BigDecimal.ZERO;
-            credito.setSaldo(saldoCred.subtract(pagado).max(BigDecimal.ZERO));
+            credito.setSaldo(saldoCred.subtract(entry.getValue()).max(BigDecimal.ZERO));
             actualizarEstadoCredito(credito, cuotasCredito);
             if (credito.getSaldo().compareTo(BigDecimal.ZERO) <= 0) {
                 credito.setSaldo(BigDecimal.ZERO);
             }
             creditoRepository.save(credito);
         }
+    }
 
+    private void descontarSaldoCuentaCliente(Long clienteId, Long sucursalId, BigDecimal montoAplicado) {
         Cuenta cuentaCredito = creditoCuentaRepository
-                .findByClienteIdAndSucursalIdAndActivoTrue(clienteId, cuotas.get(0).getCredito().getSucursal().getId())
+                .findByClienteIdAndSucursalIdAndActivoTrue(clienteId, sucursalId)
                 .orElse(null);
-        if (cuentaCredito != null) {
-            BigDecimal saldoCuenta = cuentaCredito.getSaldoActual() != null ? cuentaCredito.getSaldoActual() : BigDecimal.ZERO;
-            cuentaCredito.setSaldoActual(saldoCuenta.subtract(montoAplicado).max(BigDecimal.ZERO));
-            creditoCuentaRepository.save(cuentaCredito);
+        if (cuentaCredito == null) {
+            return;
         }
+        BigDecimal saldoCuenta = cuentaCredito.getSaldoActual() != null ? cuentaCredito.getSaldoActual() : BigDecimal.ZERO;
+        cuentaCredito.setSaldoActual(saldoCuenta.subtract(montoAplicado).max(BigDecimal.ZERO));
+        creditoCuentaRepository.save(cuentaCredito);
+    }
 
+    private PagoCuotasResponse construirRespuestaPagoCuotas(
+            PagoCuotasRequest request,
+            BigDecimal totalCuotas,
+            List<Cuota> cuotas
+    ) {
         PagoCuotasResponse response = new PagoCuotasResponse();
         response.setTotalCuotas(totalCuotas);
         response.setMontoEntregado(request.getMontoEntregado());
-        response.setMontoAplicado(montoAplicado);
-        response.setCambio(request.getMontoEntregado().subtract(montoAplicado));
-        response.setCuotasActualizadas(actualizadas);
+        response.setMontoAplicado(totalCuotas);
+        response.setCambio(request.getMontoEntregado().subtract(totalCuotas));
+        response.setCuotasActualizadas(cuotas.stream().map(q -> mapCuota(q, q)).toList());
         return response;
     }
 
@@ -549,27 +575,41 @@ public class CreditoCuentaService {
 
     @Transactional(readOnly = true)
     public DashboardCreditosResumenResponse resumenParaDashboard() {
-        log.info("[Dashboard] Iniciando resumen de créditos (global)");
-        long t0 = System.currentTimeMillis();
-
         List<Cuenta> cuentas = creditoCuentaRepository.findAllActivasWithCliente();
-        log.info("[Dashboard] Cuentas activas cargadas: {}", cuentas.size());
-
         List<Long> clienteIds = cuentas.stream().map(c -> c.getCliente().getId()).distinct().toList();
         Set<Long> clientesVencidos = loadClientesConVencidos(clienteIds);
         Set<Long> clientesActivos = new HashSet<>(creditoRepository.findClienteIdsConCreditosActivos());
         Map<Long, CreditoResumenPorCliente> resumenMap = loadResumenMap(clienteIds);
 
-        BigDecimal saldoTotalCuentas = BigDecimal.ZERO;
+        DashboardAgregado agregado = agregarCuentasDashboard(cuentas, clientesVencidos, clientesActivos, resumenMap);
+        List<DashboardCuentaCreditoItemResponse> topCuentas = seleccionarTopCuentasPorSaldo(agregado.porCliente());
+
+        DashboardCreditosResumenResponse resumen = new DashboardCreditosResumenResponse();
+        resumen.setCuentasActivas(agregado.porCliente().size());
+        resumen.setCuentasAlDia(agregado.cuentasAlDia());
+        resumen.setCuentasConVencidos(agregado.cuentasConVencidos());
+        resumen.setSaldoTotalCuentas(agregado.saldoTotal());
+        resumen.setCuotasPorEstado(cargarCuotasPorEstadoOrdenadas());
+        resumen.setCuentas(topCuentas);
+        return resumen;
+    }
+
+    private DashboardAgregado agregarCuentasDashboard(
+            List<Cuenta> cuentas,
+            Set<Long> clientesVencidos,
+            Set<Long> clientesActivos,
+            Map<Long, CreditoResumenPorCliente> resumenMap
+    ) {
+        BigDecimal saldoTotal = BigDecimal.ZERO;
         long cuentasConVencidos = 0;
         long cuentasAlDia = 0;
         Set<Long> clientesContadosVencidos = new HashSet<>();
         Set<Long> clientesContadosAlDia = new HashSet<>();
-
         Map<Long, DashboardCuentaCreditoItemResponse> porCliente = new LinkedHashMap<>();
+
         for (Cuenta cuenta : cuentas) {
             BigDecimal saldo = cuenta.getSaldoActual() != null ? cuenta.getSaldoActual() : BigDecimal.ZERO;
-            saldoTotalCuentas = saldoTotalCuentas.add(saldo);
+            saldoTotal = saldoTotal.add(saldo);
             Long clienteId = cuenta.getCliente().getId();
             boolean vencidos = clientesVencidos.contains(clienteId);
             if (vencidos && clientesContadosVencidos.add(clienteId)) {
@@ -577,118 +617,77 @@ public class CreditoCuentaService {
             } else if (!vencidos && clientesActivos.contains(clienteId) && clientesContadosAlDia.add(clienteId)) {
                 cuentasAlDia++;
             }
+            incorporarCuentaEnAgregado(porCliente, cuenta, saldo, vencidos, resumenMap.get(clienteId));
+        }
+        return new DashboardAgregado(porCliente, saldoTotal, cuentasAlDia, cuentasConVencidos);
+    }
 
-            CreditoResumenPorCliente resumen = resumenMap.get(clienteId);
-            int cantCreditos = resumen != null && resumen.getCantidadCreditos() != null
-                    ? resumen.getCantidadCreditos().intValue() : 0;
+    private void incorporarCuentaEnAgregado(
+            Map<Long, DashboardCuentaCreditoItemResponse> porCliente,
+            Cuenta cuenta,
+            BigDecimal saldo,
+            boolean vencidos,
+            CreditoResumenPorCliente resumen
+    ) {
+        Long clienteId = cuenta.getCliente().getId();
+        int cantCreditos = resumen != null && resumen.getCantidadCreditos() != null
+                ? resumen.getCantidadCreditos().intValue() : 0;
 
-            Cliente cliente = cuenta.getCliente();
-            String nombreCliente = ((cliente.getNombre() != null ? cliente.getNombre() : "") + " "
-                    + (cliente.getApellido() != null ? cliente.getApellido() : "")).trim();
+        Cliente cliente = cuenta.getCliente();
+        String nombreCliente = ((cliente.getNombre() != null ? cliente.getNombre() : "") + " "
+                + (cliente.getApellido() != null ? cliente.getApellido() : "")).trim();
 
-            DashboardCuentaCreditoItemResponse existente = porCliente.get(clienteId);
-            if (existente == null) {
-                if (saldo.compareTo(BigDecimal.ZERO) > 0 || vencidos || cantCreditos > 0) {
-                    porCliente.put(clienteId, new DashboardCuentaCreditoItemResponse(
-                            cuenta.getId(),
-                            cuenta.getNumero(),
-                            nombreCliente,
-                            cliente.getDni(),
-                            saldo,
-                            vencidos,
-                            cantCreditos
-                    ));
-                }
-            } else {
-                existente.setSaldoActual(existente.getSaldoActual().add(saldo));
-                existente.setTieneCreditosVencidos(existente.isTieneCreditosVencidos() || vencidos);
+        DashboardCuentaCreditoItemResponse existente = porCliente.get(clienteId);
+        if (existente == null) {
+            if (saldo.compareTo(BigDecimal.ZERO) > 0 || vencidos || cantCreditos > 0) {
+                porCliente.put(clienteId, new DashboardCuentaCreditoItemResponse(
+                        cuenta.getId(), cuenta.getNumero(), nombreCliente, cliente.getDni(),
+                        saldo, vencidos, cantCreditos));
             }
+            return;
         }
+        existente.setSaldoActual(existente.getSaldoActual().add(saldo));
+        existente.setTieneCreditosVencidos(existente.isTieneCreditosVencidos() || vencidos);
+    }
 
-        List<DashboardCuentaCreditoItemResponse> cuentasItems = new ArrayList<>(porCliente.values());
-        cuentasItems.sort(Comparator.comparing(DashboardCuentaCreditoItemResponse::getSaldoActual).reversed());
-        if (cuentasItems.size() > 8) {
-            cuentasItems = new ArrayList<>(cuentasItems.subList(0, 8));
+    private List<DashboardCuentaCreditoItemResponse> seleccionarTopCuentasPorSaldo(
+            Map<Long, DashboardCuentaCreditoItemResponse> porCliente
+    ) {
+        List<DashboardCuentaCreditoItemResponse> items = new ArrayList<>(porCliente.values());
+        items.sort(Comparator.comparing(DashboardCuentaCreditoItemResponse::getSaldoActual).reversed());
+        if (items.size() <= 8) {
+            return items;
         }
+        return new ArrayList<>(items.subList(0, 8));
+    }
 
-        List<DashboardCuotaPorEstadoResponse> cuotasPorEstado;
-        try {
-            Map<String, DashboardCuotaPorEstadoResponse> porEstado = dashboardQueryRepository.resumenCuotasPorEstado()
-                    .stream()
-                    .collect(Collectors.toMap(DashboardCuotaPorEstadoResponse::getEstado, e -> e, (a, b) -> a));
-            cuotasPorEstado = new ArrayList<>();
-            for (Cuota.EstadoCuota estado : Cuota.EstadoCuota.values()) {
-                cuotasPorEstado.add(porEstado.getOrDefault(
-                        estado.name(),
-                        new DashboardCuotaPorEstadoResponse(estado.name(), 0, BigDecimal.ZERO)
-                ));
-            }
-            log.info("[Dashboard] Cuotas por estado: {}", cuotasPorEstado);
-        } catch (Exception e) {
-            log.error("[Dashboard] Error al calcular totales de cuotas por estado", e);
-            throw new RuntimeException("No se pudo calcular el resumen de cuotas: " + e.getMessage(), e);
+    private List<DashboardCuotaPorEstadoResponse> cargarCuotasPorEstadoOrdenadas() {
+        Map<String, DashboardCuotaPorEstadoResponse> porEstado = dashboardQueryRepository.resumenCuotasPorEstado()
+                .stream()
+                .collect(Collectors.toMap(DashboardCuotaPorEstadoResponse::getEstado, e -> e, (a, b) -> a));
+        List<DashboardCuotaPorEstadoResponse> resultado = new ArrayList<>();
+        for (Cuota.EstadoCuota estado : Cuota.EstadoCuota.values()) {
+            resultado.add(porEstado.getOrDefault(
+                    estado.name(),
+                    new DashboardCuotaPorEstadoResponse(estado.name(), 0, BigDecimal.ZERO)
+            ));
         }
+        return resultado;
+    }
 
-        DashboardCreditosResumenResponse resumen = new DashboardCreditosResumenResponse();
-        resumen.setCuentasActivas(porCliente.size());
-        resumen.setCuentasAlDia(cuentasAlDia);
-        resumen.setCuentasConVencidos(cuentasConVencidos);
-        resumen.setSaldoTotalCuentas(saldoTotalCuentas);
-        resumen.setCuotasPorEstado(cuotasPorEstado);
-        resumen.setCuentas(cuentasItems);
-        log.info("[Dashboard] Resumen créditos listo en {} ms — clientes={}, alDía={}, vencidos={}",
-                System.currentTimeMillis() - t0, porCliente.size(), cuentasAlDia, cuentasConVencidos);
-        return resumen;
+    private record DashboardAgregado(
+            Map<Long, DashboardCuentaCreditoItemResponse> porCliente,
+            BigDecimal saldoTotal,
+            long cuentasAlDia,
+            long cuentasConVencidos
+    ) {
     }
 
     private MovimientoFinanciero registrarIngresoCaja(Long cuentaFinancieraId, BigDecimal monto, String descripcion) {
-        CuentaFinanciera cuenta = null;
-        if (cuentaFinancieraId != null) {
-            cuenta = cuentaFinancieraRepository.findById(cuentaFinancieraId)
-                    .orElseThrow(() -> new RuntimeException("Cuenta financiera no encontrada"));
-        } else {
-            cuenta = cuentaFinancieraRepository.findFirstByTipoAndActivoTrue(CuentaFinanciera.TipoCuenta.CAJA)
-                    .orElse(null);
-        }
-        if (cuenta == null) return null;
-
-        BigDecimal saldoAnterior = cuenta.getSaldoActual() != null ? cuenta.getSaldoActual() : BigDecimal.ZERO;
-        BigDecimal saldoNuevo = saldoAnterior.add(monto);
-        cuenta.setSaldoActual(saldoNuevo);
-        cuentaFinancieraRepository.save(cuenta);
-
-        MovimientoFinanciero movimiento = new MovimientoFinanciero();
-        movimiento.setCuenta(cuenta);
-        movimiento.setNumero("MV-" + UUID.randomUUID().toString().replace("-", ""));
-        movimiento.setTipo(MovimientoFinanciero.TipoMovimiento.INGRESO);
-        movimiento.setMonto(monto);
-        movimiento.setSaldoAnterior(saldoAnterior);
-        movimiento.setSaldoNuevo(saldoNuevo);
-        movimiento.setDescripcion(descripcion);
-        movimiento.setResponsable("sistema");
-        return movimientoFinancieroRepository.save(movimiento);
+        return cajaMovimientoService.registrarIngreso(cuentaFinancieraId, monto, descripcion);
     }
 
     private void registrarEgresoCaja(Long cuentaFinancieraId, BigDecimal monto, String descripcion) {
-        if (cuentaFinancieraId == null || monto == null || monto.compareTo(BigDecimal.ZERO) <= 0) {
-            return;
-        }
-        CuentaFinanciera cuenta = cuentaFinancieraRepository.findById(cuentaFinancieraId)
-                .orElseThrow(() -> new RuntimeException("Cuenta financiera no encontrada"));
-        BigDecimal saldoAnterior = cuenta.getSaldoActual() != null ? cuenta.getSaldoActual() : BigDecimal.ZERO;
-        BigDecimal saldoNuevo = saldoAnterior.subtract(monto).max(BigDecimal.ZERO);
-        cuenta.setSaldoActual(saldoNuevo);
-        cuentaFinancieraRepository.save(cuenta);
-
-        MovimientoFinanciero movimiento = new MovimientoFinanciero();
-        movimiento.setCuenta(cuenta);
-        movimiento.setNumero("MV-" + UUID.randomUUID().toString().replace("-", ""));
-        movimiento.setTipo(MovimientoFinanciero.TipoMovimiento.EGRESO);
-        movimiento.setMonto(monto);
-        movimiento.setSaldoAnterior(saldoAnterior);
-        movimiento.setSaldoNuevo(saldoNuevo);
-        movimiento.setDescripcion(descripcion);
-        movimiento.setResponsable("sistema");
-        movimientoFinancieroRepository.save(movimiento);
+        cajaMovimientoService.registrarEgreso(cuentaFinancieraId, monto, descripcion);
     }
 }

@@ -24,7 +24,8 @@ import java.util.List;
                 @Index(name = "ix_odc_sucursal", columnList = "sucursal_id"),
                 @Index(name = "ix_odc_proveedor", columnList = "proveedor_id"),
                 @Index(name = "ix_odc_numero", columnList = "numero", unique = true),
-                @Index(name = "ix_odc_fecha", columnList = "fecha_orden")
+                @Index(name = "ix_odc_fecha", columnList = "fecha_orden"),
+                @Index(name = "ix_odc_estado", columnList = "estado")
         }
 )
 public class OrdenDeCompra {

@@ -4,6 +4,8 @@ import com.vida.apirest.dto.ariticulo.CreateSubCategoriaRequest;
 import com.vida.apirest.dto.ariticulo.SubCategoriaResponse;
 import com.vida.apirest.model.articulo.Taxon;
 import com.vida.apirest.repositories.TaxonRepository;
+import com.vida.apirest.utils.CatalogMapper;
+import com.vida.apirest.utils.ValidationUtils;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,32 +27,22 @@ public class SubCategoriaService {
 
     @Transactional
     public SubCategoriaResponse create(CreateSubCategoriaRequest request) {
-        if (request.getNombre() == null || request.getNombre().isBlank()) {
-            throw new RuntimeException("El nombre de la subcategoría es obligatorio");
-        }
-
-        String nombre = request.getNombre().trim();
-        if (taxonRepository.findByNombre(nombre).isPresent()) {
-            throw new RuntimeException("Ya existe una subcategoría con el nombre: " + nombre);
-        }
+        String nombre = ValidationUtils.requireNonBlank(
+                request.getNombre(), "El nombre de la subcategoría es obligatorio");
+        ValidationUtils.assertUnique(
+                () -> taxonRepository.findByNombre(nombre),
+                "Ya existe una subcategoría con el nombre: " + nombre);
 
         Taxon taxon = new Taxon();
         taxon.setNombre(nombre);
-        taxon.setDescripcion(request.getDescripcion() != null ? request.getDescripcion().trim() : null);
+        taxon.setDescripcion(ValidationUtils.trimToNull(request.getDescripcion()));
         taxon.setNivel(1);
-        taxon.setActivo(request.getActivo() != null ? request.getActivo() : true);
+        taxon.setActivo(ValidationUtils.defaultActivo(request.getActivo()));
 
         return toResponse(taxonRepository.save(taxon));
     }
 
     private SubCategoriaResponse toResponse(Taxon taxon) {
-        SubCategoriaResponse response = new SubCategoriaResponse();
-        response.setId(taxon.getId());
-        response.setNombre(taxon.getNombre());
-        response.setDescripcion(taxon.getDescripcion());
-        response.setActivo(taxon.getActivo());
-        response.setCreatedAt(taxon.getCreatedAt());
-        response.setUpdatedAt(taxon.getUpdatedAt());
-        return response;
+        return CatalogMapper.mapAuditable(new SubCategoriaResponse(), taxon);
     }
 }

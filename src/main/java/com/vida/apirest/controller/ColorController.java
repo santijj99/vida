@@ -10,14 +10,15 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
-import java.util.Map;
 
 @RestController
 @RequestMapping("/api/colores")
 @RequiredArgsConstructor
+@PreAuthorize("hasAuthority('VER_COLORES')")
 public class ColorController {
 
     private final ColorService colorService;
@@ -28,14 +29,7 @@ public class ColorController {
     }
 
     @PostMapping
-    public ResponseEntity<?> create(@RequestBody CreateColorRequest request) {
-        try {
-            return ResponseEntity.status(HttpStatus.CREATED).body(colorService.create(request));
-        } catch (RuntimeException e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
-                    "message", e.getMessage(),
-                    "statusCode", HttpStatus.BAD_REQUEST.value()
-            ));
-        }
+    public ResponseEntity<ColorResponse> create(@RequestBody CreateColorRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(colorService.create(request));
     }
 }

@@ -5,10 +5,7 @@ import com.vida.apirest.dto.venta.VentaCreateRequest;
 import com.vida.apirest.dto.venta.VentaCreditoPersonalRequest;
 import com.vida.apirest.dto.venta.VentaResponse;
 import com.vida.apirest.model.almacen.Stock;
-import com.vida.apirest.model.almacen.StockMovimiento;
 import com.vida.apirest.model.almacen.Sucursal;
-import com.vida.apirest.model.articulo.Articulo;
-import com.vida.apirest.model.articulo.VarianteArticulo;
 import com.vida.apirest.model.persona.Cliente;
 import com.vida.apirest.model.persona.Empleado;
 import com.vida.apirest.model.venta.CarritoPendiente;
@@ -32,15 +29,12 @@ public class CarritoPendienteService {
 
     private final CarritoPendienteRepository carritoRepository;
     private final ClienteRepository clienteRepository;
-    private final ArticuloRepository articuloRepository;
-    private final VarianteArticuloRepository varianteArticuloRepository;
-    private final StockRepository stockRepository;
-    private final StockMovimientoRepository stockMovimientoRepository;
     private final SucursalRepository sucursalRepository;
     private final EmpleadoRepository empleadoRepository;
     private final VentaRepository ventaRepository;
     private final VentaService ventaService;
-    private final PromocionService promocionService;
+    private final PendienteDetalleResolver pendienteDetalleResolver;
+    private final StockReservaService stockReservaService;
 
     @Transactional
     public CarritoPendienteResponse crear(CarritoPendienteCreateRequest request) {
@@ -67,8 +61,11 @@ public class CarritoPendienteService {
         carrito.setObservaciones(request.getObservaciones());
 
         for (CarritoPendienteDetalleRequest detReq : request.getDetalles()) {
-            DetalleResuelto resuelto = resolverDetalle(detReq, sucursal.getId());
-            reservarStock(resuelto.stock(), detReq.getCantidad(), carrito.getNumeroComprobante());
+            PendienteDetalleResolver.DetalleResuelto resuelto = pendienteDetalleResolver.resolver(
+                    detReq.getArticuloId(), detReq.getVarianteId(), detReq.getCantidad(),
+                    sucursal.getId(), true);
+            stockReservaService.reservar(resuelto.stock(), detReq.getCantidad(),
+                    carrito.getNumeroComprobante(), StockReservaService.ModoReserva.CARRITO);
 
             CarritoPendienteDetalle det = new CarritoPendienteDetalle();
             det.setCarrito(carrito);
@@ -114,7 +111,8 @@ public class CarritoPendienteService {
 
         for (CarritoPendienteDetalle det : carrito.getDetalles()) {
             Stock stock = obtenerStock(det, carrito.getSucursal().getId());
-            liberarReserva(stock, det.getCantidad(), carrito.getNumeroComprobante());
+            stockReservaService.liberar(stock, det.getCantidad(), carrito.getNumeroComprobante(),
+                    StockReservaService.ModoReserva.CARRITO);
         }
 
         carrito.setEstado(CarritoPendiente.EstadoCarrito.CANCELADO);
@@ -205,7 +203,8 @@ public class CarritoPendienteService {
     private void consumirReservas(CarritoPendiente carrito) {
         for (CarritoPendienteDetalle det : carrito.getDetalles()) {
             Stock stock = obtenerStock(det, carrito.getSucursal().getId());
-            consumirReserva(stock, det.getCantidad(), carrito.getNumeroComprobante());
+            stockReservaService.consumir(stock, det.getCantidad(), carrito.getNumeroComprobante(),
+                    StockReservaService.ModoReserva.CARRITO);
         }
     }
 
@@ -232,139 +231,9 @@ public class CarritoPendienteService {
         }
     }
 
-    private record DetalleResuelto(Articulo articulo, VarianteArticulo variante, Stock stock, BigDecimal precio) {}
-
-    private DetalleResuelto resolverDetalle(CarritoPendienteDetalleRequest detReq, Long sucursalId) {
-        if (detReq.getCantidad() == null || detReq.getCantidad() <= 0) {
-            throw new RuntimeException("La cantidad debe ser mayor a cero");
-        }
-
-        VarianteArticulo variante = null;
-        Articulo articulo;
-
-        if (detReq.getVarianteId() != null) {
-            variante = varianteArticuloRepository.findById(detReq.getVarianteId())
-                    .orElseThrow(() -> new RuntimeException("Variante no encontrada"));
-            articulo = articuloRepository.findById(variante.getArticuloId())
-                    .orElseThrow(() -> new RuntimeException("Artículo no encontrado"));
-        } else {
-            if (detReq.getArticuloId() == null) {
-                throw new RuntimeException("Cada detalle requiere articuloId o varianteId");
-            }
-            articulo = articuloRepository.findById(detReq.getArticuloId())
-                    .orElseThrow(() -> new RuntimeException("Artículo no encontrado"));
-        }
-
-        BigDecimal precioLista = variante != null ? obtenerPrecioLista(variante) : BigDecimal.ZERO;
-        BigDecimal precio = variante != null
-                ? promocionService.resolverPrecioVenta(variante.getId(), precioLista)
-                : BigDecimal.ZERO;
-
-        Stock stock = variante != null
-                ? findStockByVariante(variante.getId(), sucursalId)
-                : findStock(articulo.getId(), null, sucursalId);
-
-        return new DetalleResuelto(articulo, variante, stock, precio);
-    }
-
-    private BigDecimal obtenerPrecioLista(VarianteArticulo variante) {
-        if (variante.getHistorialPrecios() != null && !variante.getHistorialPrecios().isEmpty()) {
-            return variante.getHistorialPrecios().stream()
-                    .max((a, b) -> a.getFecha().compareTo(b.getFecha()))
-                    .map(h -> h.getPrecioNuevo())
-                    .orElse(BigDecimal.ZERO);
-        }
-        if (variante.getListaPrecio() != null && variante.getListaPrecio().getPrecio() != null) {
-            return variante.getListaPrecio().getPrecio();
-        }
-        return BigDecimal.ZERO;
-    }
-
     private Stock obtenerStock(CarritoPendienteDetalle det, Long sucursalId) {
-        return det.getVariante() != null
-                ? findStockByVariante(det.getVariante().getId(), sucursalId)
-                : findStock(det.getArticulo().getId(), null, sucursalId);
-    }
-
-    private void reservarStock(Stock stock, Integer cantidad, String referencia) {
-        int disponible = stock.getCantidadDisponible() != null ? stock.getCantidadDisponible() : 0;
-        if (disponible < cantidad) {
-            throw new RuntimeException("Stock insuficiente para el artículo");
-        }
-
-        int actual = stock.getCantidadActual() != null ? stock.getCantidadActual() : 0;
-        int reservada = stock.getCantidadReservada() != null ? stock.getCantidadReservada() : 0;
-
-        stock.setCantidadDisponible(disponible - cantidad);
-        stock.setCantidadActual(Math.max(0, actual - cantidad));
-        stock.setCantidadReservada(reservada + cantidad);
-        stockRepository.save(stock);
-
-        registrarMovimiento(stock, StockMovimiento.TipoMovimiento.RESERVA_CARRITO,
-                cantidad, disponible, disponible - cantidad, referencia,
-                "Reserva por carrito pendiente");
-    }
-
-    private void liberarReserva(Stock stock, Integer cantidad, String referencia) {
-        int reservada = stock.getCantidadReservada() != null ? stock.getCantidadReservada() : 0;
-        if (reservada < cantidad) {
-            throw new RuntimeException("Cantidad reservada insuficiente para liberar");
-        }
-
-        int disponible = stock.getCantidadDisponible() != null ? stock.getCantidadDisponible() : 0;
-        int actual = stock.getCantidadActual() != null ? stock.getCantidadActual() : 0;
-
-        stock.setCantidadReservada(reservada - cantidad);
-        stock.setCantidadDisponible(disponible + cantidad);
-        stock.setCantidadActual(actual + cantidad);
-        stockRepository.save(stock);
-
-        registrarMovimiento(stock, StockMovimiento.TipoMovimiento.LIBERACION_RESERVA_CARRITO,
-                cantidad, disponible, disponible + cantidad, referencia,
-                "Cancelación de carrito pendiente");
-    }
-
-    private void consumirReserva(Stock stock, Integer cantidad, String referencia) {
-        int reservada = stock.getCantidadReservada() != null ? stock.getCantidadReservada() : 0;
-        if (reservada < cantidad) {
-            throw new RuntimeException("Cantidad reservada insuficiente");
-        }
-
-        int disponible = stock.getCantidadDisponible() != null ? stock.getCantidadDisponible() : 0;
-        stock.setCantidadReservada(reservada - cantidad);
-        stockRepository.save(stock);
-
-        registrarMovimiento(stock, StockMovimiento.TipoMovimiento.SALIDA_VENTA,
-                cantidad, disponible, disponible, referencia,
-                "Cobro de carrito pendiente");
-    }
-
-    private void registrarMovimiento(Stock stock, StockMovimiento.TipoMovimiento tipo,
-                                     int cantidad, int saldoAnterior, int saldoNuevo,
-                                     String referencia, String descripcion) {
-        StockMovimiento mov = new StockMovimiento();
-        mov.setStock(stock);
-        mov.setTipo(tipo);
-        mov.setCantidad(cantidad);
-        mov.setSaldoAnterior(saldoAnterior);
-        mov.setSaldoNuevo(saldoNuevo);
-        mov.setReferencia(referencia);
-        mov.setDescripcion(descripcion);
-        mov.setUsuario("sistema");
-        stockMovimientoRepository.save(mov);
-    }
-
-    private Stock findStock(Long articuloId, Long varianteId, Long sucursalId) {
-        return varianteId != null
-                ? stockRepository.findByArticuloIdAndVarianteIdAndSucursalId(articuloId, varianteId, sucursalId)
-                .orElseThrow(() -> new RuntimeException("Stock no encontrado"))
-                : stockRepository.findByArticuloIdAndSucursalId(articuloId, sucursalId)
-                .orElseThrow(() -> new RuntimeException("Stock no encontrado"));
-    }
-
-    private Stock findStockByVariante(Long varianteId, Long sucursalId) {
-        return stockRepository.findByVarianteIdAndSucursalId(varianteId, sucursalId)
-                .orElseThrow(() -> new RuntimeException("Stock no encontrado para la variante"));
+        Long varianteId = det.getVariante() != null ? det.getVariante().getId() : null;
+        return pendienteDetalleResolver.obtenerStock(det.getArticulo().getId(), varianteId, sucursalId);
     }
 
     private CarritoPendienteResponse mapResponse(CarritoPendiente carrito) {

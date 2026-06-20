@@ -1,5 +1,6 @@
 package com.vida.apirest.controller;
 
+import com.vida.apirest.dto.almacen.StockDepositoResponse;
 import com.vida.apirest.dto.almacen.TransferenciaStockCreateRequest;
 import com.vida.apirest.dto.almacen.TransferenciaStockResponse;
 import com.vida.apirest.dto.common.PageResponse;
@@ -11,7 +12,6 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
-import java.util.Map;
 
 @RestController
 @RequestMapping("/api/transferencias-stock")
@@ -22,17 +22,12 @@ public class TransferenciaDeStockController {
 
     @GetMapping("/stock-disponible")
     @PreAuthorize("hasAuthority('LEER_STOCK')")
-    public ResponseEntity<?> listarStockDeposito(
+    public ResponseEntity<PageResponse<StockDepositoResponse>> listarStockDeposito(
             @RequestParam Long depositoId,
             @RequestParam(required = false) String q,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "15") int size) {
-        try {
-            PageResponse<?> response = transferenciaDeStockService.listarStockDeposito(depositoId, q, page, size);
-            return ResponseEntity.ok(response);
-        } catch (RuntimeException e) {
-            return error(HttpStatus.BAD_REQUEST, e.getMessage());
-        }
+        return ResponseEntity.ok(transferenciaDeStockService.listarStockDeposito(depositoId, q, page, size));
     }
 
     @GetMapping
@@ -45,28 +40,14 @@ public class TransferenciaDeStockController {
 
     @GetMapping("/{id}")
     @PreAuthorize("hasAuthority('LEER_STOCK')")
-    public ResponseEntity<?> obtener(@PathVariable Long id) {
-        try {
-            return ResponseEntity.ok(transferenciaDeStockService.obtener(id));
-        } catch (RuntimeException e) {
-            return error(HttpStatus.NOT_FOUND, e.getMessage());
-        }
+    public ResponseEntity<TransferenciaStockResponse> obtener(@PathVariable Long id) {
+        return ResponseEntity.ok(transferenciaDeStockService.obtener(id));
     }
 
     @PostMapping
     @PreAuthorize("hasAuthority('TRANSFERIR_STOCK')")
-    public ResponseEntity<?> crear(@RequestBody TransferenciaStockCreateRequest request) {
-        try {
-            TransferenciaStockResponse response = transferenciaDeStockService.crear(request);
-            return ResponseEntity.status(HttpStatus.CREATED).body(response);
-        } catch (RuntimeException e) {
-            return error(HttpStatus.BAD_REQUEST, e.getMessage());
-        }
-    }
-
-    private ResponseEntity<Map<String, Object>> error(HttpStatus status, String message) {
-        return ResponseEntity.status(status).body(Map.of(
-                "message", message != null ? message : "Error",
-                "statusCode", status.value()));
+    public ResponseEntity<TransferenciaStockResponse> crear(@RequestBody TransferenciaStockCreateRequest request) {
+        TransferenciaStockResponse response = transferenciaDeStockService.crear(request);
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 }

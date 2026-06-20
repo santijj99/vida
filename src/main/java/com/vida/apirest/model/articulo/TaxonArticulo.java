@@ -47,7 +47,7 @@ public class TaxonArticulo {
     @Column(name = "taxon_id", nullable = false)
     private Long taxonId;
 
-    @ManyToOne(fetch = FetchType.EAGER, optional = false)
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "taxon_id", insertable = false, updatable = false)
     private Taxon taxon;
 

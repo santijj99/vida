@@ -28,7 +28,8 @@ import java.util.Set;
                 @Index(name = "ix_venta_empleado", columnList = "empleado_id"),
                 @Index(name = "ix_venta_sucursal", columnList = "sucursal_id"),
                 @Index(name = "ix_venta_numero", columnList = "numero_factura", unique = true),
-                @Index(name = "ix_venta_fecha", columnList = "fecha_venta")
+                @Index(name = "ix_venta_fecha", columnList = "fecha_venta"),
+                @Index(name = "ix_venta_estado", columnList = "estado")
         }
 )
 public class Venta {

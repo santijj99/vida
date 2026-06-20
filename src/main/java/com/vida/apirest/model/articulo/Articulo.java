@@ -66,13 +66,10 @@ public class Articulo {
     @Column(nullable = false)
     private EstadoProducto estado = EstadoProducto.ACTIVO;
 
-    // Relaciones bidireccionales
-    @OneToMany(mappedBy = "articulo", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
+    // Relaciones bidireccionales — LAZY: usar JOIN FETCH en consultas que las necesiten
+    @OneToMany(mappedBy = "articulo", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
         @JsonManagedReference
         private List<VarianteArticulo> variantes;
-
-    @OneToMany(mappedBy = "articulo", cascade = CascadeType.ALL, orphanRemoval = true)
-    private List<ImagenArticulo> imagenes;
 
     @OneToMany(mappedBy = "articulo", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<TaxonArticulo> taxones;
