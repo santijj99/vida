@@ -23,11 +23,6 @@ import com.vida.apirest.dto.ariticulo.ArticuloUpdateRequest;
 import com.vida.apirest.dto.ariticulo.VariantCreateRequest;
 import com.vida.apirest.dto.ariticulo.VarianteCompactResponse;
 import com.vida.apirest.dto.common.PageResponse;
-import com.vida.apirest.model.almacen.Deposito;
-import com.vida.apirest.model.almacen.Sucursal;
-import com.vida.apirest.model.articulo.Articulo;
-import com.vida.apirest.repositories.DepositoRepository;
-import com.vida.apirest.repositories.SucursalRepository;
 import com.vida.apirest.servicies.ArticuloService;
 
 import lombok.RequiredArgsConstructor;
@@ -38,13 +33,6 @@ import lombok.RequiredArgsConstructor;
 public class ArticuloController {
 
     private final ArticuloService articuloService;
-    private final DepositoRepository depositoRepository;
-    private final SucursalRepository sucursalRepository;
-
-    @GetMapping("/lista")
-    public ResponseEntity<List<ArticuloCompactResponse>> listAll() {
-        return ResponseEntity.ok(articuloService.findAllCompact());
-    }
 
     @GetMapping("/tabla/filtros")
     public ResponseEntity<ArticuloFiltrosResponse> filtrosTabla() {
@@ -87,7 +75,7 @@ public class ArticuloController {
     @PostMapping
     public ResponseEntity<?> createArticulo(@RequestBody ArticuloCreateRequest request) {
         try {
-            Articulo articulo = articuloService.createArticulo(request);
+            var articulo = articuloService.createArticulo(request);
             return ResponseEntity.status(HttpStatus.CREATED).body(
                     articuloService.getCompactById(articulo.getId()));
         } catch (RuntimeException e) {
@@ -114,16 +102,16 @@ public class ArticuloController {
         }
     }
 
-  @PutMapping("/{articuloId:[0-9]+}/variantes/{varianteId:[0-9]+}")
+    @PutMapping("/{articuloId:[0-9]+}/variantes/{varianteId:[0-9]+}")
     public ResponseEntity<?> actualizarVarianteUnica(
             @PathVariable Long articuloId,
             @PathVariable Long varianteId,
-            @RequestBody VariantCreateRequest request 
+            @RequestBody VariantCreateRequest request
     ) {
         try {
-            VarianteCompactResponse varianteActualizada = articuloService.actualizarVarianteUnica(articuloId, varianteId, request);
+            VarianteCompactResponse varianteActualizada =
+                    articuloService.actualizarVarianteUnica(articuloId, varianteId, request);
             return ResponseEntity.ok(varianteActualizada);
-            
         } catch (RuntimeException e) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
                     "message", e.getMessage(),
@@ -132,7 +120,7 @@ public class ArticuloController {
         }
     }
 
-   @PutMapping("/{id:[0-9]+}/archivar")
+    @PutMapping("/{id:[0-9]+}/archivar")
     public ResponseEntity<?> softDeleteArticulo(@PathVariable Long id) {
         try {
             articuloService.softDeleteArticulo(id);
@@ -159,32 +147,6 @@ public class ArticuloController {
                     "statusCode", HttpStatus.BAD_REQUEST.value()
             ));
         }
-    }
-
-    @GetMapping("/depositos")
-    public ResponseEntity<List<Deposito>> getDepositos() {
-        List<Deposito> depositos = depositoRepository.findAll();
-        return ResponseEntity.ok(depositos);
-    }
-
-    @GetMapping("/sucursales")
-    public ResponseEntity<List<Sucursal>> getSucursales() {
-        List<Sucursal> sucursales = sucursalRepository.findAll();
-        return ResponseEntity.ok(sucursales);
-    }
-
-    @GetMapping
-    public ResponseEntity<List<Articulo>> searchArticulos(
-            @RequestParam(required = false) String codigo,
-            @RequestParam(required = false) String marca,
-            @RequestParam(required = false) String talle,
-            @RequestParam(required = false) String color,
-            @RequestParam(required = false) String categoria,
-            @RequestParam(required = false) String modelo,
-            @RequestParam(required = false) String genero
-    ) {
-        List<Articulo> results = articuloService.searchArticulos(codigo, marca, talle, color, categoria, modelo, genero);
-        return ResponseEntity.ok(results);
     }
 
     @GetMapping("/{id:[0-9]+}/compact")
@@ -218,39 +180,6 @@ public class ArticuloController {
         }
     }
 
-    @GetMapping("/{id:[0-9]+}")
-    public ResponseEntity<Articulo> getById(@PathVariable Long id) {
-        Articulo articulo = articuloService.getArticuloById(id);
-        return ResponseEntity.ok(articulo);
-    }
-
-    @GetMapping("/by-codigo")
-    public ResponseEntity<Articulo> getByCodigo(@RequestParam String codigo) {
-        Articulo articulo = articuloService.getByCodigo(codigo);
-        return ResponseEntity.ok(articulo);
-    }
-
-    @GetMapping("/by-codigo-compact")
-    public ResponseEntity<ArticuloCompactResponse> getByCodigoCompact(@RequestParam String codigo) {
-        ArticuloCompactResponse articulo = articuloService.getByCodigoCompact(codigo);
-        return ResponseEntity.ok(articulo);
-    }
-
-    @GetMapping("/by-marca")
-    public ResponseEntity<List<Articulo>> getByMarca(@RequestParam String marca) {
-        return ResponseEntity.ok(articuloService.getByMarca(marca));
-    }
-
-    @GetMapping("/by-talle")
-    public ResponseEntity<List<Articulo>> getByTalle(@RequestParam String talle) {
-        return ResponseEntity.ok(articuloService.getByTalle(talle));
-    }
-
-    @GetMapping("/by-color")
-    public ResponseEntity<List<Articulo>> getByColor(@RequestParam String color) {
-        return ResponseEntity.ok(articuloService.getByColor(color));
-    }
-
     @GetMapping("/archivados")
     public ResponseEntity<List<ArticuloCompactResponse>> getArchivados() {
         return ResponseEntity.ok(articuloService.getArticulosArchivados());
@@ -269,7 +198,7 @@ public class ArticuloController {
         }
     }
 
-@GetMapping("/{id:[0-9]+}/variantes/archivadas")
+    @GetMapping("/{id:[0-9]+}/variantes/archivadas")
     public ResponseEntity<?> getVariantesArchivadas(@PathVariable Long id) {
         try {
             return ResponseEntity.ok(articuloService.getVariantesArchivadas(id));
@@ -280,7 +209,7 @@ public class ArticuloController {
 
     @PutMapping("/{articuloId:[0-9]+}/variantes/{varianteId:[0-9]+}/restaurar")
     public ResponseEntity<?> restaurarVariante(
-            @PathVariable Long articuloId, 
+            @PathVariable Long articuloId,
             @PathVariable Long varianteId
     ) {
         try {

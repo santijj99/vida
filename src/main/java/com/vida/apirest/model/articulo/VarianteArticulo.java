@@ -30,7 +30,8 @@ import java.util.List;
                 @Index(name = "ix_var_articulo", columnList = "articulo_id"),
                 @Index(name = "ix_var_color", columnList = "color_id"),
                 @Index(name = "ix_var_talle", columnList = "talle_id"),
-                @Index(name = "ix_var_lista_precio", columnList = "lista_precio_id")
+                @Index(name = "ix_var_lista_precio", columnList = "lista_precio_id"),
+                @Index(name = "ix_var_estado", columnList = "estado")
         }
 )
 public class VarianteArticulo {

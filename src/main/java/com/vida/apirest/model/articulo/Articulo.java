@@ -19,7 +19,9 @@ import org.hibernate.annotations.UpdateTimestamp;
                 @Index(name = "ix_articulo_marca", columnList = "marca_id"),
                 @Index(name = "ix_articulo_categoria", columnList = "categoria_id"),
                 @Index(name = "ix_articulo_genero", columnList = "genero_id"),
-                @Index(name = "ix_articulo_codigo", columnList = "codigo", unique = true)
+                @Index(name = "ix_articulo_codigo", columnList = "codigo", unique = true),
+                @Index(name = "ix_articulo_modelo", columnList = "modelo"),
+                @Index(name = "ix_articulo_estado", columnList = "estado")
         }
 )
 public class Articulo {
