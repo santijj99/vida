@@ -14,6 +14,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 @Repository
 public class ArticuloTablaQueryRepository {
@@ -29,7 +30,7 @@ public class ArticuloTablaQueryRepository {
             ) hp ON hp.variante_articulo_id = v.id
             """;
 
-    /** Primera subcategoría por artículo (misma lógica que ORDER BY t.id LIMIT 1). */
+    /** Subcategoría única por artículo (no incluye clasificaciones). */
     private static final String JOIN_SUBCATEGORIA = """
             LEFT JOIN (
                 SELECT DISTINCT ON (ta.articulo_id)
@@ -37,6 +38,7 @@ public class ArticuloTablaQueryRepository {
                     t.nombre
                 FROM taxon_articulo ta
                 JOIN taxon t ON t.id = ta.taxon_id
+                WHERE ta.tipo = 'SUBCATEGORIA'
                 ORDER BY ta.articulo_id, t.id
             ) sub ON sub.articulo_id = a.id
             """;
@@ -72,6 +74,7 @@ public class ArticuloTablaQueryRepository {
     public PageResponse<ArticuloTablaRowResponse> findTablaPage(
             String categoria,
             String subCategoria,
+            List<String> clasificaciones,
             String genero,
             String marca,
             String q,
@@ -81,7 +84,7 @@ public class ArticuloTablaQueryRepository {
     ) {
         int safeSize = PaginationUtils.normalizeSize(size);
         int safePage = PaginationUtils.normalizePage(page);
-        FilterSql filters = buildTablaFilters(categoria, subCategoria, genero, marca, q, depositoId);
+        FilterSql filters = buildTablaFilters(categoria, subCategoria, clasificaciones, genero, marca, q, depositoId);
 
         long total = countTabla(filters, depositoId);
         if (total == 0) {
@@ -283,7 +286,8 @@ public class ArticuloTablaQueryRepository {
     }
 
     private FilterSql buildTablaFilters(
-            String categoria, String subCategoria, String genero, String marca, String q, Long depositoId) {
+            String categoria, String subCategoria, List<String> clasificaciones,
+            String genero, String marca, String q, Long depositoId) {
         StringBuilder where = new StringBuilder();
         Map<String, Object> params = new HashMap<>();
 
@@ -301,10 +305,33 @@ public class ArticuloTablaQueryRepository {
                         SELECT 1 FROM taxon_articulo ta
                         JOIN taxon t ON t.id = ta.taxon_id
                         WHERE ta.articulo_id = a.id
-                          AND LOWER(t.nombre) = LOWER(:subCategoria)
+                          AND ta.tipo = 'SUBCATEGORIA'
+                          AND LOWER(t.nombre) = LOWER(:subCategoriaFiltro)
                      )
                     """);
-            params.put("subCategoria", subCategoria.trim());
+            params.put("subCategoriaFiltro", subCategoria.trim());
+        }
+
+        if (clasificaciones != null && !clasificaciones.isEmpty()) {
+            List<String> nombres = clasificaciones.stream()
+                    .filter(Objects::nonNull)
+                    .map(String::trim)
+                    .filter(s -> !s.isEmpty())
+                    .map(String::toLowerCase)
+                    .distinct()
+                    .toList();
+            if (!nombres.isEmpty()) {
+                where.append("""
+                         AND EXISTS (
+                            SELECT 1 FROM taxon_articulo ta
+                            JOIN taxon t ON t.id = ta.taxon_id
+                            WHERE ta.articulo_id = a.id
+                              AND ta.tipo = 'CLASIFICACION'
+                              AND LOWER(t.nombre) IN (:clasificacionesFiltro)
+                         )
+                        """);
+                params.put("clasificacionesFiltro", nombres);
+            }
         }
 
         appendSearchFilter(where, params, q,

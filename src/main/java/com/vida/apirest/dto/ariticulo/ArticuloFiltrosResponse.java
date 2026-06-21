@@ -11,9 +11,11 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class ArticuloFiltrosResponse {
     private List<String> categorias;
+    /** @deprecated usar {@link #clasificaciones} */
     private List<String> subCategorias;
+    private List<String> clasificaciones;
     private List<String> generos;
     private List<String> marcas;
-    private List<String> talles; 
+    private List<String> talles;
     private List<String> colores;
 }

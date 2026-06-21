@@ -56,6 +56,7 @@ public class ArticuloController {
     public ResponseEntity<PageResponse<ArticuloTablaRowResponse>> listTabla(
             @RequestParam(required = false) String categoria,
             @RequestParam(required = false) String subCategoria,
+            @RequestParam(required = false) List<String> clasificaciones,
             @RequestParam(required = false) String genero,
             @RequestParam(required = false) String marca,
             @RequestParam(required = false) String q,
@@ -64,7 +65,7 @@ public class ArticuloController {
             @RequestParam(defaultValue = "15") int size
     ) {
         return ResponseEntity.ok(articuloService.findTablaPage(
-                categoria, subCategoria, genero, marca, q, depositoId, page, size));
+                categoria, subCategoria, clasificaciones, genero, marca, q, depositoId, page, size));
     }
 
     @PostMapping

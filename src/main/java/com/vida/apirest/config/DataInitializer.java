@@ -20,6 +20,7 @@ import com.vida.apirest.repositories.FinanzasCuentaFinancieraRepository;
 import com.vida.apirest.repositories.MonedaRepository;
 import com.vida.apirest.repositories.ProveedorRepository;
 import com.vida.apirest.repositories.RoleRepository;
+import com.vida.apirest.servicies.ClasificacionService;
 import com.vida.apirest.repositories.SucursalRepository;
 import com.vida.apirest.repositories.UsuarioHasRoleRepository;
 import com.vida.apirest.repositories.UsuarioRepository;
@@ -51,6 +52,7 @@ public class DataInitializer {
     private final UsuarioHasRoleRepository usuarioHasRoleRepository;
     private final UsuarioSucursalRepository usuarioSucursalRepository;
     private final ProveedorRepository proveedorRepository;
+    private final ClasificacionService clasificacionService;
     private final PasswordEncoder passwordEncoder;
 
     @Bean
@@ -287,6 +289,23 @@ public class DataInitializer {
             proveedor.setNombre("Proveedor Demo");
             proveedor.setActivo(true);
             proveedorRepository.save(proveedor);
+        };
+    }
+
+    @Bean
+    @Order(12)
+    public CommandLineRunner seedClasificaciones() {
+        return args -> {
+            List<String> clasificaciones = List.of(
+                    "BASKET",
+                    "FUTBOL",
+                    "FUTBOL 5",
+                    "FUTBOL 11",
+                    "VERANO"
+            );
+            for (String nombre : clasificaciones) {
+                clasificacionService.seedSiNoExiste(nombre);
+            }
         };
     }
 

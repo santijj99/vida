@@ -8,8 +8,6 @@ import com.vida.apirest.dto.common.PageResponse;
 import com.vida.apirest.model.almacen.Stock;
 import com.vida.apirest.model.articulo.Articulo;
 import com.vida.apirest.dto.ariticulo.VarianteCompactResponse;
-import com.vida.apirest.model.articulo.Taxon;
-import com.vida.apirest.model.articulo.TaxonArticulo;
 import com.vida.apirest.model.articulo.VarianteArticulo;
 import com.vida.apirest.repositories.ArticuloRepository;
 import com.vida.apirest.repositories.ArticuloTablaQueryRepository;
@@ -23,6 +21,7 @@ import com.vida.apirest.repositories.SucursalRepository;
 import com.vida.apirest.repositories.TalleRepository;
 import com.vida.apirest.repositories.TaxonRepository;
 import com.vida.apirest.security.SucursalScopeService;
+import com.vida.apirest.utils.ClasificacionArticuloSupport;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -52,11 +51,13 @@ public class ArticuloConsultaService {
     private final SucursalRepository sucursalRepository;
     private final PromocionService promocionService;
     private final SucursalScopeService sucursalScopeService;
+    private final ClasificacionArticuloSupport clasificacionArticuloSupport;
 
     @Transactional(readOnly = true)
     public PageResponse<ArticuloTablaRowResponse> findTablaPage(
             String categoria,
             String subCategoria,
+            List<String> clasificaciones,
             String genero,
             String marca,
             String q,
@@ -65,14 +66,17 @@ public class ArticuloConsultaService {
             int size
     ) {
         return articuloTablaQueryRepository.findTablaPage(
-                categoria, subCategoria, genero, marca, q, depositoId, page, size);
+                categoria, subCategoria, clasificaciones, genero, marca, q, depositoId, page, size);
     }
 
     @Transactional(readOnly = true)
     public ArticuloFiltrosResponse obtenerFiltrosTabla() {
+        List<String> subCategorias = taxonRepository.findDistinctSubCategoriaNombresUsadosEnArticulos();
+        List<String> clasificaciones = taxonRepository.findDistinctClasificacionNombresUsadosEnArticulos();
         return new ArticuloFiltrosResponse(
                 categoriaRepository.findDistinctNombres(),
-                taxonRepository.findDistinctNombresUsadosEnArticulos(),
+                subCategorias,
+                clasificaciones,
                 generoRepository.findDistinctNombres(),
                 marcaRepository.findDistinctNombres(),
                 talleRepository.findDistinctNumeros(),
@@ -123,14 +127,8 @@ public class ArticuloConsultaService {
         response.setGenero(articulo.getGenero() != null ? articulo.getGenero().getNombre() : null);
         response.setMarca(articulo.getMarca() != null ? articulo.getMarca().getNombre() : null);
 
-        if (articulo.getTaxones() != null) {
-            articulo.getTaxones().stream()
-                    .map(TaxonArticulo::getTaxon)
-                    .filter(Objects::nonNull)
-                    .map(Taxon::getNombre)
-                    .findFirst()
-                    .ifPresent(response::setSubCategoria);
-        }
+        response.setSubCategoria(clasificacionArticuloSupport.obtenerSubCategoria(articulo));
+        response.setClasificaciones(clasificacionArticuloSupport.obtenerClasificaciones(articulo));
 
         List<VarianteCompactResponse> variants = new ArrayList<>();
         if (articulo.getVariantes() != null) {

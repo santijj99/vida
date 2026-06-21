@@ -6,8 +6,6 @@ import com.vida.apirest.exception.BadRequestException;
 import com.vida.apirest.model.almacen.Deposito;
 import com.vida.apirest.model.almacen.Sucursal;
 import com.vida.apirest.model.articulo.Articulo;
-import com.vida.apirest.model.articulo.Taxon;
-import com.vida.apirest.model.articulo.TaxonArticulo;
 import com.vida.apirest.model.articulo.VarianteArticulo;
 import com.vida.apirest.model.pedido.OrdenDeCompra;
 import com.vida.apirest.model.pedido.OrdenDeCompraDetalle;
@@ -17,6 +15,7 @@ import com.vida.apirest.repositories.OrdenDeCompraRepository;
 import com.vida.apirest.repositories.ProveedorRepository;
 import com.vida.apirest.repositories.SucursalRepository;
 import com.vida.apirest.security.SucursalScopeService;
+import com.vida.apirest.utils.ClasificacionArticuloSupport;
 import com.vida.apirest.utils.EntityLookup;
 import com.vida.apirest.utils.PaginationUtils;
 import lombok.RequiredArgsConstructor;
@@ -46,6 +45,7 @@ public class OrdenDeCompraService {
     private final DepositoRepository depositoRepository;
     private final ArticuloService articuloService;
     private final SucursalScopeService sucursalScopeService;
+    private final ClasificacionArticuloSupport clasificacionArticuloSupport;
 
     @Transactional(readOnly = true)
     public PageResponse<OrdenCompraResponse> findPage(String q, String estado, int page, int size) {
@@ -343,14 +343,8 @@ public class OrdenDeCompraService {
             dto.setMarca(articulo.getMarca() != null ? articulo.getMarca().getNombre() : null);
             dto.setCategoria(articulo.getCategoria() != null ? articulo.getCategoria().getNombre() : null);
             dto.setGenero(articulo.getGenero() != null ? articulo.getGenero().getNombre() : null);
-            if (articulo.getTaxones() != null) {
-                articulo.getTaxones().stream()
-                        .map(TaxonArticulo::getTaxon)
-                        .filter(Objects::nonNull)
-                        .map(Taxon::getNombre)
-                        .findFirst()
-                        .ifPresent(dto::setSubCategoria);
-            }
+            dto.setSubCategoria(clasificacionArticuloSupport.obtenerSubCategoria(articulo));
+            dto.setClasificaciones(clasificacionArticuloSupport.obtenerClasificaciones(articulo));
         }
         if (variante != null) {
             dto.setCodigoBarras(variante.getCodigoBarras());

@@ -36,8 +36,6 @@ import com.vida.apirest.model.articulo.Genero;
 import com.vida.apirest.model.articulo.HistorialPrecio;
 import com.vida.apirest.model.articulo.Marca;
 import com.vida.apirest.model.articulo.Talle;
-import com.vida.apirest.model.articulo.Taxon;
-import com.vida.apirest.model.articulo.TaxonArticulo;
 import com.vida.apirest.model.articulo.VarianteArticulo;
 import com.vida.apirest.repositories.ArticuloRepository;
 import com.vida.apirest.repositories.CategoriaRepository;
@@ -49,10 +47,9 @@ import com.vida.apirest.repositories.MarcaRepository;
 import com.vida.apirest.repositories.StockRepository;
 import com.vida.apirest.repositories.SucursalRepository;
 import com.vida.apirest.repositories.TalleRepository;
-import com.vida.apirest.repositories.TaxonArticuloRepository;
-import com.vida.apirest.repositories.TaxonRepository;
 import com.vida.apirest.repositories.VarianteArticuloRepository;
 import com.vida.apirest.security.SucursalScopeService;
+import com.vida.apirest.utils.ClasificacionArticuloSupport;
 import com.vida.apirest.utils.HistorialPrecioSupport;
 import com.vida.apirest.utils.ValidationUtils;
 
@@ -68,8 +65,6 @@ public class ArticuloService {
     private final GeneroRepository generoRepository;
     private final ColorRepository colorRepository;
     private final TalleRepository talleRepository;
-    private final TaxonRepository taxonRepository;
-    private final TaxonArticuloRepository taxonArticuloRepository;
     private final VarianteArticuloRepository varianteArticuloRepository;
     private final HistorialPrecioRepository historialPrecioRepository;
     private final StockRepository stockRepository;
@@ -78,11 +73,13 @@ public class ArticuloService {
     private final CatalogoResolverService catalogoResolverService;
     private final ArticuloConsultaService articuloConsultaService;
     private final SucursalScopeService sucursalScopeService;
+    private final ClasificacionArticuloSupport clasificacionArticuloSupport;
 
     @Transactional(readOnly = true)
     public PageResponse<ArticuloTablaRowResponse> findTablaPage(
             String categoria,
             String subCategoria,
+            List<String> clasificaciones,
             String genero,
             String marca,
             String q,
@@ -90,7 +87,8 @@ public class ArticuloService {
             int page,
             int size
     ) {
-        return articuloConsultaService.findTablaPage(categoria, subCategoria, genero, marca, q, depositoId, page, size);
+        return articuloConsultaService.findTablaPage(
+                categoria, subCategoria, clasificaciones, genero, marca, q, depositoId, page, size);
     }
 
     @Transactional(readOnly = true)
@@ -99,35 +97,15 @@ public class ArticuloService {
     }
 
     private String obtenerSubCategoria(Articulo articulo) {
-        if (articulo.getTaxones() == null || articulo.getTaxones().isEmpty()) {
-            return null;
-        }
-        return articulo.getTaxones().stream()
-                .map(TaxonArticulo::getTaxon)
-                .filter(Objects::nonNull)
-                .map(Taxon::getNombre)
-                .findFirst()
-                .orElse(null);
+        return clasificacionArticuloSupport.obtenerSubCategoria(articulo);
     }
 
-    private String obtenerSubCategoriaVariante(VarianteArticulo variante, Articulo articulo) {
-        return obtenerSubCategoria(articulo);
+    private void sincronizarSubCategoria(Long articuloId, String subCategoria) {
+        clasificacionArticuloSupport.sincronizarSubCategoria(articuloId, subCategoria);
     }
 
-    private Taxon resolverTaxon(String nombre) {
-        return catalogoResolverService.findOrCreateSubCategoria(nombre);
-    }
-
-    private void vincularTaxonArticulo(Long articuloId, Taxon taxon) {
-        if (taxon == null) {
-            return;
-        }
-        if (!taxonArticuloRepository.existsByArticuloIdAndTaxonId(articuloId, taxon.getId())) {
-            TaxonArticulo taxonArticulo = new TaxonArticulo();
-            taxonArticulo.setArticuloId(articuloId);
-            taxonArticulo.setTaxonId(taxon.getId());
-            taxonArticuloRepository.save(taxonArticulo);
-        }
+    private void sincronizarClasificaciones(Long articuloId, List<String> clasificaciones) {
+        clasificacionArticuloSupport.sincronizarClasificaciones(articuloId, clasificaciones);
     }
 
     private boolean coincideFiltros(
@@ -311,8 +289,8 @@ public class ArticuloService {
         articulo.setEstado(Articulo.EstadoProducto.ACTIVO);
         articulo = articuloRepository.save(articulo);
 
-        Taxon subCategoriaArticulo = resolverTaxon(request.getSubCategoria());
-        vincularTaxonArticulo(articulo.getId(), subCategoriaArticulo);
+        sincronizarSubCategoria(articulo.getId(), request.getSubCategoria());
+        sincronizarClasificaciones(articulo.getId(), request.getClasificaciones());
         return articulo;
     }
 
@@ -359,6 +337,7 @@ public class ArticuloService {
         artReq.setMarca(req.getMarca().trim());
         artReq.setCategoria(req.getCategoria().trim());
         artReq.setSubCategoria(req.getSubCategoria());
+        artReq.setClasificaciones(req.getClasificaciones());
         artReq.setGenero(req.getGenero().trim());
         artReq.setCodigo(req.getCodigoArticulo().trim());
         artReq.setModelo(req.getModelo().trim());
@@ -636,8 +615,13 @@ public class ArticuloService {
             Genero genero = catalogoResolverService.findOrCreateGenero(request.getGenero());
             articulo.setGeneroId(genero.getId());
         }
-        if (request.getSubCategoria() != null && !request.getSubCategoria().isBlank()) {
-            vincularTaxonArticulo(articulo.getId(), resolverTaxon(request.getSubCategoria()));
+        if (request.getSubCategoria() != null) {
+            sincronizarSubCategoria(
+                    articulo.getId(),
+                    request.getSubCategoria().isBlank() ? null : request.getSubCategoria());
+        }
+        if (request.getClasificaciones() != null) {
+            sincronizarClasificaciones(articulo.getId(), request.getClasificaciones());
         }
     }
 

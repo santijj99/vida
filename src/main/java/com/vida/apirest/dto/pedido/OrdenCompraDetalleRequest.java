@@ -3,6 +3,7 @@ package com.vida.apirest.dto.pedido;
 import lombok.Data;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 @Data
 public class OrdenCompraDetalleRequest {
@@ -12,6 +13,7 @@ public class OrdenCompraDetalleRequest {
     private String marca;
     private String categoria;
     private String subCategoria;
+    private List<String> clasificaciones;
     private String genero;
     private String modelo;
     private String paisTalle;

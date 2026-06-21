@@ -9,6 +9,7 @@ public class ArticuloCreateRequest {
     private String marca;
     private String categoria;
     private String subCategoria;
+    private List<String> clasificaciones;
     private String genero;
     private String codigo;
     private String modelo;

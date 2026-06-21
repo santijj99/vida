@@ -73,16 +73,22 @@ public class CatalogoResolverService {
     }
 
     @Transactional
+    public Taxon findOrCreateClasificacion(String nombre) {
+        return findOrCreateSubCategoria(nombre);
+    }
+
+    @Transactional
     public Taxon findOrCreateSubCategoria(String nombre) {
         if (nombre == null || nombre.isBlank()) {
             return null;
         }
         String normalizado = nombre.trim();
-        return taxonRepository.findByNombre(normalizado)
+        return taxonRepository.findByNombreIgnoreCase(normalizado)
                 .orElseGet(() -> {
                     Taxon taxon = new Taxon();
                     taxon.setNombre(normalizado);
                     taxon.setNivel(1);
+                    taxon.setActivo(true);
                     return taxonRepository.save(taxon);
                 });
     }
