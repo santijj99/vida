@@ -4,6 +4,7 @@ import com.vida.apirest.model.almacen.Deposito;
 import com.vida.apirest.model.almacen.Sucursal;
 import com.vida.apirest.model.auth.Role;
 import com.vida.apirest.model.persona.Empleado;
+import com.vida.apirest.model.persona.Proveedor;
 import com.vida.apirest.model.auth.Usuario;
 import com.vida.apirest.model.auth.UsuarioHasRoles;
 import com.vida.apirest.model.auth.UsuarioSucursal;
@@ -17,6 +18,7 @@ import com.vida.apirest.repositories.EmpleadoRepository;
 import com.vida.apirest.repositories.EmpresaRepository;
 import com.vida.apirest.repositories.FinanzasCuentaFinancieraRepository;
 import com.vida.apirest.repositories.MonedaRepository;
+import com.vida.apirest.repositories.ProveedorRepository;
 import com.vida.apirest.repositories.RoleRepository;
 import com.vida.apirest.repositories.SucursalRepository;
 import com.vida.apirest.repositories.UsuarioHasRoleRepository;
@@ -48,6 +50,7 @@ public class DataInitializer {
     private final UsuarioRepository usuarioRepository;
     private final UsuarioHasRoleRepository usuarioHasRoleRepository;
     private final UsuarioSucursalRepository usuarioSucursalRepository;
+    private final ProveedorRepository proveedorRepository;
     private final PasswordEncoder passwordEncoder;
 
     @Bean
@@ -268,6 +271,22 @@ public class DataInitializer {
             if (lucio != null && suc001 != null) {
                 vincularSucursalSiNoExiste(lucio, suc001);
             }
+        };
+    }
+
+    @Bean
+    @Order(11)
+    public CommandLineRunner seedProveedores() {
+        return args -> {
+            if (proveedorRepository.count() > 0) {
+                return;
+            }
+            Proveedor proveedor = new Proveedor();
+            proveedor.setCodigo("PROV001");
+            proveedor.setRazonSocial("Proveedor Demo");
+            proveedor.setNombre("Proveedor Demo");
+            proveedor.setActivo(true);
+            proveedorRepository.save(proveedor);
         };
     }
 

@@ -2,6 +2,8 @@ package com.vida.apirest.servicies;
 
 import com.vida.apirest.dto.common.PageResponse;
 import com.vida.apirest.dto.pedido.*;
+import com.vida.apirest.exception.BadRequestException;
+import com.vida.apirest.model.almacen.Deposito;
 import com.vida.apirest.model.almacen.Sucursal;
 import com.vida.apirest.model.articulo.Articulo;
 import com.vida.apirest.model.articulo.Taxon;
@@ -10,10 +12,12 @@ import com.vida.apirest.model.articulo.VarianteArticulo;
 import com.vida.apirest.model.pedido.OrdenDeCompra;
 import com.vida.apirest.model.pedido.OrdenDeCompraDetalle;
 import com.vida.apirest.model.persona.Proveedor;
+import com.vida.apirest.repositories.DepositoRepository;
 import com.vida.apirest.repositories.OrdenDeCompraRepository;
 import com.vida.apirest.repositories.ProveedorRepository;
 import com.vida.apirest.repositories.SucursalRepository;
 import com.vida.apirest.security.SucursalScopeService;
+import com.vida.apirest.utils.EntityLookup;
 import com.vida.apirest.utils.PaginationUtils;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -39,6 +43,7 @@ public class OrdenDeCompraService {
     private final OrdenDeCompraRepository ordenDeCompraRepository;
     private final SucursalRepository sucursalRepository;
     private final ProveedorRepository proveedorRepository;
+    private final DepositoRepository depositoRepository;
     private final ArticuloService articuloService;
     private final SucursalScopeService sucursalScopeService;
 
@@ -88,10 +93,10 @@ public class OrdenDeCompraService {
         }
         sucursalScopeService.assertCanUse(request.getSucursalId());
 
-        Sucursal sucursal = sucursalRepository.findById(request.getSucursalId())
-                .orElseThrow(() -> new RuntimeException("Sucursal no encontrada"));
-        Proveedor proveedor = proveedorRepository.findById(request.getProveedorId())
-                .orElseThrow(() -> new RuntimeException("Proveedor no encontrado"));
+        Sucursal sucursal = EntityLookup.require(
+                sucursalRepository.findById(request.getSucursalId()), "Sucursal", request.getSucursalId());
+        Proveedor proveedor = requireProveedorActivo(request.getProveedorId());
+        Long depositoId = resolverDepositoId(request.getSucursalId(), request.getDepositoId());
 
         OrdenDeCompra orden = new OrdenDeCompra();
         orden.setSucursal(sucursal);
@@ -105,7 +110,7 @@ public class OrdenDeCompraService {
         orden.setEstado(OrdenDeCompra.EstadoOrden.BORRADOR);
         orden.setResponsable(usuarioActual());
         orden.setNumero("OC-TMP-" + System.currentTimeMillis());
-        orden.setDetalles(construirDetalles(orden, request.getDetalles(), request.getSucursalId(), request.getDepositoId()));
+        orden.setDetalles(construirDetalles(orden, request.getDetalles(), request.getSucursalId(), depositoId));
         recalcularTotales(orden);
 
         orden = ordenDeCompraRepository.saveAndFlush(orden);
@@ -128,10 +133,10 @@ public class OrdenDeCompraService {
         }
         sucursalScopeService.assertCanUse(request.getSucursalId());
 
-        Sucursal sucursal = sucursalRepository.findById(request.getSucursalId())
-                .orElseThrow(() -> new RuntimeException("Sucursal no encontrada"));
-        Proveedor proveedor = proveedorRepository.findById(request.getProveedorId())
-                .orElseThrow(() -> new RuntimeException("Proveedor no encontrado"));
+        Sucursal sucursal = EntityLookup.require(
+                sucursalRepository.findById(request.getSucursalId()), "Sucursal", request.getSucursalId());
+        Proveedor proveedor = requireProveedorActivo(request.getProveedorId());
+        Long depositoId = resolverDepositoId(request.getSucursalId(), request.getDepositoId());
 
         orden.setSucursal(sucursal);
         orden.setProveedor(proveedor);
@@ -141,7 +146,7 @@ public class OrdenDeCompraService {
         orden.setCondicionPago(request.getCondicionPago());
         orden.setObservaciones(request.getObservaciones());
         orden.getDetalles().clear();
-        orden.getDetalles().addAll(construirDetalles(orden, request.getDetalles(), request.getSucursalId(), request.getDepositoId()));
+        orden.getDetalles().addAll(construirDetalles(orden, request.getDetalles(), request.getSucursalId(), depositoId));
         recalcularTotales(orden);
         ordenDeCompraRepository.saveAndFlush(orden);
         return findById(id);
@@ -176,11 +181,43 @@ public class OrdenDeCompraService {
 
     private void validarCabecera(OrdenCompraRequest request) {
         if (request.getSucursalId() == null) {
-            throw new RuntimeException("Sucursal requerida");
+            throw new BadRequestException("Sucursal requerida");
         }
         if (request.getProveedorId() == null) {
-            throw new RuntimeException("Proveedor requerido");
+            throw new BadRequestException("Proveedor requerido");
         }
+    }
+
+    private Proveedor requireProveedorActivo(Long proveedorId) {
+        Proveedor proveedor = EntityLookup.require(
+                proveedorRepository.findById(proveedorId), "Proveedor", proveedorId);
+        if (!Boolean.TRUE.equals(proveedor.getActivo())) {
+            throw new BadRequestException("El proveedor seleccionado está inactivo");
+        }
+        return proveedor;
+    }
+
+    private Long resolverDepositoId(Long sucursalId, Long depositoId) {
+        if (depositoId != null) {
+            Deposito deposito = EntityLookup.require(
+                    depositoRepository.findById(depositoId), "Depósito", depositoId);
+            if (deposito.getSucursal() == null
+                    || !Objects.equals(deposito.getSucursal().getId(), sucursalId)) {
+                throw new BadRequestException("El depósito no pertenece a la sucursal del pedido");
+            }
+            return depositoId;
+        }
+
+        List<Deposito> depositos = depositoRepository.findBySucursalIdOrderByNombreAsc(sucursalId);
+        if (depositos.isEmpty()) {
+            throw new BadRequestException("No hay depósitos en la sucursal seleccionada");
+        }
+
+        return depositos.stream()
+                .filter(d -> d.getTipo() == Deposito.Tipo.PRINCIPAL)
+                .findFirst()
+                .orElse(depositos.get(0))
+                .getId();
     }
 
     private List<OrdenDeCompraDetalle> construirDetalles(

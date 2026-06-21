@@ -4,6 +4,7 @@ import com.vida.apirest.dto.common.ApiErrorResponse;
 import com.vida.apirest.exception.ApiException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -26,6 +27,13 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiErrorResponse> handleIllegalArgumentException(IllegalArgumentException ex) {
         logClientError(HttpStatus.BAD_REQUEST, ex.getMessage());
         return buildResponse(ex.getMessage(), HttpStatus.BAD_REQUEST);
+    }
+
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<ApiErrorResponse> handleDataIntegrityViolation(DataIntegrityViolationException ex) {
+        String message = resolverIntegrityMessage(ex);
+        logClientError(HttpStatus.BAD_REQUEST, message);
+        return buildResponse(message, HttpStatus.BAD_REQUEST);
     }
 
     @ExceptionHandler(RuntimeException.class)
@@ -61,6 +69,26 @@ public class GlobalExceptionHandler {
             return HttpStatus.NOT_FOUND;
         }
         return HttpStatus.BAD_REQUEST;
+    }
+
+    private String resolverIntegrityMessage(DataIntegrityViolationException ex) {
+        String raw = ex.getMostSpecificCause() != null
+                ? ex.getMostSpecificCause().getMessage()
+                : ex.getMessage();
+        if (raw == null) {
+            return "No se pudo guardar: datos inconsistentes";
+        }
+        String lower = raw.toLowerCase(Locale.ROOT);
+        if (lower.contains("proveedor_id") && lower.contains("tercero")) {
+            return "El proveedor no es válido. Reinicie la API para aplicar la migración de base de datos.";
+        }
+        if (lower.contains("proveedor_id")) {
+            return "El proveedor seleccionado no existe o no es válido";
+        }
+        if (lower.contains("articulo_id") || lower.contains("variante_id")) {
+            return "Uno de los artículos del pedido no es válido";
+        }
+        return "No se pudo guardar el pedido: datos inconsistentes";
     }
 
     private ResponseEntity<ApiErrorResponse> buildResponse(String message, HttpStatus status) {
