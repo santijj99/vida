@@ -1,6 +1,7 @@
 package com.vida.apirest.repositories;
 
 import com.vida.apirest.model.articulo.Articulo;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
@@ -40,4 +41,14 @@ public interface ArticuloRepository extends JpaRepository<Articulo, Long>, JpaSp
             WHERE a.estado = com.vida.apirest.model.articulo.Articulo.EstadoProducto.ARCHIVADO
             """)
     List<Articulo> findArchivadosWithCatalogo();
+
+    @Query("""
+            SELECT a.id, a.codigo, a.modelo, m.nombre
+            FROM Articulo a
+            JOIN a.marca m
+            WHERE a.estado = com.vida.apirest.model.articulo.Articulo.EstadoProducto.ACTIVO
+              AND LOWER(a.codigo) LIKE LOWER(CONCAT(:q, '%'))
+            ORDER BY a.codigo
+            """)
+    List<Object[]> buscarSugerenciasCodigoActivos(@Param("q") String q, Pageable pageable);
 }

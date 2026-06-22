@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.vida.apirest.dto.ariticulo.ArticuloCodigoSugerenciaResponse;
 import com.vida.apirest.dto.ariticulo.ArticuloCompactResponse;
 import com.vida.apirest.dto.ariticulo.ArticuloCreateRequest;
 import com.vida.apirest.dto.ariticulo.ArticuloFiltrosResponse;
@@ -40,6 +41,19 @@ public class ArticuloController {
     @GetMapping("/tabla/filtros")
     public ResponseEntity<ArticuloFiltrosResponse> filtrosTabla() {
         return ResponseEntity.ok(articuloService.obtenerFiltrosTabla());
+    }
+
+    @GetMapping("/codigos/sugerencias")
+    public ResponseEntity<List<ArticuloCodigoSugerenciaResponse>> sugerenciasCodigo(
+            @RequestParam String q,
+            @RequestParam(defaultValue = "10") int limit
+    ) {
+        return ResponseEntity.ok(articuloService.buscarSugerenciasCodigo(q, limit));
+    }
+
+    @GetMapping("/codigos/lookup")
+    public ResponseEntity<ArticuloCompactResponse> lookupPorCodigo(@RequestParam String codigo) {
+        return ResponseEntity.ok(articuloService.getCompactByCodigo(codigo));
     }
 
     @GetMapping("/para-venta")
