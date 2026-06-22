@@ -8,11 +8,11 @@ import com.vida.apirest.model.finanzas.Gasto;
 import com.vida.apirest.model.finanzas.Gasto.EstadoGasto;
 import com.vida.apirest.model.finanzas.GastoCategoria;
 import com.vida.apirest.model.finanzas.GastoPago;
-import com.vida.apirest.model.tesoreria.MovimientoFinanciero;
 import com.vida.apirest.repositories.FinanzasCuentaFinancieraRepository;
 import com.vida.apirest.repositories.GastoRepository;
-import com.vida.apirest.repositories.MovimientoFinancieroRepository;
 import com.vida.apirest.repositories.SucursalRepository;
+import com.vida.apirest.security.SucursalScopeService;
+import com.vida.apirest.utils.PaginationUtils;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -31,23 +31,21 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class GastoService {
 
-    private static final int DEFAULT_PAGE_SIZE = 15;
-    private static final int MAX_PAGE_SIZE = 100;
-
     private final GastoRepository gastoRepository;
     private final GastoCategoriaService gastoCategoriaService;
     private final SucursalRepository sucursalRepository;
     private final FinanzasCuentaFinancieraRepository cuentaRepository;
-    private final MovimientoFinancieroRepository movimientoFinancieroRepository;
+    private final CajaMovimientoService cajaMovimientoService;
+    private final SucursalScopeService sucursalScopeService;
 
     @Transactional(readOnly = true)
     public PageResponse<GastoResponse> listar(
             Long sucursalId, String estado, Long categoriaId, String q, int page, int size) {
-        int safePage = Math.max(0, page);
-        int safeSize = Math.max(1, Math.min(size <= 0 ? DEFAULT_PAGE_SIZE : size, MAX_PAGE_SIZE));
+        Long scopedSucursalId = sucursalScopeService.enforceFilter(sucursalId);
+        PaginationUtils.PageParams params = PaginationUtils.normalize(page, size);
         EstadoGasto estadoEnum = parseEstado(estado);
-        Pageable pageable = PageRequest.of(safePage, safeSize, Sort.by(Sort.Direction.DESC, "createdAt"));
-        Page<Gasto> result = gastoRepository.searchPage(sucursalId, estadoEnum, categoriaId, q, pageable);
+        Pageable pageable = PageRequest.of(params.page(), params.size(), Sort.by(Sort.Direction.DESC, "createdAt"));
+        Page<Gasto> result = gastoRepository.searchPage(scopedSucursalId, estadoEnum, categoriaId, q, pageable);
         return PageResponse.from(result.map(this::mapResumen));
     }
 
@@ -59,6 +57,7 @@ public class GastoService {
     @Transactional
     public GastoResponse crear(GastoCreateRequest request) {
         validarCreate(request);
+        sucursalScopeService.assertCanUse(request.getSucursalId());
         Sucursal sucursal = sucursalRepository.findById(request.getSucursalId())
                 .orElseThrow(() -> new RuntimeException("Sucursal no encontrada: " + request.getSucursalId()));
         GastoCategoria categoria = gastoCategoriaService.buscarEntidad(request.getCategoriaId());
@@ -200,33 +199,25 @@ public class GastoService {
         if (sucursalId == null) {
             throw new RuntimeException("sucursalId es obligatorio");
         }
+        sucursalScopeService.assertCanUse(sucursalId);
         return cuentaRepository.findBySucursalIdAndActivoTrueOrderByNombreAsc(sucursalId).stream()
                 .map(this::mapCuenta)
                 .collect(Collectors.toList());
     }
 
     private void registrarEgresoCuenta(CuentaFinanciera cuenta, GastoPago pago, String numeroGasto) {
-        BigDecimal saldoAnterior = cuenta.getSaldoActual() != null ? cuenta.getSaldoActual() : BigDecimal.ZERO;
-        BigDecimal saldoNuevo = saldoAnterior.subtract(pago.getMonto());
-        cuenta.setSaldoActual(saldoNuevo);
-        cuentaRepository.save(cuenta);
-
-        MovimientoFinanciero movimiento = new MovimientoFinanciero();
-        movimiento.setCuenta(cuenta);
-        movimiento.setNumero("MV-" + UUID.randomUUID().toString().replace("-", ""));
-        movimiento.setTipo(MovimientoFinanciero.TipoMovimiento.EGRESO);
-        movimiento.setMonto(pago.getMonto());
-        movimiento.setSaldoAnterior(saldoAnterior);
-        movimiento.setSaldoNuevo(saldoNuevo);
-        movimiento.setDescripcion("Pago de gasto " + numeroGasto);
-        movimiento.setReferencia(pago.getReferencia() != null ? pago.getReferencia() : pago.getNumeroComprobante());
-        movimiento.setResponsable("sistema");
-        movimientoFinancieroRepository.save(movimiento);
+        cajaMovimientoService.registrarEgreso(
+                cuenta,
+                pago.getMonto(),
+                "Pago de gasto " + numeroGasto,
+                pago.getReferencia() != null ? pago.getReferencia() : pago.getNumeroComprobante());
     }
 
     private Gasto buscarConRelaciones(Long id) {
-        return gastoRepository.findByIdWithRelations(id)
+        Gasto gasto = gastoRepository.findByIdWithRelations(id)
                 .orElseThrow(() -> new RuntimeException("Gasto no encontrado: " + id));
+        sucursalScopeService.assertCanAccess(gasto.getSucursal().getId());
+        return gasto;
     }
 
     private void validarCreate(GastoCreateRequest request) {

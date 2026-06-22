@@ -25,7 +25,8 @@ import lombok.Data;
     name = "historial_precio",
     indexes = {
         @Index(name = "ix_hist_precio_variante", columnList = "variante_articulo_id"),
-        @Index(name = "ix_hist_precio_fecha", columnList = "fecha")
+        @Index(name = "ix_hist_precio_fecha", columnList = "fecha"),
+        @Index(name = "ix_hist_precio_variante_fecha", columnList = "variante_articulo_id, fecha")
     }
 )
 public class HistorialPrecio {

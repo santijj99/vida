@@ -6,16 +6,14 @@ import com.vida.apirest.dto.venta.VentaCreditoPersonalRequest;
 import com.vida.apirest.dto.venta.VentaDetalleRequest;
 import com.vida.apirest.dto.venta.VentaResponse;
 import com.vida.apirest.model.almacen.Stock;
-import com.vida.apirest.model.almacen.StockMovimiento;
 import com.vida.apirest.model.almacen.Sucursal;
-import com.vida.apirest.model.articulo.Articulo;
-import com.vida.apirest.model.articulo.VarianteArticulo;
 import com.vida.apirest.model.persona.Cliente;
 import com.vida.apirest.model.persona.Empleado;
 import com.vida.apirest.model.venta.PrestamoCondicional;
 import com.vida.apirest.model.venta.PrestamoCondicionalDetalle;
 import com.vida.apirest.model.venta.Venta;
 import com.vida.apirest.repositories.*;
+import com.vida.apirest.security.SucursalScopeService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -33,18 +31,18 @@ public class PrestamoCondicionalService {
 
     private final PrestamoCondicionalRepository prestamoRepository;
     private final ClienteRepository clienteRepository;
-    private final ArticuloRepository articuloRepository;
-    private final VarianteArticuloRepository varianteArticuloRepository;
-    private final StockRepository stockRepository;
-    private final StockMovimientoRepository stockMovimientoRepository;
     private final SucursalRepository sucursalRepository;
     private final EmpleadoRepository empleadoRepository;
     private final VentaRepository ventaRepository;
     private final VentaService ventaService;
+    private final PendienteDetalleResolver pendienteDetalleResolver;
+    private final StockReservaService stockReservaService;
+    private final SucursalScopeService sucursalScopeService;
 
     @Transactional
     public PrestamoCondicionalResponse crear(PrestamoCondicionalCreateRequest request) {
         validarRequestBase(request);
+        sucursalScopeService.assertCanUse(request.getSucursalId());
 
         Cliente cliente = clienteRepository.findByDni(request.getClienteDni())
                 .orElseThrow(() -> new RuntimeException("Cliente no encontrado con DNI: " + request.getClienteDni()));
@@ -69,8 +67,11 @@ public class PrestamoCondicionalService {
         prestamo.setObservaciones(request.getObservaciones());
 
         for (var detReq : request.getDetalles()) {
-            var resuelto = resolverDetalle(detReq, sucursal.getId());
-            reservarStock(resuelto.stock(), detReq.getCantidad(), prestamo.getNumeroComprobante());
+            PendienteDetalleResolver.DetalleResuelto resuelto = pendienteDetalleResolver.resolver(
+                    detReq.getArticuloId(), detReq.getVarianteId(), detReq.getCantidad(),
+                    sucursal.getId(), false);
+            stockReservaService.reservar(resuelto.stock(), detReq.getCantidad(),
+                    prestamo.getNumeroComprobante(), StockReservaService.ModoReserva.PRESTAMO);
 
             PrestamoCondicionalDetalle det = new PrestamoCondicionalDetalle();
             det.setPrestamo(prestamo);
@@ -88,6 +89,7 @@ public class PrestamoCondicionalService {
 
     @Transactional(readOnly = true)
     public List<PrestamoCondicionalResponse> listar(Long sucursalId, String estado) {
+        Long scopedSucursalId = sucursalScopeService.enforceFilter(sucursalId);
         List<PrestamoCondicional.EstadoPrestamo> estados;
         if (estado == null || estado.isBlank() || "ACTIVOS".equalsIgnoreCase(estado)) {
             estados = List.of(
@@ -100,7 +102,7 @@ public class PrestamoCondicionalService {
                 throw new RuntimeException("Estado inválido: " + estado);
             }
         }
-        return prestamoRepository.findAllWithDetalles(sucursalId, estados)
+        return prestamoRepository.findAllWithDetalles(scopedSucursalId, estados)
                 .stream()
                 .map(this::mapResponse)
                 .collect(Collectors.toList());
@@ -141,7 +143,8 @@ public class PrestamoCondicionalService {
         List<PrestamoCondicionalDetalle> aDevolver = resolverDetallesPendientes(prestamo, detalleIds);
         for (PrestamoCondicionalDetalle det : aDevolver) {
             Stock stock = obtenerStock(det, prestamo.getSucursal().getId());
-            liberarReserva(stock, det.getCantidad(), prestamo.getNumeroComprobante());
+            stockReservaService.liberar(stock, det.getCantidad(), prestamo.getNumeroComprobante(),
+                    StockReservaService.ModoReserva.PRESTAMO);
             det.setEstado(PrestamoCondicionalDetalle.EstadoDetalle.DEVUELTO);
         }
 
@@ -264,7 +267,8 @@ public class PrestamoCondicionalService {
             PrestamoCondicional prestamo, List<PrestamoCondicionalDetalle> lineas) {
         for (PrestamoCondicionalDetalle det : lineas) {
             Stock stock = obtenerStock(det, prestamo.getSucursal().getId());
-            consumirReserva(stock, det.getCantidad(), prestamo.getNumeroComprobante());
+            stockReservaService.consumir(stock, det.getCantidad(), prestamo.getNumeroComprobante(),
+                    StockReservaService.ModoReserva.PRESTAMO);
         }
     }
 
@@ -305,8 +309,10 @@ public class PrestamoCondicionalService {
     }
 
     private PrestamoCondicional buscarPrestamo(Long id) {
-        return prestamoRepository.findByIdWithDetalles(id)
+        PrestamoCondicional prestamo = prestamoRepository.findByIdWithDetalles(id)
                 .orElseThrow(() -> new RuntimeException("Préstamo condicional no encontrado"));
+        sucursalScopeService.assertCanAccess(prestamo.getSucursal().getId());
+        return prestamo;
     }
 
     private void validarRequestBase(PrestamoCondicionalCreateRequest request) {
@@ -321,138 +327,9 @@ public class PrestamoCondicionalService {
         }
     }
 
-    private record DetalleResuelto(Articulo articulo, VarianteArticulo variante, Stock stock, BigDecimal precio) {}
-
-    private DetalleResuelto resolverDetalle(PrestamoCondicionalDetalleRequest detReq, Long sucursalId) {
-        if (detReq.getCantidad() == null || detReq.getCantidad() <= 0) {
-            throw new RuntimeException("La cantidad debe ser mayor a cero");
-        }
-
-        VarianteArticulo variante = null;
-        Articulo articulo;
-
-        if (detReq.getVarianteId() != null) {
-            variante = varianteArticuloRepository.findById(detReq.getVarianteId())
-                    .orElseThrow(() -> new RuntimeException("Variante no encontrada"));
-            articulo = articuloRepository.findById(variante.getArticuloId())
-                    .orElseThrow(() -> new RuntimeException("Artículo no encontrado"));
-        } else {
-            if (detReq.getArticuloId() == null) {
-                throw new RuntimeException("Cada detalle requiere articuloId o varianteId");
-            }
-            articulo = articuloRepository.findById(detReq.getArticuloId())
-                    .orElseThrow(() -> new RuntimeException("Artículo no encontrado"));
-        }
-
-        BigDecimal precio = variante != null
-                ? obtenerPrecioVariante(variante)
-                : BigDecimal.ZERO;
-
-        Stock stock = variante != null
-                ? findStockByVariante(variante.getId(), sucursalId)
-                : findStock(articulo.getId(), null, sucursalId);
-
-        return new DetalleResuelto(articulo, variante, stock, precio);
-    }
-
     private Stock obtenerStock(PrestamoCondicionalDetalle det, Long sucursalId) {
-        return det.getVariante() != null
-                ? findStockByVariante(det.getVariante().getId(), sucursalId)
-                : findStock(det.getArticulo().getId(), null, sucursalId);
-    }
-
-    private void reservarStock(Stock stock, Integer cantidad, String referencia) {
-        int disponible = stock.getCantidadDisponible() != null ? stock.getCantidadDisponible() : 0;
-        if (disponible < cantidad) {
-            throw new RuntimeException("Stock insuficiente para el artículo");
-        }
-
-        int actual = stock.getCantidadActual() != null ? stock.getCantidadActual() : 0;
-        int reservada = stock.getCantidadReservada() != null ? stock.getCantidadReservada() : 0;
-
-        stock.setCantidadDisponible(disponible - cantidad);
-        stock.setCantidadActual(Math.max(0, actual - cantidad));
-        stock.setCantidadReservada(reservada + cantidad);
-        stockRepository.save(stock);
-
-        registrarMovimiento(stock, StockMovimiento.TipoMovimiento.RESERVA_PRESTAMO,
-                cantidad, disponible, disponible - cantidad, referencia,
-                "Reserva por préstamo condicional");
-    }
-
-    private void liberarReserva(Stock stock, Integer cantidad, String referencia) {
-        int reservada = stock.getCantidadReservada() != null ? stock.getCantidadReservada() : 0;
-        if (reservada < cantidad) {
-            throw new RuntimeException("Cantidad reservada insuficiente para liberar");
-        }
-
-        int disponible = stock.getCantidadDisponible() != null ? stock.getCantidadDisponible() : 0;
-        int actual = stock.getCantidadActual() != null ? stock.getCantidadActual() : 0;
-
-        stock.setCantidadReservada(reservada - cantidad);
-        stock.setCantidadDisponible(disponible + cantidad);
-        stock.setCantidadActual(actual + cantidad);
-        stockRepository.save(stock);
-
-        registrarMovimiento(stock, StockMovimiento.TipoMovimiento.LIBERACION_RESERVA_PRESTAMO,
-                cantidad, disponible, disponible + cantidad, referencia,
-                "Devolución de préstamo condicional");
-    }
-
-    private void consumirReserva(Stock stock, Integer cantidad, String referencia) {
-        int reservada = stock.getCantidadReservada() != null ? stock.getCantidadReservada() : 0;
-        if (reservada < cantidad) {
-            throw new RuntimeException("Cantidad reservada insuficiente");
-        }
-
-        int disponible = stock.getCantidadDisponible() != null ? stock.getCantidadDisponible() : 0;
-        stock.setCantidadReservada(reservada - cantidad);
-        stockRepository.save(stock);
-
-        registrarMovimiento(stock, StockMovimiento.TipoMovimiento.SALIDA_VENTA,
-                cantidad, disponible, disponible, referencia,
-                "Confirmación de compra por préstamo condicional");
-    }
-
-    private void registrarMovimiento(Stock stock, StockMovimiento.TipoMovimiento tipo,
-                                     int cantidad, int saldoAnterior, int saldoNuevo,
-                                     String referencia, String descripcion) {
-        StockMovimiento mov = new StockMovimiento();
-        mov.setStock(stock);
-        mov.setTipo(tipo);
-        mov.setCantidad(cantidad);
-        mov.setSaldoAnterior(saldoAnterior);
-        mov.setSaldoNuevo(saldoNuevo);
-        mov.setReferencia(referencia);
-        mov.setDescripcion(descripcion);
-        mov.setUsuario("sistema");
-        stockMovimientoRepository.save(mov);
-    }
-
-    private Stock findStock(Long articuloId, Long varianteId, Long sucursalId) {
-        return varianteId != null
-                ? stockRepository.findByArticuloIdAndVarianteIdAndSucursalId(articuloId, varianteId, sucursalId)
-                .orElseThrow(() -> new RuntimeException("Stock no encontrado"))
-                : stockRepository.findByArticuloIdAndSucursalId(articuloId, sucursalId)
-                .orElseThrow(() -> new RuntimeException("Stock no encontrado"));
-    }
-
-    private Stock findStockByVariante(Long varianteId, Long sucursalId) {
-        return stockRepository.findByVarianteIdAndSucursalId(varianteId, sucursalId)
-                .orElseThrow(() -> new RuntimeException("Stock no encontrado para la variante"));
-    }
-
-    private BigDecimal obtenerPrecioVariante(VarianteArticulo variante) {
-        if (variante.getHistorialPrecios() != null && !variante.getHistorialPrecios().isEmpty()) {
-            return variante.getHistorialPrecios().stream()
-                    .max((a, b) -> a.getFecha().compareTo(b.getFecha()))
-                    .map(h -> h.getPrecioNuevo())
-                    .orElse(BigDecimal.ZERO);
-        }
-        if (variante.getListaPrecio() != null && variante.getListaPrecio().getPrecio() != null) {
-            return variante.getListaPrecio().getPrecio();
-        }
-        return BigDecimal.ZERO;
+        Long varianteId = det.getVariante() != null ? det.getVariante().getId() : null;
+        return pendienteDetalleResolver.obtenerStock(det.getArticulo().getId(), varianteId, sucursalId);
     }
 
     private PrestamoCondicionalResponse mapResponse(PrestamoCondicional prestamo) {

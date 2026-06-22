@@ -9,4 +9,5 @@ import java.util.Optional;
 public interface DepositoRepository extends JpaRepository<Deposito, Long> {
     Optional<Deposito> findByCodigo(String codigo);
     List<Deposito> findBySucursalIdOrderByNombreAsc(Long sucursalId);
+    Optional<Deposito> findFirstByOrderByIdAsc();
 }

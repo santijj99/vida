@@ -30,7 +30,8 @@ import java.util.List;
                 @Index(name = "ix_var_articulo", columnList = "articulo_id"),
                 @Index(name = "ix_var_color", columnList = "color_id"),
                 @Index(name = "ix_var_talle", columnList = "talle_id"),
-                @Index(name = "ix_var_lista_precio", columnList = "lista_precio_id")
+                @Index(name = "ix_var_lista_precio", columnList = "lista_precio_id"),
+                @Index(name = "ix_var_estado", columnList = "estado")
         }
 )
 public class VarianteArticulo {
@@ -52,7 +53,7 @@ public class VarianteArticulo {
     @Column(name = "color_id")
     private Long colorId;
 
-    @ManyToOne(fetch = FetchType.EAGER)
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "color_id", insertable = false, updatable = false)
     private Color color;
 
@@ -60,7 +61,7 @@ public class VarianteArticulo {
     @Column(name = "lista_precio_id")
     private Long listaPrecioId;
 
-    @ManyToOne(fetch = FetchType.EAGER)
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "lista_precio_id", insertable = false, updatable = false)
     private ListaPrecio listaPrecio;
 
@@ -69,14 +70,14 @@ public class VarianteArticulo {
     @Column(name = "talle_id")
     private Long talleId;
 
-    @ManyToOne(fetch = FetchType.EAGER)
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "talle_id", insertable = false, updatable = false)
     private Talle talle;
 
     @Column(name = "taxon_id")
     private Long taxonId;
 
-    @ManyToOne(fetch = FetchType.EAGER)
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "taxon_id", insertable = false, updatable = false)
     private Taxon taxon;
 

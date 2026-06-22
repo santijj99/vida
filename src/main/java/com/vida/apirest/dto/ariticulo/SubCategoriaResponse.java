@@ -5,7 +5,7 @@ import lombok.Data;
 import java.time.LocalDateTime;
 
 @Data
-public class SubCategoriaResponse {
+public class SubCategoriaResponse implements AuditableCatalogResponse {
     private Long id;
     private String nombre;
     private String descripcion;

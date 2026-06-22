@@ -15,6 +15,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.vida.apirest.config.AfipProperties;
+import com.vida.apirest.config.AppSecurityProperties;
+import com.vida.apirest.exception.RegistrationDisabledException;
 import com.vida.apirest.dto.afip.TokenValidationResponse;
 import com.vida.apirest.dto.usuario.CreateUsuarioRequest;
 import com.vida.apirest.dto.usuario.LoginRequest;
@@ -29,6 +31,7 @@ import com.vida.apirest.repositories.RoleRepository;
 import com.vida.apirest.repositories.UsuarioHasRoleRepository;
 import com.vida.apirest.repositories.UsuarioRepository;
 import com.vida.apirest.servicies.afip.AFIPTokenValidatorService;
+import com.vida.apirest.utils.FileUploadUtils;
 import com.vida.apirest.utils.JwtUtil;
 import com.vida.apirest.dto.auth.EffectivePermissions;
 
@@ -64,8 +67,14 @@ public class UsuarioService {
     @Autowired
     private AfipProperties afipProperties;
 
+    @Autowired
+    private AppSecurityProperties appSecurityProperties;
+
     @Transactional
     public LoginResponse create(CreateUsuarioRequest request) {
+        if (!appSecurityProperties.isAllowPublicRegister()) {
+            throw new RegistrationDisabledException();
+        }
         if (usuarioRepository.existsByEmail(request.email)) {
             throw new RuntimeException("El correo ya esta en uso");
         }
@@ -90,8 +99,9 @@ public class UsuarioService {
 
     @Transactional(readOnly = true)
     public List<UsuarioResponse> findAll() {
-        return usuarioRepository.findAll().stream().map(usuario -> {
-            List<Role> roles = roleRepository.findAllByUsuariosHasRoles_Usuario_Id(usuario.getId());
+        List<Usuario> usuarios = usuarioRepository.findAllWithRolesAndRolPrincipal();
+        return usuarios.stream().map(usuario -> {
+            List<Role> roles = rolesFromUsuario(usuario);
             EffectivePermissions permissions = permissionResolverService.resolve(usuario);
             return usuarioMapper.toUsuarioResponse(usuario, roles, permissions);
         }).toList();
@@ -125,14 +135,14 @@ public class UsuarioService {
         Usuario usuario = usuarioRepository.findByEmailWithRolesAndRolPrincipal(request.getEmail())
                 .orElseThrow(() -> new RuntimeException("El email o password no son validos"));
         if (!passwordEncoder.matches(request.getPassword(), usuario.getPassword())) {
-            throw new RuntimeException("El password no es valido");
+            throw new RuntimeException("El email o password no son validos");
         }
         return buildLoginResponse(usuario);
     }
 
     @Transactional(readOnly = true)
     public UsuarioResponse buildProfileResponse(Usuario usuario) {
-        List<Role> roles = roleRepository.findAllByUsuariosHasRoles_Usuario_Id(usuario.getId());
+        List<Role> roles = rolesFromUsuario(usuario);
         EffectivePermissions permissions = permissionResolverService.resolve(usuario);
         return usuarioMapper.toUsuarioResponse(usuario, roles, permissions);
     }
@@ -154,13 +164,16 @@ public class UsuarioService {
         }
 
         if (request.getFile() != null && !request.getFile().isEmpty()) {
-            String uploadDir = "upload/usuario/" + usuario.getId();
-            String filename = request.getFile().getOriginalFilename();
-            String filePath = Paths.get(uploadDir, filename).toString();
+            String uploadDir = "uploads/usuario/" + usuario.getId();
+            String filename = FileUploadUtils.safeProfileFileName(request.getFile().getOriginalFilename());
+            var targetPath = Paths.get(uploadDir, filename).normalize();
+            if (!targetPath.startsWith(Paths.get(uploadDir).normalize())) {
+                throw new IllegalArgumentException("Nombre de archivo inválido");
+            }
 
             Files.createDirectories(Paths.get(uploadDir));
-            Files.copy(request.getFile().getInputStream(), Paths.get(filePath), StandardCopyOption.REPLACE_EXISTING);
-            usuario.setImage("/" + filePath.replace("\\", "/"));
+            Files.copy(request.getFile().getInputStream(), targetPath, StandardCopyOption.REPLACE_EXISTING);
+            usuario.setImage("/" + targetPath.toString().replace("\\", "/"));
         }
 
         usuarioRepository.save(usuario);
@@ -178,7 +191,7 @@ public class UsuarioService {
 
     private LoginResponse buildLoginResponse(Usuario usuario) {
         EffectivePermissions permissions = permissionResolverService.resolve(usuario);
-        List<Role> roles = roleRepository.findAllByUsuariosHasRoles_Usuario_Id(usuario.getId());
+        List<Role> roles = rolesFromUsuario(usuario);
 
         List<String> roleNames = roles.stream().map(Role::getNombre).collect(Collectors.toList());
         String token = jwtUtil.generateToken(
@@ -219,6 +232,15 @@ public class UsuarioService {
             return null;
         }
         return celular.trim();
+    }
+
+    private List<Role> rolesFromUsuario(Usuario usuario) {
+        if (usuario.getUsuarioHasRoles() != null && !usuario.getUsuarioHasRoles().isEmpty()) {
+            return usuario.getUsuarioHasRoles().stream()
+                    .map(UsuarioHasRoles::getRole)
+                    .toList();
+        }
+        return roleRepository.findAllByUsuariosHasRoles_Usuario_Id(usuario.getId());
     }
 
     private void asignarRolSiNoExiste(Usuario usuario, Long rolId) {

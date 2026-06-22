@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.Collection;
 import java.util.Optional;
 
 public interface OrdenDeCompraRepository extends JpaRepository<OrdenDeCompra, Long> {
@@ -52,5 +53,36 @@ public interface OrdenDeCompraRepository extends JpaRepository<OrdenDeCompra, Lo
     Page<OrdenDeCompra> searchPage(
             @Param("q") String q,
             @Param("estado") String estado,
+            Pageable pageable);
+
+    @Query(
+            value = """
+                    SELECT o FROM OrdenDeCompra o
+                    LEFT JOIN o.sucursal s
+                    LEFT JOIN o.proveedor p
+                    WHERE s.id IN :sucursalIds
+                    AND (:q IS NULL OR :q = '' OR
+                           LOWER(o.numero) LIKE LOWER(CONCAT('%', :q, '%')) OR
+                           LOWER(COALESCE(p.razonSocial, '')) LIKE LOWER(CONCAT('%', :q, '%')) OR
+                           LOWER(COALESCE(p.codigo, '')) LIKE LOWER(CONCAT('%', :q, '%')))
+                    AND (:estado IS NULL OR :estado = '' OR CAST(o.estado AS string) = :estado)
+                    ORDER BY o.fechaOrden DESC, o.id DESC
+                    """,
+            countQuery = """
+                    SELECT COUNT(o) FROM OrdenDeCompra o
+                    LEFT JOIN o.sucursal s
+                    LEFT JOIN o.proveedor p
+                    WHERE s.id IN :sucursalIds
+                    AND (:q IS NULL OR :q = '' OR
+                           LOWER(o.numero) LIKE LOWER(CONCAT('%', :q, '%')) OR
+                           LOWER(COALESCE(p.razonSocial, '')) LIKE LOWER(CONCAT('%', :q, '%')) OR
+                           LOWER(COALESCE(p.codigo, '')) LIKE LOWER(CONCAT('%', :q, '%')))
+                    AND (:estado IS NULL OR :estado = '' OR CAST(o.estado AS string) = :estado)
+                    """
+    )
+    Page<OrdenDeCompra> searchPageBySucursalIds(
+            @Param("q") String q,
+            @Param("estado") String estado,
+            @Param("sucursalIds") Collection<Long> sucursalIds,
             Pageable pageable);
 }

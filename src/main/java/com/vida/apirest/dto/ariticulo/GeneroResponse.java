@@ -5,7 +5,7 @@ import lombok.Data;
 import java.time.LocalDateTime;
 
 @Data
-public class GeneroResponse {
+public class GeneroResponse implements AuditableCatalogResponse {
     private Long id;
     private String nombre;
     private String descripcion;

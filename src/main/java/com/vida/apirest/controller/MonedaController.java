@@ -5,6 +5,7 @@ import com.vida.apirest.dto.finanzas.MonedaResponse;
 import com.vida.apirest.servicies.MonedaService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
@@ -13,71 +14,40 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/monedas")
 @RequiredArgsConstructor
+@PreAuthorize("hasAuthority('VER_ORGANIZACION')")
 public class MonedaController {
 
     private final MonedaService monedaService;
 
     @PostMapping
-    public ResponseEntity<?> createMoneda(@RequestBody CreateMonedaRequest request) {
-        try {
-            MonedaResponse response = monedaService.createMoneda(request);
-            return ResponseEntity.ok(response);
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(
-                    java.util.Map.of("error", e.getMessage() != null ? e.getMessage() : "Solicitud inválida"));
-        }
+    public ResponseEntity<MonedaResponse> createMoneda(@RequestBody CreateMonedaRequest request) {
+        return ResponseEntity.ok(monedaService.createMoneda(request));
     }
 
     @PutMapping("/{codigo}/tasa-cambio")
-    public ResponseEntity<?> updateTasaCambio(
+    public ResponseEntity<MonedaResponse> updateTasaCambio(
             @PathVariable String codigo,
             @RequestParam BigDecimal tasa) {
-        try {
-            MonedaResponse response = monedaService.updateTasaCambio(codigo, tasa);
-            return ResponseEntity.ok(response);
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(
-                    java.util.Map.of("error", e.getMessage() != null ? e.getMessage() : "Solicitud inválida"));
-        }
+        return ResponseEntity.ok(monedaService.updateTasaCambio(codigo, tasa));
     }
 
     @GetMapping
     public ResponseEntity<List<MonedaResponse>> getAllMonedas() {
-        try {
-            List<MonedaResponse> response = monedaService.findAll();
-            return ResponseEntity.ok(response);
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().build();
-        }
+        return ResponseEntity.ok(monedaService.findAll());
     }
 
     @GetMapping("/{id}")
     public ResponseEntity<MonedaResponse> getMonedaById(@PathVariable Long id) {
-        try {
-            MonedaResponse response = monedaService.findById(id);
-            return ResponseEntity.ok(response);
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().build();
-        }
+        return ResponseEntity.ok(monedaService.findById(id));
     }
 
     @GetMapping("/codigo/{codigo}")
     public ResponseEntity<MonedaResponse> getMonedaByCodigo(@PathVariable String codigo) {
-        try {
-            MonedaResponse response = monedaService.findByCodigo(codigo);
-            return ResponseEntity.ok(response);
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().build();
-        }
+        return ResponseEntity.ok(monedaService.findByCodigo(codigo));
     }
 
     @GetMapping("/predeterminada")
     public ResponseEntity<MonedaResponse> getMonedaPredeterminada() {
-        try {
-            MonedaResponse response = monedaService.findPredeterminada();
-            return ResponseEntity.ok(response);
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().build();
-        }
+        return ResponseEntity.ok(monedaService.findPredeterminada());
     }
 }

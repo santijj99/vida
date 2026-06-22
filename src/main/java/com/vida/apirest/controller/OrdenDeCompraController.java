@@ -9,14 +9,15 @@ import com.vida.apirest.servicies.OrdenDeCompraService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
-import java.util.Map;
 
 @RestController
 @RequestMapping("/api/ordenes-compra")
 @RequiredArgsConstructor
+@PreAuthorize("hasAuthority('VER_PEDIDOS')")
 public class OrdenDeCompraController {
 
     private final OrdenDeCompraService ordenDeCompraService;
@@ -31,74 +32,40 @@ public class OrdenDeCompraController {
     }
 
     @GetMapping("/{id:[0-9]+}")
-    public ResponseEntity<?> obtener(@PathVariable Long id) {
-        try {
-            return ResponseEntity.ok(ordenDeCompraService.findById(id));
-        } catch (RuntimeException e) {
-            return error(HttpStatus.NOT_FOUND, e.getMessage());
-        }
+    public ResponseEntity<OrdenCompraResponse> obtener(@PathVariable Long id) {
+        return ResponseEntity.ok(ordenDeCompraService.findById(id));
     }
 
     @GetMapping("/variantes/codigo-barras/{codigo}")
-    public ResponseEntity<?> buscarPorCodigoBarras(@PathVariable String codigo) {
-        try {
-            return ResponseEntity.ok(ordenDeCompraService.buscarPorCodigoBarras(codigo));
-        } catch (RuntimeException e) {
-            return error(HttpStatus.NOT_FOUND, e.getMessage());
-        }
+    public ResponseEntity<OrdenCompraVarianteLookupResponse> buscarPorCodigoBarras(@PathVariable String codigo) {
+        return ResponseEntity.ok(ordenDeCompraService.buscarPorCodigoBarras(codigo));
     }
 
     @PostMapping("/variantes/resolver")
-    public ResponseEntity<?> resolverCodigos(@RequestBody ResolverVariantesRequest request) {
-        try {
-            List<OrdenCompraVarianteLookupResponse> result = ordenDeCompraService.resolverCodigos(
-                    request != null ? request.getCodigosBarras() : null);
-            return ResponseEntity.ok(result);
-        } catch (RuntimeException e) {
-            return error(HttpStatus.BAD_REQUEST, e.getMessage());
-        }
+    public ResponseEntity<List<OrdenCompraVarianteLookupResponse>> resolverCodigos(@RequestBody ResolverVariantesRequest request) {
+        List<OrdenCompraVarianteLookupResponse> result = ordenDeCompraService.resolverCodigos(
+                request != null ? request.getCodigosBarras() : null);
+        return ResponseEntity.ok(result);
     }
 
     @PostMapping
-    public ResponseEntity<?> crear(@RequestBody OrdenCompraRequest request) {
-        try {
-            OrdenCompraResponse response = ordenDeCompraService.crear(request);
-            return ResponseEntity.status(HttpStatus.CREATED).body(response);
-        } catch (RuntimeException e) {
-            return error(HttpStatus.BAD_REQUEST, e.getMessage());
-        }
+    public ResponseEntity<OrdenCompraResponse> crear(@RequestBody OrdenCompraRequest request) {
+        OrdenCompraResponse response = ordenDeCompraService.crear(request);
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
     @PutMapping("/{id:[0-9]+}")
-    public ResponseEntity<?> actualizar(@PathVariable Long id, @RequestBody OrdenCompraRequest request) {
-        try {
-            return ResponseEntity.ok(ordenDeCompraService.actualizar(id, request));
-        } catch (RuntimeException e) {
-            return error(HttpStatus.BAD_REQUEST, e.getMessage());
-        }
+    public ResponseEntity<OrdenCompraResponse> actualizar(@PathVariable Long id, @RequestBody OrdenCompraRequest request) {
+        return ResponseEntity.ok(ordenDeCompraService.actualizar(id, request));
     }
 
     @PostMapping("/{id:[0-9]+}/confirmar")
-    public ResponseEntity<?> confirmar(@PathVariable Long id) {
-        try {
-            return ResponseEntity.ok(ordenDeCompraService.confirmar(id));
-        } catch (RuntimeException e) {
-            return error(HttpStatus.BAD_REQUEST, e.getMessage());
-        }
+    public ResponseEntity<OrdenCompraResponse> confirmar(@PathVariable Long id) {
+        return ResponseEntity.ok(ordenDeCompraService.confirmar(id));
     }
 
     @PostMapping("/{id:[0-9]+}/cancelar")
-    public ResponseEntity<?> cancelar(@PathVariable Long id) {
-        try {
-            return ResponseEntity.ok(ordenDeCompraService.cancelar(id));
-        } catch (RuntimeException e) {
-            return error(HttpStatus.BAD_REQUEST, e.getMessage());
-        }
-    }
-
-    private ResponseEntity<Map<String, Object>> error(HttpStatus status, String message) {
-        return ResponseEntity.status(status).body(Map.of(
-                "message", message != null ? message : "Error",
-                "statusCode", status.value()));
+    public ResponseEntity<OrdenCompraResponse> cancelar(@PathVariable Long id) {
+        return ResponseEntity.ok(ordenDeCompraService.cancelar(id));
     }
 }

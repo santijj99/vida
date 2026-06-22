@@ -19,7 +19,8 @@ import java.time.LocalDateTime;
         name = "cuota",
         indexes = {
                 @Index(name = "ix_cuota_credito", columnList = "credito_id"),
-                @Index(name = "ix_cuota_numero", columnList = "numero")
+                @Index(name = "ix_cuota_numero", columnList = "numero"),
+                @Index(name = "ix_cuota_estado", columnList = "estado")
         }
 )
 public class Cuota {
