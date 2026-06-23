@@ -431,6 +431,7 @@ public class VentaService {
         pagos.add(pagoCredito);
 
         internalRequest.setPagos(pagos);
+        internalRequest.setFacturaAfip(request.getFacturaAfip());
         return registrarVenta(internalRequest, descontarStock);
     }
 
