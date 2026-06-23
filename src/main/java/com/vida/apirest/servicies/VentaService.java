@@ -324,7 +324,10 @@ public class VentaService {
     private VentaResponse construirRespuestaVenta(Long ventaId, VentaCreateRequest request) {
         Venta ventaCompleta = ventaRepository.findByIdWithDetalles(ventaId)
                 .orElseThrow(() -> new RuntimeException("Error al recuperar la venta registrada"));
-        FacturaAFIP facturaArca = facturaAFIPService.intentarFacturarVenta(ventaCompleta.getId(), request.getFacturaAfip());
+        FacturaAFIP facturaArca = facturaAFIPService.intentarFacturarVenta(
+                ventaCompleta.getId(),
+                request.getFacturaAfip(),
+                request.getPagos());
 
         VentaResponse response = mapVentaResponse(ventaCompleta);
         if (facturaArca != null && facturaArca.getIdFacturaAFIP() != null) {

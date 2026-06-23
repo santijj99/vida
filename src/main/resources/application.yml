@@ -46,7 +46,7 @@ logging:
 
 afip:
   enabled: true
-  homologacion: false
+  homologacion: true
   cuit: "27242400068"
   pto-vta: 3
   cbte-tipo: 6

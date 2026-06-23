@@ -3,9 +3,11 @@ package com.vida.apirest.servicies.afip;
 import com.vida.apirest.config.AfipProperties;
 import com.vida.apirest.dto.afip.EmitirFacturaAFIPRequest;
 import com.vida.apirest.dto.afip.FacturaAFIPResponse;
+import com.vida.apirest.dto.venta.PagoVentaRequest;
 import com.vida.apirest.model.afip.*;
 import com.vida.apirest.model.persona.Cliente;
 import com.vida.apirest.model.persona.Direccion;
+import com.vida.apirest.model.venta.PagoVenta;
 import com.vida.apirest.model.venta.Venta;
 import com.vida.apirest.model.venta.VentaDetalle;
 import com.vida.apirest.repositories.*;
@@ -159,22 +161,27 @@ public class FacturaAFIPService {
 
     @Transactional
     public FacturaAFIP intentarFacturarVenta(Long ventaId, EmitirFacturaAFIPRequest configOpcional) {
+        return intentarFacturarVenta(ventaId, configOpcional, null);
+    }
+
+    @Transactional
+    public FacturaAFIP intentarFacturarVenta(
+            Long ventaId,
+            EmitirFacturaAFIPRequest configOpcional,
+            List<PagoVentaRequest> pagosRequest
+    ) {
         if (!afipProperties.isEnabled() || !afipProperties.isAutoFacturarEnVenta()) {
             return null;
         }
 
         Venta venta = ventaRepository.findByIdWithDetalles(ventaId).orElse(null);
-        if (venta == null || venta.getPagos() == null || venta.getPagos().isEmpty()) {
-            log.warn("Facturación ARCA omitida para venta {}: sin pagos visibles", ventaId);
+        if (venta == null) {
+            log.warn("Facturación ARCA omitida para venta {}: venta no encontrada", ventaId);
             return null;
         }
 
-        java.math.BigDecimal montoArca = venta.getPagos().stream()
-                .filter(p -> requiereFacturacionAutomatica(p.getMetodoPago()))
-                .map(com.vida.apirest.model.venta.PagoVenta::getMonto)
-                .reduce(java.math.BigDecimal.ZERO, java.math.BigDecimal::add);
-
-        if (montoArca.compareTo(java.math.BigDecimal.ZERO) <= 0) {
+        BigDecimal montoArca = resolverMontoAFacturar(venta, configOpcional, pagosRequest);
+        if (montoArca.compareTo(BigDecimal.ZERO) <= 0) {
             log.debug("Venta {} sin pagos ARCA (crédito/débito/QR)", ventaId);
             return null;
         }
@@ -184,11 +191,58 @@ public class FacturaAFIPService {
                     ? configOpcional
                     : new EmitirFacturaAFIPRequest();
             request.setMontoAFacturar(montoArca);
+            log.info("Facturación ARCA venta {}: monto a facturar {} (total venta {})",
+                    ventaId, montoArca, venta.getTotal());
             return emitirFactura(ventaId, request);
         } catch (Exception e) {
             log.error("Error al facturar automáticamente venta {}: {}", ventaId, e.getMessage());
             return null;
         }
+    }
+
+    private BigDecimal resolverMontoAFacturar(
+            Venta venta,
+            EmitirFacturaAFIPRequest config,
+            List<PagoVentaRequest> pagosRequest
+    ) {
+        BigDecimal desdeEntidad = sumarMontoPagosArcaEntidad(venta.getPagos());
+        BigDecimal desdeRequest = sumarMontoPagosArcaRequest(pagosRequest);
+        BigDecimal montoCalculado = desdeEntidad.compareTo(BigDecimal.ZERO) > 0
+                ? desdeEntidad
+                : desdeRequest;
+
+        if (config != null
+                && config.getMontoAFacturar() != null
+                && config.getMontoAFacturar().compareTo(BigDecimal.ZERO) > 0) {
+            BigDecimal tope = venta.getTotal() != null ? venta.getTotal() : montoCalculado;
+            if (tope.compareTo(BigDecimal.ZERO) <= 0) {
+                tope = config.getMontoAFacturar();
+            }
+            return config.getMontoAFacturar().min(tope);
+        }
+        return montoCalculado;
+    }
+
+    private BigDecimal sumarMontoPagosArcaEntidad(List<PagoVenta> pagos) {
+        if (pagos == null || pagos.isEmpty()) {
+            return BigDecimal.ZERO;
+        }
+        return pagos.stream()
+                .filter(p -> p.getMonto() != null && requiereFacturacionAutomatica(p.getMetodoPago()))
+                .map(PagoVenta::getMonto)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    private BigDecimal sumarMontoPagosArcaRequest(List<PagoVentaRequest> pagos) {
+        if (pagos == null || pagos.isEmpty()) {
+            return BigDecimal.ZERO;
+        }
+        return pagos.stream()
+                .filter(p -> p.getMonto() != null
+                        && p.getMonto().compareTo(BigDecimal.ZERO) > 0
+                        && requiereFacturacionAutomatica(p.getMetodoPago()))
+                .map(PagoVentaRequest::getMonto)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
     private ClienteAFIP obtenerOCrearClienteAFIP(Cliente cliente, EmitirFacturaAFIPRequest request, Integer cbteTipoAUsar) {
