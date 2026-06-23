@@ -83,13 +83,15 @@ public class ArticuloService {
             List<String> clasificaciones,
             String genero,
             String marca,
+            String talle,
+            String color,
             String q,
             Long depositoId,
             int page,
             int size
     ) {
         return articuloConsultaService.findTablaPage(
-                categoria, subCategoria, clasificaciones, genero, marca, q, depositoId, page, size);
+                categoria, subCategoria, clasificaciones, genero, marca, talle, color, q, depositoId, page, size);
     }
 
     @Transactional(readOnly = true)
@@ -568,8 +570,20 @@ public class ArticuloService {
 
     @Transactional(readOnly = true)
     public PageResponse<ArticuloParaVentaResponse> findParaVentaPage(
-            Long sucursalId, String q, int page, int size) {
-        return articuloConsultaService.findParaVentaPage(sucursalId, q, page, size);
+            Long sucursalId,
+            String categoria,
+            String subCategoria,
+            List<String> clasificaciones,
+            String genero,
+            String marca,
+            String talle,
+            String color,
+            String q,
+            int page,
+            int size
+    ) {
+        return articuloConsultaService.findParaVentaPage(
+                sucursalId, categoria, subCategoria, clasificaciones, genero, marca, talle, color, q, page, size);
     }
 
     private Integer getCantidadDisponibleEnSucursal(Long articuloId, Long varianteId, Long sucursalId) {

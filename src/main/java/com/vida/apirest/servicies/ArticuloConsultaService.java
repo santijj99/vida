@@ -63,13 +63,15 @@ public class ArticuloConsultaService {
             List<String> clasificaciones,
             String genero,
             String marca,
+            String talle,
+            String color,
             String q,
             Long depositoId,
             int page,
             int size
     ) {
         return articuloTablaQueryRepository.findTablaPage(
-                categoria, subCategoria, clasificaciones, genero, marca, q, depositoId, page, size);
+                categoria, subCategoria, clasificaciones, genero, marca, talle, color, q, depositoId, page, size);
     }
 
     @Transactional(readOnly = true)
@@ -135,7 +137,19 @@ public class ArticuloConsultaService {
     }
 
     @Transactional(readOnly = true)
-    public PageResponse<ArticuloParaVentaResponse> findParaVentaPage(Long sucursalId, String q, int page, int size) {
+    public PageResponse<ArticuloParaVentaResponse> findParaVentaPage(
+            Long sucursalId,
+            String categoria,
+            String subCategoria,
+            List<String> clasificaciones,
+            String genero,
+            String marca,
+            String talle,
+            String color,
+            String q,
+            int page,
+            int size
+    ) {
         if (sucursalId == null) {
             throw new RuntimeException("Sucursal requerida para listar artículos de venta");
         }
@@ -144,7 +158,8 @@ public class ArticuloConsultaService {
             throw new RuntimeException("Sucursal no encontrada con ID: " + sucursalId);
         }
         PageResponse<ArticuloParaVentaResponse> resultado =
-                articuloTablaQueryRepository.findParaVentaPage(sucursalId, q, page, size);
+                articuloTablaQueryRepository.findParaVentaPage(
+                        sucursalId, categoria, subCategoria, clasificaciones, genero, marca, talle, color, q, page, size);
         aplicarPreciosPromocionales(resultado.getContent());
         return resultado;
     }
