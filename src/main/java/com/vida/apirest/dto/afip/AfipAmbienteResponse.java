@@ -11,6 +11,8 @@ public class AfipAmbienteResponse {
     private String wsaaUrl;
     private String wsfeUrl;
     private String certificadosDir;
-    private String phpScriptPath;
+    private Long empresaId;
+    private String cuit;
+    private String razonSocial;
     private String mensaje;
 }

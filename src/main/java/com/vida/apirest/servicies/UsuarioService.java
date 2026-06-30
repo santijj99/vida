@@ -212,7 +212,12 @@ public class UsuarioService {
             return null;
         }
         try {
-            TokenValidationResponse resultado = afipTokenValidatorService.validarYRegenerarToken();
+            Optional<Long> empresaId = afipContextService.resolveEmpresaIdForCurrentUser();
+            if (empresaId.isEmpty()
+                    || afipContextService.resolveOptionalForEmpresaId(empresaId.get()).isEmpty()) {
+                return null;
+            }
+            TokenValidationResponse resultado = afipTokenValidatorService.validarYRegenerarToken(empresaId.get());
             if (!resultado.isActivo()) {
                 log.warn("Token AFIP no disponible al login: {}", resultado.getMensaje());
             }

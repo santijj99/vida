@@ -10,11 +10,12 @@ import com.google.zxing.WriterException;
 import com.google.zxing.client.j2se.MatrixToImageWriter;
 import com.google.zxing.common.BitMatrix;
 import com.google.zxing.qrcode.QRCodeWriter;
-import com.vida.apirest.config.AfipProperties;
+import com.vida.apirest.servicies.afip.AfipContext;
+import com.vida.apirest.servicies.afip.AfipContextHolder;
 import com.vida.apirest.model.afip.FacturaAFIP;
 import com.vida.apirest.model.afip.FacturaItemAFIP;
 import com.vida.apirest.model.afip.FacturaIvaAFIP;
-import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import javax.imageio.ImageIO;
@@ -27,12 +28,10 @@ import java.text.DecimalFormat;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 
+@Slf4j
 @Service
-@RequiredArgsConstructor
 public class TicketPDFService {
 
-    private final AfipProperties afipProperties;
-    
     private static final Font FONT_NORMAL = new Font(Font.FontFamily.COURIER, 10, Font.NORMAL);
     private static final Font FONT_BOLD = new Font(Font.FontFamily.COURIER, 10, Font.BOLD);
     private static final Font FONT_LARGE = new Font(Font.FontFamily.COURIER, 16, Font.BOLD);
@@ -115,15 +114,15 @@ public class TicketPDFService {
     }
     
     private void agregarInfoEmpresa(Document document) throws DocumentException {
-        AfipProperties.Empresa empresa = afipProperties.getEmpresa();
+        AfipContext empresa = AfipContextHolder.require();
         Paragraph p = new Paragraph();
         p.setFont(FONT_NORMAL);
-        p.add(new Chunk("Razón social: " + empresa.getRazonSocial() + "\n", FONT_NORMAL));
-        p.add(new Chunk("Direccion: " + empresa.getDireccion() + "\n", FONT_NORMAL));
-        p.add(new Chunk("C.U.I.T.: " + empresa.getCuit() + "\n", FONT_NORMAL));
-        p.add(new Chunk(empresa.getCondicionIva() + "\n", FONT_NORMAL));
-        p.add(new Chunk("IIBB: " + empresa.getIibb() + "\n", FONT_NORMAL));
-        p.add(new Chunk("Inicio de actividad: " + empresa.getInicioActividad() + "\n", FONT_NORMAL));
+        p.add(new Chunk("Razón social: " + empresa.razonSocial() + "\n", FONT_NORMAL));
+        p.add(new Chunk("Direccion: " + empresa.direccion() + "\n", FONT_NORMAL));
+        p.add(new Chunk("C.U.I.T.: " + empresa.cuit() + "\n", FONT_NORMAL));
+        p.add(new Chunk(empresa.condicionIva() + "\n", FONT_NORMAL));
+        p.add(new Chunk("IIBB: " + (empresa.iibb() != null ? empresa.iibb() : "") + "\n", FONT_NORMAL));
+        p.add(new Chunk("Inicio de actividad: " + (empresa.inicioActividad() != null ? empresa.inicioActividad() : "") + "\n", FONT_NORMAL));
         document.add(p);
         document.add(new Paragraph(" "));
     }
@@ -336,15 +335,11 @@ public class TicketPDFService {
             json.append("\"fecha\":\"").append(fecha).append("\",");
             
             // cuit: CUIT del emisor (11 dígitos)
-            String cuit = afipProperties.getEmpresa().getCuit();
-            if (cuit == null || cuit.isBlank()) {
-                cuit = afipProperties.getCuit();
-            }
+            String cuit = AfipContextHolder.require().cuitSinGuiones();
             if (cuit != null && !cuit.isBlank()) {
-                cuit = cuit.replace("-", "").trim();
                 json.append("\"cuit\":").append(cuit).append(",");
             } else {
-                throw new Exception("CUIT no configurado");
+                throw new Exception("CUIT no configurado en la empresa");
             }
             
             // ptoVta: Punto de venta (hasta 5 dígitos)

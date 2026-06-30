@@ -2,7 +2,6 @@ package com.vida.apirest.servicies.afip;
 
 import com.vida.apirest.config.AfipProperties;
 import com.vida.apirest.utils.AFIPTokenLoader;
-import com.vida.apirest.utils.AfipPhpTokenGenerator;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -22,7 +21,6 @@ import java.security.cert.X509Certificate;
 
 /**
  * Consulta Padrón Alcance 13 (ws_sr_padron_a13).
- * Permite consultar por CUIT y resolver DNI → CUIT → datos del contribuyente.
  */
 @Service
 @RequiredArgsConstructor
@@ -36,7 +34,7 @@ public class PadronA13Service {
             "https://aws.afip.gov.ar/sr-padron/webservices/personaServiceA13";
 
     private final AfipProperties afipProperties;
-    private final AfipPhpTokenGenerator tokenGenerator;
+    private final WSAAService wsaaService;
 
     public DatosPadron consultarPorCuit(String cuit) throws Exception {
         AFIPTokenLoader.TokenSign tokenSign = obtenerTokenPadron();
@@ -56,12 +54,14 @@ public class PadronA13Service {
     }
 
     private AFIPTokenLoader.TokenSign obtenerTokenPadron() throws Exception {
-        return tokenGenerator.generarToken(SERVICE, "TA-padron.xml");
+        WSAAService.TokenSign token = wsaaService.obtenerTokenSign(SERVICE);
+        return new AFIPTokenLoader.TokenSign(token.getToken(), token.getSign(), token.getExpiration());
     }
 
     private String buildGetPersonaSoap(AFIPTokenLoader.TokenSign tokenSign, String idPersona) {
         String token = tokenSign.getToken().trim().replaceAll("\\s+", "");
         String sign = tokenSign.getSign().trim().replaceAll("\\s+", "");
+        String cuitRepresentada = AfipContextHolder.require().cuitSinGuiones();
         return "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
                 + "<soapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" "
                 + "xmlns:a13=\"" + NS + "\">\n"
@@ -70,7 +70,7 @@ public class PadronA13Service {
                 + "    <a13:getPersona>\n"
                 + "      <token>" + token + "</token>\n"
                 + "      <sign>" + sign + "</sign>\n"
-                + "      <cuitRepresentada>" + afipProperties.getCuit() + "</cuitRepresentada>\n"
+                + "      <cuitRepresentada>" + cuitRepresentada + "</cuitRepresentada>\n"
                 + "      <idPersona>" + idPersona + "</idPersona>\n"
                 + "    </a13:getPersona>\n"
                 + "  </soapenv:Body>\n"
@@ -80,6 +80,7 @@ public class PadronA13Service {
     private String buildGetIdPersonaListByDocumentoSoap(AFIPTokenLoader.TokenSign tokenSign, String documento) {
         String token = tokenSign.getToken().trim().replaceAll("\\s+", "");
         String sign = tokenSign.getSign().trim().replaceAll("\\s+", "");
+        String cuitRepresentada = AfipContextHolder.require().cuitSinGuiones();
         return "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
                 + "<soapenv:Envelope xmlns:soapenv=\"http://schemas.xmlsoap.org/soap/envelope/\" "
                 + "xmlns:a13=\"" + NS + "\">\n"
@@ -88,7 +89,7 @@ public class PadronA13Service {
                 + "    <a13:getIdPersonaListByDocumento>\n"
                 + "      <token>" + token + "</token>\n"
                 + "      <sign>" + sign + "</sign>\n"
-                + "      <cuitRepresentada>" + afipProperties.getCuit() + "</cuitRepresentada>\n"
+                + "      <cuitRepresentada>" + cuitRepresentada + "</cuitRepresentada>\n"
                 + "      <documento>" + documento + "</documento>\n"
                 + "    </a13:getIdPersonaListByDocumento>\n"
                 + "  </soapenv:Body>\n"

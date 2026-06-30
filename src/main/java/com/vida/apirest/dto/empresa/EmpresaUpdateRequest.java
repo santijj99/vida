@@ -3,8 +3,7 @@ package com.vida.apirest.dto.empresa;
 import lombok.Data;
 
 @Data
-public class EmpresaResponse {
-    private Long id;
+public class EmpresaUpdateRequest {
     private String nombre;
     private String codigo;
     private String cuit;

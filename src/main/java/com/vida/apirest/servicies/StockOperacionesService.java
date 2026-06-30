@@ -19,18 +19,19 @@ public class StockOperacionesService {
     @Transactional(readOnly = true)
     public Stock requireStock(Long articuloId, Long varianteId, Long sucursalId) {
         if (varianteId != null) {
-            return stockRepository.findByArticuloIdAndVarianteIdAndSucursalId(articuloId, varianteId, sucursalId)
+            return stockRepository
+                    .findFirstByArticuloIdAndVarianteIdAndSucursalIdOrderByIdAsc(articuloId, varianteId, sucursalId)
                     .orElseThrow(() -> new ResourceNotFoundException(
                             "Stock no encontrado para el artículo/variante en la sucursal"));
         }
-        return stockRepository.findByArticuloIdAndSucursalId(articuloId, sucursalId)
+        return stockRepository.findFirstByArticuloIdAndSucursalIdOrderByIdAsc(articuloId, sucursalId)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Stock no encontrado para el artículo en la sucursal"));
     }
 
     @Transactional(readOnly = true)
     public Stock requireStockByVariante(Long varianteId, Long sucursalId) {
-        return stockRepository.findByVarianteIdAndSucursalId(varianteId, sucursalId)
+        return stockRepository.findFirstByVarianteIdAndSucursalIdOrderByIdAsc(varianteId, sucursalId)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Stock no encontrado para la variante en la sucursal"));
     }

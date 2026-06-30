@@ -16,7 +16,12 @@ import java.util.Optional;
 public interface ClienteRepository extends JpaRepository<Cliente, Long>, JpaSpecificationExecutor<Cliente> {
 
     @EntityGraph(attributePaths = {"direccion", "garante", "contactos"})
-    Optional<Cliente> findByDni(String dni);
+    Optional<Cliente> findFirstByDniOrderByIdAsc(String dni);
+
+    @Deprecated
+    default Optional<Cliente> findByDni(String dni) {
+        return findFirstByDniOrderByIdAsc(dni);
+    }
 
     @EntityGraph(attributePaths = {"direccion", "garante", "contactos"})
     Optional<Cliente> findWithRelationsById(Long id);

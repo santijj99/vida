@@ -130,7 +130,7 @@ public class VentaService {
     }
 
     private Cliente cargarCliente(String dni) {
-        return clienteRepository.findByDni(dni)
+        return clienteRepository.findFirstByDniOrderByIdAsc(dni)
                 .orElseThrow(() -> new RuntimeException("Cliente no encontrado con DNI: " + dni));
     }
 
@@ -306,7 +306,23 @@ public class VentaService {
             return cuentaRepository.findById(pagoReq.getCuentaId())
                     .orElseThrow(() -> new RuntimeException("Cuenta financiera no encontrada con ID: " + pagoReq.getCuentaId()));
         }
-        return cuentaRepository.findFirstByTipoAndActivoTrue(CuentaFinanciera.TipoCuenta.CAJA).orElse(null);
+        CuentaFinanciera.TipoCuenta tipo = resolverTipoCuentaPorMetodo(pagoReq.getMetodoPago());
+        return cuentaRepository.findFirstByTipoAndActivoTrue(tipo)
+                .or(() -> cuentaRepository.findFirstByTipoAndActivoTrue(CuentaFinanciera.TipoCuenta.CAJA))
+                .orElse(null);
+    }
+
+    private CuentaFinanciera.TipoCuenta resolverTipoCuentaPorMetodo(String metodoPago) {
+        if (metodoPago == null || metodoPago.isBlank()) {
+            return CuentaFinanciera.TipoCuenta.CAJA;
+        }
+        return switch (metodoPago.trim().toUpperCase()) {
+            case "TRANSFERENCIA" -> CuentaFinanciera.TipoCuenta.BANCO;
+            case "TARJETA DE CREDITO", "TARJETA CREDITO" -> CuentaFinanciera.TipoCuenta.TARJETA_CREDITO;
+            case "TARJETA DE DEBITO", "TARJETA DEBITO" -> CuentaFinanciera.TipoCuenta.TARJETA_DEBITO;
+            case "QR" -> CuentaFinanciera.TipoCuenta.BILLETERA;
+            default -> CuentaFinanciera.TipoCuenta.CAJA;
+        };
     }
 
     private PagoVenta crearPagoBase(Venta ventaGuardada, PagoVentaRequest pagoReq) {
