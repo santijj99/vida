@@ -8,7 +8,9 @@ import org.w3c.dom.NodeList;
 import javax.xml.parsers.DocumentBuilderFactory;
 import java.io.File;
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
+import java.util.Base64;
 import java.util.Date;
 
 public final class AFIPTokenLoader {
@@ -50,6 +52,30 @@ public final class AFIPTokenLoader {
             trimmed = trimmed.substring(1).stripLeading();
         }
         return trimmed;
+    }
+
+    /**
+     * Verifica que el TA interno (SSO) corresponda al servicio WSAA solicitado.
+     */
+    public static boolean tokenEsParaServicio(TokenSign tokenSign, String service) {
+        if (tokenSign == null || service == null || service.isBlank()) {
+            return false;
+        }
+        try {
+            String sso = new String(Base64.getDecoder().decode(tokenSign.getToken().replaceAll("\\s+", "")),
+                    StandardCharsets.UTF_8);
+            return sso.contains("service=\"" + service + "\"")
+                    || sso.contains("service>" + service + "<");
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    public static boolean tokenEsParaServicio(String taXml, String service) throws Exception {
+        if (!looksLikeTaXml(taXml)) {
+            return false;
+        }
+        return tokenEsParaServicio(loadFromXmlContent(taXml), service);
     }
 
     private static TokenSign parseDocument(InputStream inputStream) throws Exception {

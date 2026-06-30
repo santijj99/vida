@@ -30,20 +30,34 @@ public class AfipTaStorageService {
 
     private static final Logger log = LoggerFactory.getLogger(AfipTaStorageService.class);
     private static final String SERVICE_WSFE = "wsfe";
+    private static final String SERVICE_PADRON_A13 = "ws_sr_padron_a13";
     private static final int REINTENTOS_HOMOLOGACION = 6;
     private static final long ESPERA_REINTENTO_MS = 10_000L;
 
     private final EmpresaAfipConfigRepository empresaAfipConfigRepository;
 
     public Path resolverRutaTa(AfipContext context, String service) {
-        Path taXml = context.certificadosDir().resolve("TA.xml");
-        if (Files.exists(taXml)) {
-            return taXml;
+        Path certDir = context.certificadosDir();
+
+        Path taService = certDir.resolve("TA-" + service + ".xml");
+        if (Files.exists(taService)) {
+            return taService;
         }
-        taXml = context.certificadosDir().resolve("TA-" + service + ".xml");
-        if (Files.exists(taXml)) {
-            return taXml;
+
+        if (SERVICE_PADRON_A13.equals(service)) {
+            Path legacy = certDir.resolve("TA-padron.xml");
+            if (Files.exists(legacy)) {
+                return legacy;
+            }
         }
+
+        if (SERVICE_WSFE.equals(service)) {
+            Path taXml = certDir.resolve("TA.xml");
+            if (Files.exists(taXml)) {
+                return taXml;
+            }
+        }
+
         return null;
     }
 
@@ -52,7 +66,14 @@ public class AfipTaStorageService {
         Path taPath = resolverRutaTa(context, service);
         if (taPath != null) {
             try {
-                return Optional.of(AFIPTokenLoader.loadFromXml(taPath.toAbsolutePath().toString()));
+                AFIPTokenLoader.TokenSign tokenSign =
+                        AFIPTokenLoader.loadFromXml(taPath.toAbsolutePath().toString());
+                if (!AFIPTokenLoader.tokenEsParaServicio(tokenSign, service)) {
+                    log.warn("TA en {} no corresponde al servicio {} (empresa {}). Se ignorará.",
+                            taPath, service, context.empresaId());
+                } else {
+                    return Optional.of(tokenSign);
+                }
             } catch (Exception e) {
                 log.warn("TA.xml inválido en {} (empresa {}): {}", taPath, context.empresaId(), e.getMessage());
                 eliminarTaInvalidoEnDisco(context.certificadosDir(), service);
@@ -87,9 +108,15 @@ public class AfipTaStorageService {
     }
 
     private void eliminarTaInvalidoEnDisco(Path certDir, String service) {
-        for (Path candidato : List.of(
-                certDir.resolve("TA.xml"),
-                certDir.resolve("TA-" + service + ".xml"))) {
+        List<Path> candidatos = new ArrayList<>();
+        candidatos.add(certDir.resolve("TA-" + service + ".xml"));
+        if (SERVICE_PADRON_A13.equals(service)) {
+            candidatos.add(certDir.resolve("TA-padron.xml"));
+        }
+        if (SERVICE_WSFE.equals(service)) {
+            candidatos.add(certDir.resolve("TA.xml"));
+        }
+        for (Path candidato : candidatos) {
             try {
                 if (Files.deleteIfExists(candidato)) {
                     log.warn("Se eliminó TA.xml inválido: {}", candidato);
@@ -201,13 +228,14 @@ public class AfipTaStorageService {
         if (!context.homologacion() || resolverRutaTa(context, service) != null) {
             return false;
         }
-        for (Path origen : ubicacionesBootstrapHomologacion(context.certificadosDir())) {
+        for (Path origen : ubicacionesBootstrapHomologacion(context.certificadosDir(), service)) {
             if (!Files.isRegularFile(origen)) {
                 continue;
             }
             try {
                 String taXml = Files.readString(origen, StandardCharsets.UTF_8);
-                if (!taXml.contains("<loginTicketResponse")) {
+                if (!taXml.contains("<loginTicketResponse")
+                        || !AFIPTokenLoader.tokenEsParaServicio(taXml, service)) {
                     continue;
                 }
                 guardarTa(context, service, taXml);
@@ -245,15 +273,21 @@ public class AfipTaStorageService {
         return importarTaAlternativoSiFalta(context, service);
     }
 
-    private List<Path> ubicacionesBootstrapHomologacion(Path certDir) {
+    private List<Path> ubicacionesBootstrapHomologacion(Path certDir, String service) {
         List<Path> candidatos = new ArrayList<>();
         String env = System.getenv("AFIP_TA_BOOTSTRAP");
         if (env != null && !env.isBlank()) {
             candidatos.add(Path.of(env.trim()));
         }
 
-        candidatos.add(certDir.resolve("TA.xml"));
-        candidatos.add(certDir.resolve("TA-wsfe.xml"));
+        candidatos.add(certDir.resolve("TA-" + service + ".xml"));
+        if (SERVICE_PADRON_A13.equals(service)) {
+            candidatos.add(certDir.resolve("TA-padron.xml"));
+        }
+        if (SERVICE_WSFE.equals(service)) {
+            candidatos.add(certDir.resolve("TA.xml"));
+            candidatos.add(certDir.resolve("TA-wsfe.xml"));
+        }
         try (Stream<Path> enCarpeta = Files.list(certDir)) {
             enCarpeta.filter(p -> p.getFileName().toString().startsWith("TA")
                             && p.getFileName().toString().endsWith(".xml"))
@@ -264,8 +298,10 @@ public class AfipTaStorageService {
 
         Path parent = certDir.getParent();
         if (parent != null) {
-            candidatos.add(parent.resolve("testing").resolve("TA.xml"));
-            candidatos.add(parent.resolve("TA.xml"));
+            if (SERVICE_WSFE.equals(service)) {
+                candidatos.add(parent.resolve("testing").resolve("TA.xml"));
+                candidatos.add(parent.resolve("TA.xml"));
+            }
             try (Stream<Path> stream = Files.list(parent)) {
                 stream.filter(p -> p.getFileName().toString().startsWith("TA")
                                 && p.getFileName().toString().endsWith(".xml"))
