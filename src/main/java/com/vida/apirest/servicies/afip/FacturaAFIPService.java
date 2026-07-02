@@ -5,6 +5,8 @@ import com.vida.apirest.dto.afip.EmitirFacturaAFIPRequest;
 import com.vida.apirest.dto.afip.FacturaAFIPResponse;
 import com.vida.apirest.dto.venta.PagoVentaRequest;
 import com.vida.apirest.model.afip.*;
+import com.vida.apirest.model.credito.Credito;
+import com.vida.apirest.model.credito.Cuota;
 import com.vida.apirest.model.persona.Cliente;
 import com.vida.apirest.model.persona.Direccion;
 import com.vida.apirest.model.venta.PagoVenta;
@@ -45,6 +47,7 @@ public class FacturaAFIPService {
     private final ClienteAFIPRepository clienteAFIPRepository;
     private final CAERepository caeRepository;
     private final VentaRepository ventaRepository;
+    private final CreditoRepository creditoRepository;
 
     @Transactional
     public FacturaAFIP emitirFactura(Long ventaId) throws Exception {
@@ -103,7 +106,14 @@ public class FacturaAFIPService {
 
         if ("A".equals(fecaeResponse.getResultado())) {
             try {
-                byte[] pdf = ticketPDFService.generarTicketPDFBytes(facturaGuardada);
+                Credito credito = null;
+                List<Cuota> cuotas = List.of();
+                List<Credito> creditos = creditoRepository.findByVentaIdWithCuotas(ventaId);
+                if (!creditos.isEmpty()) {
+                    credito = creditos.get(0);
+                    cuotas = TicketPDFService.ordenarCuotas(credito.getCuotas());
+                }
+                byte[] pdf = ticketPDFService.generarTicketPDFBytes(facturaGuardada, credito, cuotas);
                 log.info("Ticket PDF generado para factura AFIP {} ({} bytes)", facturaGuardada.getIdFacturaAFIP(), pdf.length);
             } catch (Exception e) {
                 log.warn("No se pudo generar el PDF del ticket: {}", e.getMessage());
@@ -155,7 +165,17 @@ public class FacturaAFIPService {
         Venta venta = ventaRepository.findByIdWithDetalles(factura.getVenta().getId())
                 .orElseThrow(() -> new RuntimeException("Venta no encontrada"));
         AfipContext context = afipContextService.resolveForVenta(venta);
-        return afipContextService.callWithContext(context, () -> ticketPDFService.generarTicketPDFBytes(factura));
+        Credito credito = null;
+        List<Cuota> cuotas = List.of();
+        List<Credito> creditos = creditoRepository.findByVentaIdWithCuotas(venta.getId());
+        if (!creditos.isEmpty()) {
+            credito = creditos.get(0);
+            cuotas = TicketPDFService.ordenarCuotas(credito.getCuotas());
+        }
+        final Credito creditoFinal = credito;
+        final List<Cuota> cuotasFinal = cuotas;
+        return afipContextService.callWithContext(context,
+                () -> ticketPDFService.generarTicketPDFBytes(factura, creditoFinal, cuotasFinal));
     }
 
     public boolean requiereFacturacionAutomatica(String metodoPago) {

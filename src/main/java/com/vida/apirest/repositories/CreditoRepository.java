@@ -16,6 +16,9 @@ public interface CreditoRepository extends JpaRepository<Credito, Long> {
 
     List<Credito> findByVentaId(Long ventaId);
 
+    @Query("SELECT DISTINCT c FROM Credito c LEFT JOIN FETCH c.cuotas WHERE c.venta.id = :ventaId")
+    List<Credito> findByVentaIdWithCuotas(@Param("ventaId") Long ventaId);
+
     @Query("""
             SELECT c.cliente.id AS clienteId,
                    COALESCE(SUM(c.importe), 0) AS totalCreditosSacados,

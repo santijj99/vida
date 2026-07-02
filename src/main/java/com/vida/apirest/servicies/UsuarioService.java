@@ -5,6 +5,7 @@ import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
@@ -31,6 +32,7 @@ import com.vida.apirest.repositories.RoleRepository;
 import com.vida.apirest.repositories.UsuarioHasRoleRepository;
 import com.vida.apirest.repositories.UsuarioRepository;
 import com.vida.apirest.servicies.afip.AFIPTokenValidatorService;
+import com.vida.apirest.servicies.afip.AfipContextService;
 import com.vida.apirest.utils.FileUploadUtils;
 import com.vida.apirest.utils.JwtUtil;
 import com.vida.apirest.dto.auth.EffectivePermissions;
@@ -66,6 +68,9 @@ public class UsuarioService {
 
     @Autowired
     private AfipProperties afipProperties;
+
+    @Autowired
+    private AfipContextService afipContextService;
 
     @Autowired
     private AppSecurityProperties appSecurityProperties;

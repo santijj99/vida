@@ -24,6 +24,7 @@ import com.vida.apirest.model.articulo.VarianteArticulo;
 import com.vida.apirest.model.credito.Credito;
 import com.vida.apirest.model.credito.Cuota;
 import com.vida.apirest.model.credito.Cuenta;
+import com.vida.apirest.model.empresa.Empresa;
 import com.vida.apirest.model.finanzas.CuentaFinanciera;
 import com.vida.apirest.model.persona.Cliente;
 import com.vida.apirest.model.persona.Empleado;
@@ -47,7 +48,9 @@ import com.vida.apirest.repositories.VarianteArticuloRepository;
 import com.vida.apirest.security.SucursalScopeService;
 import com.vida.apirest.dto.afip.FacturaAFIPResponse;
 import com.vida.apirest.model.afip.FacturaAFIP;
+import com.vida.apirest.servicies.afip.AfipContextService;
 import com.vida.apirest.servicies.afip.FacturaAFIPService;
+import com.vida.apirest.servicies.afip.TicketPDFService;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -63,6 +66,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -87,6 +91,8 @@ public class VentaService {
     private final MovimientoFinancieroRepository movimientoFinancieroRepository;
     private final VentaCambioArticuloRepository ventaCambioArticuloRepository;
     private final FacturaAFIPService facturaAFIPService;
+    private final AfipContextService afipContextService;
+    private final TicketPDFService ticketPDFService;
     private final CajaMovimientoService cajaMovimientoService;
     private final VentaDetalleSupport ventaDetalleSupport;
     private final SucursalScopeService sucursalScopeService;
@@ -513,6 +519,46 @@ public class VentaService {
                 .orElseThrow(() -> new RuntimeException("Venta no encontrada con ID: " + id));
         sucursalScopeService.assertCanAccess(venta.getSucursal().getId());
         return mapVentaResponseCompleto(venta);
+    }
+
+    @Transactional(readOnly = true)
+    public byte[] generarTicketCreditoPdf(Long ventaId) throws Exception {
+        Venta venta = ventaRepository.findByIdWithDetalles(ventaId)
+                .orElseThrow(() -> new RuntimeException("Venta no encontrada con ID: " + ventaId));
+        sucursalScopeService.assertCanAccess(venta.getSucursal().getId());
+
+        List<Credito> creditos = creditoRepository.findByVentaIdWithCuotas(ventaId);
+        if (creditos.isEmpty()) {
+            throw new RuntimeException("La venta no tiene crédito personal asociado");
+        }
+
+        Credito credito = creditos.get(0);
+        List<Cuota> cuotas = TicketPDFService.ordenarCuotas(credito.getCuotas());
+        Empresa empresa = resolverEmpresaDeVenta(venta);
+        TicketPDFService.DatosEmpresaTicket datosEmpresa = resolverDatosEmpresaTicket(empresa);
+        return ticketPDFService.generarTicketCreditoPersonalBytes(venta, credito, cuotas, datosEmpresa);
+    }
+
+    private Empresa resolverEmpresaDeVenta(Venta venta) {
+        if (venta.getSucursal() != null && venta.getSucursal().getEmpresa() != null) {
+            return venta.getSucursal().getEmpresa();
+        }
+        Long sucursalId = venta.getSucursal() != null ? venta.getSucursal().getId() : null;
+        if (sucursalId == null) {
+            throw new RuntimeException("La venta no tiene sucursal asociada");
+        }
+        Sucursal sucursal = sucursalRepository.findById(sucursalId)
+                .orElseThrow(() -> new RuntimeException("Sucursal no encontrada"));
+        if (sucursal.getEmpresa() == null) {
+            throw new RuntimeException("La sucursal no tiene empresa asociada");
+        }
+        return sucursal.getEmpresa();
+    }
+
+    private TicketPDFService.DatosEmpresaTicket resolverDatosEmpresaTicket(Empresa empresa) {
+        return afipContextService.resolveOptionalForEmpresaId(empresa.getId())
+                .map(TicketPDFService.DatosEmpresaTicket::from)
+                .orElseGet(() -> TicketPDFService.DatosEmpresaTicket.fromEmpresa(empresa));
     }
 
     @Transactional
