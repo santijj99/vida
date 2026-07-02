@@ -21,6 +21,7 @@ import com.vida.apirest.model.credito.Credito;
 import com.vida.apirest.model.credito.Cuota;
 import com.vida.apirest.model.empresa.Empresa;
 import com.vida.apirest.model.persona.Cliente;
+import com.vida.apirest.model.venta.PagoVenta;
 import com.vida.apirest.model.venta.Venta;
 import com.vida.apirest.model.venta.VentaDetalle;
 import lombok.extern.slf4j.Slf4j;
@@ -37,6 +38,7 @@ import java.text.DecimalFormat;
 import java.text.SimpleDateFormat;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.Date;
 import java.util.List;
@@ -49,6 +51,7 @@ public class TicketPDFService {
     private static final float ALTO_BASE = 800f;
     private static final float ALTO_POR_ITEM_EXTRA = 20f;
     private static final float ALTO_POR_CUOTA = 18f;
+    private static final float ALTO_POR_PAGO = 16f;
     private static final DateTimeFormatter FECHA_VENTA_FMT = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm");
 
     private static final Font FONT_NORMAL = new Font(Font.FontFamily.COURIER, 10, Font.NORMAL);
@@ -156,9 +159,19 @@ public class TicketPDFService {
             List<Cuota> cuotas,
             DatosEmpresaTicket empresa
     ) throws Exception {
+        return generarTicketVentaBytes(venta, empresa, credito, cuotas);
+    }
+
+    public byte[] generarTicketVentaBytes(
+            Venta venta,
+            DatosEmpresaTicket empresa,
+            Credito credito,
+            List<Cuota> cuotas
+    ) throws Exception {
         int numItems = venta.getDetalles() != null ? venta.getDetalles().size() : 0;
         int numCuotas = cuotas != null ? cuotas.size() : 0;
-        Document document = crearDocumento(numItems, numCuotas);
+        int numPagos = contarPagosTicket(venta.getPagos());
+        Document document = crearDocumento(numItems, numCuotas, numPagos);
 
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         PdfWriter.getInstance(document, baos);
@@ -166,10 +179,11 @@ public class TicketPDFService {
 
         try {
             agregarInfoEmpresa(document, empresa);
-            agregarInfoComprobanteCredito(document, venta, credito);
+            agregarInfoComprobanteVenta(document, venta, credito);
             agregarClienteVenta(document, venta);
             agregarItemsVenta(document, venta);
             agregarTotalVenta(document, venta);
+            agregarPagosVenta(document, venta.getPagos(), credito);
             if (credito != null) {
                 agregarResumenCredito(document, credito);
             }
@@ -184,13 +198,27 @@ public class TicketPDFService {
         return baos.toByteArray();
     }
 
-    private Document crearDocumento(int numItems, int numCuotas) {
+    private int contarPagosTicket(Collection<PagoVenta> pagos) {
+        if (pagos == null || pagos.isEmpty()) {
+            return 0;
+        }
+        return (int) pagos.stream()
+                .filter(p -> p.getMonto() != null && p.getMonto().compareTo(BigDecimal.ZERO) > 0)
+                .count();
+    }
+
+    private Document crearDocumento(int numItems, int numCuotas, int numPagos) {
         float altoTicket = ALTO_BASE
                 + Math.max(0, numItems - 3) * ALTO_POR_ITEM_EXTRA
-                + numCuotas * ALTO_POR_CUOTA;
+                + numCuotas * ALTO_POR_CUOTA
+                + Math.max(0, numPagos) * ALTO_POR_PAGO;
         Document document = new Document(new Rectangle(ANCHO_TICKET, altoTicket));
         document.setMargins(15, 15, 15, 15);
         return document;
+    }
+
+    private Document crearDocumento(int numItems, int numCuotas) {
+        return crearDocumento(numItems, numCuotas, 0);
     }
     
     private void agregarInfoEmpresa(Document document) throws DocumentException {
@@ -217,7 +245,7 @@ public class TicketPDFService {
         document.add(new Paragraph(" "));
     }
 
-    private void agregarInfoComprobanteCredito(Document document, Venta venta, Credito credito) throws DocumentException {
+    private void agregarInfoComprobanteVenta(Document document, Venta venta, Credito credito) throws DocumentException {
         document.add(new Paragraph(" "));
         document.add(new LineSeparator());
         document.add(new Paragraph(" "));
@@ -225,7 +253,7 @@ public class TicketPDFService {
         Paragraph p = new Paragraph();
         p.setAlignment(Element.ALIGN_CENTER);
         p.add(new Chunk("COMPROBANTE\n", FONT_LARGE));
-        p.add(new Chunk("Crédito personal\n", FONT_NORMAL));
+        p.add(new Chunk(descripcionTipoVenta(venta, credito) + "\n", FONT_NORMAL));
         p.add(new Chunk("Venta: " + (venta.getNumeroFactura() != null ? venta.getNumeroFactura() : "-") + "\n", FONT_NORMAL));
         if (venta.getFechaVenta() != null) {
             p.add(new Chunk("Fecha: " + venta.getFechaVenta().format(FECHA_VENTA_FMT) + "\n", FONT_NORMAL));
@@ -235,6 +263,72 @@ public class TicketPDFService {
         }
         document.add(p);
         document.add(new Paragraph(" "));
+    }
+
+    private String descripcionTipoVenta(Venta venta, Credito credito) {
+        if (credito != null) {
+            return "Crédito personal";
+        }
+        if (venta.getPagos() != null && venta.getPagos().size() > 1) {
+            return "Pagos múltiples";
+        }
+        String metodo = venta.getMetodoPago();
+        if (metodo == null || metodo.isBlank()) {
+            return "Venta";
+        }
+        return etiquetaMetodoPago(metodo);
+    }
+
+    private void agregarPagosVenta(Document document, Collection<PagoVenta> pagos, Credito credito) throws DocumentException {
+        if (pagos == null || pagos.isEmpty()) {
+            return;
+        }
+
+        List<PagoVenta> pagosVisibles = pagos.stream()
+                .filter(p -> p.getMonto() != null && p.getMonto().compareTo(BigDecimal.ZERO) > 0)
+                .toList();
+        if (pagosVisibles.isEmpty() || (pagosVisibles.size() <= 1 && credito == null)) {
+            return;
+        }
+
+        document.add(new LineSeparator());
+        document.add(new Paragraph(" "));
+
+        Paragraph titulo = new Paragraph(
+                pagosVisibles.size() > 1 ? "FORMAS DE PAGO" : "FORMA DE PAGO",
+                FONT_BOLD
+        );
+        titulo.setAlignment(Element.ALIGN_CENTER);
+        document.add(titulo);
+        document.add(new Paragraph(" "));
+
+        PdfPTable table = new PdfPTable(2);
+        table.setWidthPercentage(100);
+        table.setWidths(new float[]{4, 2});
+
+        for (PagoVenta pago : pagosVisibles) {
+            agregarCelda(table, etiquetaMetodoPago(pago.getMetodoPago()), FONT_NORMAL, Element.ALIGN_LEFT);
+            agregarCelda(table, "$ " + DECIMAL_FORMAT.format(pago.getMonto()), FONT_NORMAL, Element.ALIGN_RIGHT);
+        }
+
+        document.add(table);
+        document.add(new Paragraph(" "));
+    }
+
+    private String etiquetaMetodoPago(String metodo) {
+        if (metodo == null || metodo.isBlank()) {
+            return "Pago";
+        }
+        return switch (metodo.trim().toUpperCase()) {
+            case "EFECTIVO" -> "Efectivo";
+            case "TRANSFERENCIA" -> "Transferencia";
+            case "CREDITO" -> "Crédito";
+            case "COMBINADO" -> "Pagos múltiples";
+            case "QR" -> "QR";
+            case "TARJETA DE CREDITO", "TARJETA CREDITO" -> "Tarjeta crédito";
+            case "TARJETA DE DEBITO", "TARJETA DEBITO" -> "Tarjeta débito";
+            default -> metodo;
+        };
     }
 
     private void agregarClienteVenta(Document document, Venta venta) throws DocumentException {

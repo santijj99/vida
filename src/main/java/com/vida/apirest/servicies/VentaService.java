@@ -522,21 +522,26 @@ public class VentaService {
     }
 
     @Transactional(readOnly = true)
-    public byte[] generarTicketCreditoPdf(Long ventaId) throws Exception {
+    public byte[] generarTicketVentaPdf(Long ventaId) throws Exception {
         Venta venta = ventaRepository.findByIdWithDetalles(ventaId)
                 .orElseThrow(() -> new RuntimeException("Venta no encontrada con ID: " + ventaId));
         sucursalScopeService.assertCanAccess(venta.getSucursal().getId());
 
-        List<Credito> creditos = creditoRepository.findByVentaIdWithCuotas(ventaId);
-        if (creditos.isEmpty()) {
-            throw new RuntimeException("La venta no tiene crédito personal asociado");
+        if (venta.getEstado() == Venta.EstadoVenta.BORRADOR) {
+            throw new RuntimeException("La venta no está confirmada");
         }
 
-        Credito credito = creditos.get(0);
-        List<Cuota> cuotas = TicketPDFService.ordenarCuotas(credito.getCuotas());
+        Credito credito = null;
+        List<Cuota> cuotas = List.of();
+        List<Credito> creditos = creditoRepository.findByVentaIdWithCuotas(ventaId);
+        if (!creditos.isEmpty()) {
+            credito = creditos.get(0);
+            cuotas = TicketPDFService.ordenarCuotas(credito.getCuotas());
+        }
+
         Empresa empresa = resolverEmpresaDeVenta(venta);
         TicketPDFService.DatosEmpresaTicket datosEmpresa = resolverDatosEmpresaTicket(empresa);
-        return ticketPDFService.generarTicketCreditoPersonalBytes(venta, credito, cuotas, datosEmpresa);
+        return ticketPDFService.generarTicketVentaBytes(venta, datosEmpresa, credito, cuotas);
     }
 
     private Empresa resolverEmpresaDeVenta(Venta venta) {

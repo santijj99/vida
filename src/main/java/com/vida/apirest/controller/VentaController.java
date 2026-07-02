@@ -80,12 +80,12 @@ public class VentaController {
 
     @GetMapping("/{id}/ticket")
     @PreAuthorize("hasAuthority('VER_VENTAS')")
-    public ResponseEntity<?> descargarTicketCredito(@PathVariable Long id) {
+    public ResponseEntity<?> descargarTicketVenta(@PathVariable Long id) {
         try {
-            byte[] pdf = ventaService.generarTicketCreditoPdf(id);
+            byte[] pdf = ventaService.generarTicketVentaPdf(id);
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_PDF);
-            headers.setContentDispositionFormData("attachment", "ticket-credito-" + id + ".pdf");
+            headers.setContentDispositionFormData("attachment", "ticket-venta-" + id + ".pdf");
             return new ResponseEntity<>(pdf, headers, HttpStatus.OK);
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
