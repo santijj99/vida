@@ -17,6 +17,10 @@ import com.vida.apirest.model.afip.FacturaItemAFIP;
 import com.vida.apirest.model.afip.FacturaIvaAFIP;
 import com.vida.apirest.model.articulo.Articulo;
 import com.vida.apirest.model.articulo.VarianteArticulo;
+import com.vida.apirest.dto.credito.ClienteCreditosResponse;
+import com.vida.apirest.dto.credito.CreditoClienteResponse;
+import com.vida.apirest.dto.credito.CuotaCreditoResponse;
+import com.vida.apirest.model.credito.PagoCuota;
 import com.vida.apirest.model.credito.Credito;
 import com.vida.apirest.model.credito.Cuota;
 import com.vida.apirest.model.empresa.Empresa;
@@ -42,6 +46,7 @@ import java.util.Collection;
 import java.util.Comparator;
 import java.util.Date;
 import java.util.List;
+import java.util.Objects;
 
 @Slf4j
 @Service
@@ -856,6 +861,236 @@ public class TicketPDFService {
             p.add(new Chunk("Comprobante válido como factura\n", FONT_NORMAL));
         }
         document.add(p);
+    }
+
+    public byte[] generarTicketPagoCuotasBytes(List<PagoCuota> pagos, DatosEmpresaTicket empresa) throws Exception {
+        if (pagos == null || pagos.isEmpty()) {
+            throw new IllegalArgumentException("No hay pagos para imprimir");
+        }
+
+        PagoCuota primerPago = pagos.get(0);
+        var credito = primerPago.getCuota().getCredito();
+        var cliente = credito.getCliente();
+        int lineas = pagos.size() + 8;
+        Document document = crearDocumento(0, 0, lineas);
+
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        PdfWriter.getInstance(document, baos);
+        document.open();
+
+        try {
+            agregarInfoEmpresa(document, empresa);
+            agregarEncabezadoCobroCuotas(document, cliente, primerPago);
+            agregarDetallePagosCuotas(document, pagos);
+            agregarTotalesCobroCuotas(document, pagos);
+            agregarPiePagina(document, false);
+        } finally {
+            document.close();
+        }
+
+        return baos.toByteArray();
+    }
+
+    public byte[] generarResumenCuentaCreditoBytes(ClienteCreditosResponse cuenta, DatosEmpresaTicket empresa) throws Exception {
+        int cuotasActivas = cuenta.getCreditosActivos() != null
+                ? cuenta.getCreditosActivos().stream().mapToInt(c -> c.getCuotas() != null ? c.getCuotas().size() : 0).sum()
+                : 0;
+        int lineas = cuotasActivas + (cuenta.getCreditosActivos() != null ? cuenta.getCreditosActivos().size() * 3 : 0) + 12;
+        Document document = crearDocumento(0, 0, lineas);
+
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        PdfWriter.getInstance(document, baos);
+        document.open();
+
+        try {
+            agregarInfoEmpresa(document, empresa);
+            agregarEncabezadoResumenCuenta(document, cuenta);
+            agregarResumenMontosCuenta(document, cuenta);
+            if (cuenta.getCreditosActivos() != null) {
+                for (CreditoClienteResponse credito : cuenta.getCreditosActivos()) {
+                    agregarCreditoEnResumen(document, credito);
+                }
+            }
+            agregarPiePagina(document, false);
+        } finally {
+            document.close();
+        }
+
+        return baos.toByteArray();
+    }
+
+    private void agregarEncabezadoCobroCuotas(
+            Document document,
+            com.vida.apirest.model.persona.Cliente cliente,
+            PagoCuota primerPago
+    ) throws DocumentException {
+        document.add(new Paragraph(" "));
+        document.add(new LineSeparator());
+        document.add(new Paragraph(" "));
+
+        Paragraph p = new Paragraph();
+        p.setAlignment(Element.ALIGN_CENTER);
+        p.add(new Chunk("COMPROBANTE\n", FONT_LARGE));
+        p.add(new Chunk("Cobro de cuotas\n", FONT_NORMAL));
+        if (primerPago.getCreatedAt() != null) {
+            p.add(new Chunk("Fecha: " + primerPago.getCreatedAt().format(FECHA_VENTA_FMT) + "\n", FONT_NORMAL));
+        }
+        document.add(p);
+        document.add(new Paragraph(" "));
+
+        document.add(new LineSeparator());
+        document.add(new Paragraph(" "));
+        Paragraph clienteP = new Paragraph();
+        if (cliente != null) {
+            String nombre = ((cliente.getNombre() != null ? cliente.getNombre() : "")
+                    + " " + (cliente.getApellido() != null ? cliente.getApellido() : "")).trim();
+            if (!nombre.isBlank()) {
+                clienteP.add(new Chunk(nombre + "\n", FONT_NORMAL));
+            }
+            if (cliente.getDni() != null && !cliente.getDni().isBlank()) {
+                clienteP.add(new Chunk("DNI: " + cliente.getDni() + "\n", FONT_NORMAL));
+            }
+        }
+        document.add(clienteP);
+        document.add(new Paragraph(" "));
+    }
+
+    private void agregarDetallePagosCuotas(Document document, List<PagoCuota> pagos) throws DocumentException {
+        document.add(new LineSeparator());
+        document.add(new Paragraph(" "));
+
+        Paragraph titulo = new Paragraph("DETALLE DEL COBRO", FONT_BOLD);
+        titulo.setAlignment(Element.ALIGN_CENTER);
+        document.add(titulo);
+        document.add(new Paragraph(" "));
+
+        PdfPTable table = new PdfPTable(4);
+        table.setWidthPercentage(100);
+        table.setWidths(new float[]{2, 1, 2, 2});
+
+        agregarCelda(table, "Crédito", FONT_BOLD, Element.ALIGN_LEFT);
+        agregarCelda(table, "Cuota", FONT_BOLD, Element.ALIGN_LEFT);
+        agregarCelda(table, "Pagado", FONT_BOLD, Element.ALIGN_RIGHT);
+        agregarCelda(table, "Saldo", FONT_BOLD, Element.ALIGN_RIGHT);
+
+        for (PagoCuota pago : pagos) {
+            Cuota cuota = pago.getCuota();
+            Credito credito = cuota.getCredito();
+            BigDecimal saldoRestante = cuota.getSaldo() != null ? cuota.getSaldo() : BigDecimal.ZERO;
+            agregarCelda(table, credito.getNumero() != null ? credito.getNumero() : "-", FONT_NORMAL, Element.ALIGN_LEFT);
+            agregarCelda(table, cuota.getNumero() != null ? cuota.getNumero() : "-", FONT_NORMAL, Element.ALIGN_LEFT);
+            agregarCelda(table, "$ " + DECIMAL_FORMAT.format(pago.getMonto()), FONT_NORMAL, Element.ALIGN_RIGHT);
+            agregarCelda(table, "$ " + DECIMAL_FORMAT.format(saldoRestante), FONT_NORMAL, Element.ALIGN_RIGHT);
+        }
+
+        document.add(table);
+        document.add(new Paragraph(" "));
+    }
+
+    private void agregarTotalesCobroCuotas(Document document, List<PagoCuota> pagos) throws DocumentException {
+        BigDecimal totalCobrado = pagos.stream()
+                .map(PagoCuota::getMonto)
+                .filter(Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        String metodo = pagos.get(0).getMetodoPago() != null ? etiquetaMetodoPago(pagos.get(0).getMetodoPago()) : "Pago";
+
+        document.add(new LineSeparator());
+        document.add(new Paragraph(" "));
+
+        PdfPTable table = new PdfPTable(2);
+        table.setWidthPercentage(100);
+        table.setWidths(new float[]{4, 2});
+        agregarCelda(table, "Método", FONT_NORMAL, Element.ALIGN_LEFT);
+        agregarCelda(table, metodo, FONT_NORMAL, Element.ALIGN_RIGHT);
+        agregarCelda(table, "TOTAL COBRADO", FONT_BOLD, Element.ALIGN_LEFT);
+        agregarCelda(table, "$ " + DECIMAL_FORMAT.format(totalCobrado), FONT_BOLD, Element.ALIGN_RIGHT);
+        document.add(table);
+        document.add(new Paragraph(" "));
+    }
+
+    private void agregarEncabezadoResumenCuenta(Document document, ClienteCreditosResponse cuenta) throws DocumentException {
+        document.add(new Paragraph(" "));
+        document.add(new LineSeparator());
+        document.add(new Paragraph(" "));
+
+        Paragraph p = new Paragraph();
+        p.setAlignment(Element.ALIGN_CENTER);
+        p.add(new Chunk("RESUMEN DE CUENTA\n", FONT_LARGE));
+        p.add(new Chunk("Cuenta: " + (cuenta.getCuentaNumero() != null ? cuenta.getCuentaNumero() : "-") + "\n", FONT_NORMAL));
+        p.add(new Chunk("Fecha: " + LocalDateTime.now().format(FECHA_VENTA_FMT) + "\n", FONT_NORMAL));
+        document.add(p);
+        document.add(new Paragraph(" "));
+
+        Paragraph clienteP = new Paragraph();
+        String nombre = ((cuenta.getClienteNombre() != null ? cuenta.getClienteNombre() : "")
+                + " " + (cuenta.getClienteApellido() != null ? cuenta.getClienteApellido() : "")).trim();
+        if (!nombre.isBlank()) {
+            clienteP.add(new Chunk(nombre + "\n", FONT_NORMAL));
+        }
+        if (cuenta.getClienteDni() != null && !cuenta.getClienteDni().isBlank()) {
+            clienteP.add(new Chunk("DNI: " + cuenta.getClienteDni() + "\n", FONT_NORMAL));
+        }
+        document.add(clienteP);
+        document.add(new Paragraph(" "));
+    }
+
+    private void agregarResumenMontosCuenta(Document document, ClienteCreditosResponse cuenta) throws DocumentException {
+        document.add(new LineSeparator());
+        document.add(new Paragraph(" "));
+
+        PdfPTable table = new PdfPTable(2);
+        table.setWidthPercentage(100);
+        table.setWidths(new float[]{4, 2});
+        agregarCelda(table, "Saldo pendiente", FONT_BOLD, Element.ALIGN_LEFT);
+        agregarCelda(table, "$ " + DECIMAL_FORMAT.format(valorSeguro(cuenta.getSaldoCuenta())), FONT_BOLD, Element.ALIGN_RIGHT);
+        agregarCelda(table, "Créditos activos", FONT_NORMAL, Element.ALIGN_LEFT);
+        agregarCelda(table, String.valueOf(cuenta.getCantidadCreditos() != null ? cuenta.getCantidadCreditos() : 0), FONT_NORMAL, Element.ALIGN_RIGHT);
+        agregarCelda(table, "Total créditos", FONT_NORMAL, Element.ALIGN_LEFT);
+        agregarCelda(table, "$ " + DECIMAL_FORMAT.format(valorSeguro(cuenta.getTotalCreditosSacados())), FONT_NORMAL, Element.ALIGN_RIGHT);
+        agregarCelda(table, "Total pagado", FONT_NORMAL, Element.ALIGN_LEFT);
+        agregarCelda(table, "$ " + DECIMAL_FORMAT.format(valorSeguro(cuenta.getTotalPagado())), FONT_NORMAL, Element.ALIGN_RIGHT);
+        document.add(table);
+        document.add(new Paragraph(" "));
+    }
+
+    private void agregarCreditoEnResumen(Document document, CreditoClienteResponse credito) throws DocumentException {
+        document.add(new LineSeparator());
+        document.add(new Paragraph(" "));
+
+        Paragraph titulo = new Paragraph(
+                "Crédito " + (credito.getNumero() != null ? credito.getNumero() : "-")
+                        + " · Saldo $ " + DECIMAL_FORMAT.format(valorSeguro(credito.getSaldo())),
+                FONT_BOLD
+        );
+        document.add(titulo);
+        document.add(new Paragraph(" "));
+
+        if (credito.getCuotas() == null || credito.getCuotas().isEmpty()) {
+            return;
+        }
+
+        PdfPTable table = new PdfPTable(4);
+        table.setWidthPercentage(100);
+        table.setWidths(new float[]{1, 2, 2, 2});
+
+        agregarCelda(table, "N°", FONT_BOLD, Element.ALIGN_LEFT);
+        agregarCelda(table, "Venc.", FONT_BOLD, Element.ALIGN_LEFT);
+        agregarCelda(table, "Saldo", FONT_BOLD, Element.ALIGN_RIGHT);
+        agregarCelda(table, "Estado", FONT_BOLD, Element.ALIGN_CENTER);
+
+        for (CuotaCreditoResponse cuota : credito.getCuotas()) {
+            agregarCelda(table, cuota.getNumero() != null ? cuota.getNumero() : "-", FONT_NORMAL, Element.ALIGN_LEFT);
+            agregarCelda(table, formatearFechaCuota(cuota.getFechaVencimiento()), FONT_NORMAL, Element.ALIGN_LEFT);
+            agregarCelda(table, "$ " + DECIMAL_FORMAT.format(valorSeguro(cuota.getSaldo())), FONT_NORMAL, Element.ALIGN_RIGHT);
+            agregarCelda(table, cuota.getEstado() != null ? cuota.getEstado() : "-", FONT_NORMAL, Element.ALIGN_CENTER);
+        }
+
+        document.add(table);
+        document.add(new Paragraph(" "));
+    }
+
+    private BigDecimal valorSeguro(BigDecimal valor) {
+        return valor != null ? valor : BigDecimal.ZERO;
     }
 }
 
