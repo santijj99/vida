@@ -42,6 +42,7 @@ public class PagoVenta {
     private CuentaFinanciera cuenta;
 
     @Column(name = "numero", nullable = false, length = 50, unique = true)
+    @EqualsAndHashCode.Include
     private String numero;
 
     @Column(name = "monto", nullable = false, precision = 15, scale = 2)

@@ -13,6 +13,7 @@ import com.vida.apirest.model.venta.PagoVenta;
 import com.vida.apirest.model.venta.Venta;
 import com.vida.apirest.model.venta.VentaDetalle;
 import com.vida.apirest.repositories.*;
+import com.vida.apirest.servicies.VentaDetalleSupport;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -470,9 +471,7 @@ public class FacturaAFIPService {
             for (VentaDetalle detalle : venta.getDetalles()) {
                 FacturaItemAFIP item = new FacturaItemAFIP();
                 item.setFacturaAFIP(factura);
-                item.setDescripcion(detalle.getArticulo().getModelo() != null
-                        ? detalle.getArticulo().getModelo()
-                        : "Artículo " + detalle.getArticulo().getId());
+                item.setDescripcion(VentaDetalleSupport.descripcionLinea(detalle));
                 item.setCantidad(new BigDecimal(detalle.getCantidad()));
                 item.setPrecioUnitario(detalle.getPrecioUnitario().multiply(ratio).setScale(2, RoundingMode.HALF_UP));
                 item.setSubtotal(detalle.getSubtotal().multiply(ratio).setScale(2, RoundingMode.HALF_UP));
