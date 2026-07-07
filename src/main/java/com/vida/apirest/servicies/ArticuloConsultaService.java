@@ -1,5 +1,6 @@
 package com.vida.apirest.servicies;
 
+import com.vida.apirest.dto.ariticulo.ArticuloCodigoSugerenciaResponse;
 import com.vida.apirest.dto.ariticulo.ArticuloCompactResponse;
 import com.vida.apirest.dto.ariticulo.ArticuloFiltrosResponse;
 import com.vida.apirest.dto.ariticulo.ArticuloParaVentaResponse;
@@ -34,6 +35,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
+import org.springframework.data.domain.PageRequest;
+
 @Service
 @RequiredArgsConstructor
 public class ArticuloConsultaService {
@@ -60,13 +63,15 @@ public class ArticuloConsultaService {
             List<String> clasificaciones,
             String genero,
             String marca,
+            String talle,
+            String color,
             String q,
             Long depositoId,
             int page,
             int size
     ) {
         return articuloTablaQueryRepository.findTablaPage(
-                categoria, subCategoria, clasificaciones, genero, marca, q, depositoId, page, size);
+                categoria, subCategoria, clasificaciones, genero, marca, talle, color, q, depositoId, page, size);
     }
 
     @Transactional(readOnly = true)
@@ -98,12 +103,53 @@ public class ArticuloConsultaService {
     }
 
     @Transactional(readOnly = true)
+    public List<ArticuloCodigoSugerenciaResponse> buscarSugerenciasCodigo(String q, int limit) {
+        if (q == null || q.isBlank()) {
+            return List.of();
+        }
+        int safeLimit = Math.min(Math.max(limit, 1), 20);
+        List<Object[]> rows = articuloRepository.buscarSugerenciasCodigoActivos(
+                q.trim(), PageRequest.of(0, safeLimit));
+        List<ArticuloCodigoSugerenciaResponse> result = new ArrayList<>();
+        for (Object[] row : rows) {
+            result.add(new ArticuloCodigoSugerenciaResponse(
+                    (Long) row[0],
+                    (String) row[1],
+                    (String) row[2],
+                    (String) row[3]));
+        }
+        return result;
+    }
+
+    @Transactional(readOnly = true)
+    public ArticuloCompactResponse getCompactByCodigo(String codigo) {
+        if (codigo == null || codigo.isBlank()) {
+            throw new RuntimeException("Código requerido");
+        }
+        Articulo articulo = articuloRepository.findByCodigo(codigo.trim())
+                .orElseThrow(() -> new RuntimeException("No existe un artículo con el código: " + codigo.trim()));
+        return getCompactById(articulo.getId());
+    }
+
+    @Transactional(readOnly = true)
     public ArticuloCompactResponse getCompactById(Long id) {
         return toCompactResponse(loadWithDetalle(id));
     }
 
     @Transactional(readOnly = true)
-    public PageResponse<ArticuloParaVentaResponse> findParaVentaPage(Long sucursalId, String q, int page, int size) {
+    public PageResponse<ArticuloParaVentaResponse> findParaVentaPage(
+            Long sucursalId,
+            String categoria,
+            String subCategoria,
+            List<String> clasificaciones,
+            String genero,
+            String marca,
+            String talle,
+            String color,
+            String q,
+            int page,
+            int size
+    ) {
         if (sucursalId == null) {
             throw new RuntimeException("Sucursal requerida para listar artículos de venta");
         }
@@ -112,7 +158,8 @@ public class ArticuloConsultaService {
             throw new RuntimeException("Sucursal no encontrada con ID: " + sucursalId);
         }
         PageResponse<ArticuloParaVentaResponse> resultado =
-                articuloTablaQueryRepository.findParaVentaPage(sucursalId, q, page, size);
+                articuloTablaQueryRepository.findParaVentaPage(
+                        sucursalId, categoria, subCategoria, clasificaciones, genero, marca, talle, color, q, page, size);
         aplicarPreciosPromocionales(resultado.getContent());
         return resultado;
     }

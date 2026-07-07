@@ -8,7 +8,9 @@ import org.w3c.dom.NodeList;
 import javax.xml.parsers.DocumentBuilderFactory;
 import java.io.File;
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
+import java.util.Base64;
 import java.util.Date;
 
 public final class AFIPTokenLoader {
@@ -19,20 +21,77 @@ public final class AFIPTokenLoader {
     public static TokenSign loadFromXml(String path) throws Exception {
         InputStream inputStream = openStream(path);
         try (inputStream) {
-            DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
-            Document doc = factory.newDocumentBuilder().parse(inputStream);
-            doc.getDocumentElement().normalize();
-
-            String token = readTag(doc, "token");
-            String sign = readTag(doc, "sign");
-            Date expiration = parseExpiration(readTag(doc, "expirationTime"));
-
-            if (token == null || sign == null) {
-                throw new IllegalStateException("El archivo TA.xml no contiene token o sign");
-            }
-
-            return new TokenSign(token.trim(), sign.trim(), expiration);
+            return parseDocument(inputStream);
         }
+    }
+
+    public static TokenSign loadFromXmlContent(String xml) throws Exception {
+        String sanitized = sanitizeXml(xml);
+        try (InputStream inputStream = new java.io.ByteArrayInputStream(
+                sanitized.getBytes(java.nio.charset.StandardCharsets.UTF_8))) {
+            return parseDocument(inputStream);
+        }
+    }
+
+    public static boolean looksLikeTaXml(String xml) {
+        if (xml == null || xml.isBlank()) {
+            return false;
+        }
+        String sanitized = sanitizeXml(xml);
+        return sanitized.startsWith("<?xml")
+                || sanitized.startsWith("<loginTicketResponse")
+                || sanitized.startsWith("<credentials");
+    }
+
+    public static String sanitizeXml(String xml) {
+        if (xml == null) {
+            return "";
+        }
+        String trimmed = xml.stripLeading();
+        if (trimmed.startsWith("\uFEFF")) {
+            trimmed = trimmed.substring(1).stripLeading();
+        }
+        return trimmed;
+    }
+
+    /**
+     * Verifica que el TA interno (SSO) corresponda al servicio WSAA solicitado.
+     */
+    public static boolean tokenEsParaServicio(TokenSign tokenSign, String service) {
+        if (tokenSign == null || service == null || service.isBlank()) {
+            return false;
+        }
+        try {
+            String sso = new String(Base64.getDecoder().decode(tokenSign.getToken().replaceAll("\\s+", "")),
+                    StandardCharsets.UTF_8);
+            return sso.contains("service=\"" + service + "\"")
+                    || sso.contains("service>" + service + "<");
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    public static boolean tokenEsParaServicio(String taXml, String service) throws Exception {
+        if (!looksLikeTaXml(taXml)) {
+            return false;
+        }
+        return tokenEsParaServicio(loadFromXmlContent(taXml), service);
+    }
+
+    private static TokenSign parseDocument(InputStream inputStream) throws Exception {
+        DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+        Document doc = factory.newDocumentBuilder().parse(inputStream);
+        doc.getDocumentElement().normalize();
+
+        String token = readTag(doc, "token");
+        String sign = readTag(doc, "sign");
+        Date expiration = parseExpiration(readTag(doc, "expirationTime"));
+
+        if (token == null || sign == null) {
+            throw new IllegalStateException("El archivo TA.xml no contiene token o sign");
+        }
+
+        return new TokenSign(token.trim(), sign.trim(), expiration);
     }
 
     private static InputStream openStream(String path) throws Exception {

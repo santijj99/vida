@@ -11,10 +11,12 @@ import com.vida.apirest.model.auth.UsuarioSucursal;
 import com.vida.apirest.model.auth.id.UsuarioRoleId;
 import com.vida.apirest.model.auth.id.UsuarioSucursalId;
 import com.vida.apirest.model.empresa.Empresa;
+import com.vida.apirest.model.empresa.EmpresaAfipConfig;
 import com.vida.apirest.model.finanzas.CuentaFinanciera;
 import com.vida.apirest.model.finanzas.Moneda;
 import com.vida.apirest.repositories.DepositoRepository;
 import com.vida.apirest.repositories.EmpleadoRepository;
+import com.vida.apirest.repositories.EmpresaAfipConfigRepository;
 import com.vida.apirest.repositories.EmpresaRepository;
 import com.vida.apirest.repositories.FinanzasCuentaFinancieraRepository;
 import com.vida.apirest.repositories.MonedaRepository;
@@ -45,6 +47,7 @@ public class DataInitializer {
     private final MonedaRepository monedaRepository;
     private final EmpleadoRepository empleadoRepository;
     private final EmpresaRepository empresaRepository;
+    private final EmpresaAfipConfigRepository empresaAfipConfigRepository;
     private final SucursalRepository sucursalRepository;
     private final DepositoRepository depositoRepository;
     private final FinanzasCuentaFinancieraRepository cuentaFinancieraRepository;
@@ -272,6 +275,31 @@ public class DataInitializer {
             }
             if (lucio != null && suc001 != null) {
                 vincularSucursalSiNoExiste(lucio, suc001);
+            }
+        };
+    }
+
+    @Bean
+    @Order(12)
+    public CommandLineRunner seedEmpresaAfipConfig() {
+        return args -> {
+            for (Empresa empresa : empresaRepository.findAll()) {
+                if (empresaAfipConfigRepository.findByEmpresaId(empresa.getId()).isPresent()) {
+                    continue;
+                }
+                EmpresaAfipConfig config = new EmpresaAfipConfig();
+                config.setEmpresa(empresa);
+                config.setPtoVta(3);
+                config.setCbteTipoDefault(6);
+                config.setCondicionIva("IVA Responsable Inscripto");
+                String certDir = System.getenv("AFIP_CERTIFICADOS_DIR");
+                if (certDir != null && !certDir.isBlank()) {
+                    config.setCertificadosDirectorio(certDir.trim());
+                    config.setAfipHabilitado(true);
+                } else {
+                    config.setAfipHabilitado(false);
+                }
+                empresaAfipConfigRepository.save(config);
             }
         };
     }

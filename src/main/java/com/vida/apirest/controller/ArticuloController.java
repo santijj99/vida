@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.vida.apirest.dto.ariticulo.ArticuloCodigoSugerenciaResponse;
 import com.vida.apirest.dto.ariticulo.ArticuloCompactResponse;
 import com.vida.apirest.dto.ariticulo.ArticuloCreateRequest;
 import com.vida.apirest.dto.ariticulo.ArticuloFiltrosResponse;
@@ -42,14 +43,35 @@ public class ArticuloController {
         return ResponseEntity.ok(articuloService.obtenerFiltrosTabla());
     }
 
+    @GetMapping("/codigos/sugerencias")
+    public ResponseEntity<List<ArticuloCodigoSugerenciaResponse>> sugerenciasCodigo(
+            @RequestParam String q,
+            @RequestParam(defaultValue = "10") int limit
+    ) {
+        return ResponseEntity.ok(articuloService.buscarSugerenciasCodigo(q, limit));
+    }
+
+    @GetMapping("/codigos/lookup")
+    public ResponseEntity<ArticuloCompactResponse> lookupPorCodigo(@RequestParam String codigo) {
+        return ResponseEntity.ok(articuloService.getCompactByCodigo(codigo));
+    }
+
     @GetMapping("/para-venta")
     public ResponseEntity<PageResponse<ArticuloParaVentaResponse>> listParaVenta(
             @RequestParam Long sucursalId,
+            @RequestParam(required = false) String categoria,
+            @RequestParam(required = false) String subCategoria,
+            @RequestParam(required = false) List<String> clasificaciones,
+            @RequestParam(required = false) String genero,
+            @RequestParam(required = false) String marca,
+            @RequestParam(required = false) String talle,
+            @RequestParam(required = false) String color,
             @RequestParam(required = false) String q,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "15") int size
     ) {
-        return ResponseEntity.ok(articuloService.findParaVentaPage(sucursalId, q, page, size));
+        return ResponseEntity.ok(articuloService.findParaVentaPage(
+                sucursalId, categoria, subCategoria, clasificaciones, genero, marca, talle, color, q, page, size));
     }
 
     @GetMapping("/tabla")
@@ -59,13 +81,15 @@ public class ArticuloController {
             @RequestParam(required = false) List<String> clasificaciones,
             @RequestParam(required = false) String genero,
             @RequestParam(required = false) String marca,
+            @RequestParam(required = false) String talle,
+            @RequestParam(required = false) String color,
             @RequestParam(required = false) String q,
             @RequestParam(required = false) Long depositoId,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "15") int size
     ) {
         return ResponseEntity.ok(articuloService.findTablaPage(
-                categoria, subCategoria, clasificaciones, genero, marca, q, depositoId, page, size));
+                categoria, subCategoria, clasificaciones, genero, marca, talle, color, q, depositoId, page, size));
     }
 
     @PostMapping

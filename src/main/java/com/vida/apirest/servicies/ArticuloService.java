@@ -14,6 +14,7 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.vida.apirest.dto.ariticulo.ArticuloCodigoSugerenciaResponse;
 import com.vida.apirest.dto.ariticulo.ArticuloCompactResponse;
 import com.vida.apirest.dto.ariticulo.ArticuloCreateRequest;
 import com.vida.apirest.dto.ariticulo.ArticuloFiltrosResponse;
@@ -82,13 +83,25 @@ public class ArticuloService {
             List<String> clasificaciones,
             String genero,
             String marca,
+            String talle,
+            String color,
             String q,
             Long depositoId,
             int page,
             int size
     ) {
         return articuloConsultaService.findTablaPage(
-                categoria, subCategoria, clasificaciones, genero, marca, q, depositoId, page, size);
+                categoria, subCategoria, clasificaciones, genero, marca, talle, color, q, depositoId, page, size);
+    }
+
+    @Transactional(readOnly = true)
+    public List<ArticuloCodigoSugerenciaResponse> buscarSugerenciasCodigo(String q, int limit) {
+        return articuloConsultaService.buscarSugerenciasCodigo(q, limit);
+    }
+
+    @Transactional(readOnly = true)
+    public ArticuloCompactResponse getCompactByCodigo(String codigo) {
+        return articuloConsultaService.getCompactByCodigo(codigo);
     }
 
     @Transactional(readOnly = true)
@@ -275,6 +288,14 @@ public class ArticuloService {
     }
 
     private Articulo crearArticuloCatalogo(ArticuloCreateRequest request) {
+        String codigo = request.getCodigo() != null ? request.getCodigo().trim() : "";
+        if (codigo.isEmpty()) {
+            throw new RuntimeException("El código del artículo es obligatorio");
+        }
+        articuloRepository.findByCodigo(codigo).ifPresent(existente -> {
+            throw new RuntimeException("Ya existe un artículo con el código: " + codigo);
+        });
+
         Marca marca = catalogoResolverService.findOrCreateMarca(request.getMarca());
         Categoria categoria = catalogoResolverService.findOrCreateCategoria(request.getCategoria());
         Genero genero = catalogoResolverService.findOrCreateGenero(request.getGenero());
@@ -283,7 +304,7 @@ public class ArticuloService {
         articulo.setMarcaId(marca.getId());
         articulo.setCategoriaId(categoria.getId());
         articulo.setGeneroId(genero.getId());
-        articulo.setCodigo(request.getCodigo());
+        articulo.setCodigo(codigo);
         articulo.setModelo(request.getModelo());
         articulo.setDescripcion(request.getDescripcion());
         articulo.setEstado(Articulo.EstadoProducto.ACTIVO);
@@ -549,8 +570,20 @@ public class ArticuloService {
 
     @Transactional(readOnly = true)
     public PageResponse<ArticuloParaVentaResponse> findParaVentaPage(
-            Long sucursalId, String q, int page, int size) {
-        return articuloConsultaService.findParaVentaPage(sucursalId, q, page, size);
+            Long sucursalId,
+            String categoria,
+            String subCategoria,
+            List<String> clasificaciones,
+            String genero,
+            String marca,
+            String talle,
+            String color,
+            String q,
+            int page,
+            int size
+    ) {
+        return articuloConsultaService.findParaVentaPage(
+                sucursalId, categoria, subCategoria, clasificaciones, genero, marca, talle, color, q, page, size);
     }
 
     private Integer getCantidadDisponibleEnSucursal(Long articuloId, Long varianteId, Long sucursalId) {

@@ -56,6 +56,8 @@ public class ArticuloTablaQueryRepository {
 
     private static final String JOIN_VENTA_BUSQUEDA = """
             LEFT JOIN marca m ON m.id = a.marca_id
+            LEFT JOIN categoria cat ON cat.id = a.categoria_id
+            LEFT JOIN genero g ON g.id = a.genero_id
             LEFT JOIN talle tal ON tal.id = v.talle_id
             LEFT JOIN color col ON col.id = v.color_id
             """;
@@ -77,6 +79,8 @@ public class ArticuloTablaQueryRepository {
             List<String> clasificaciones,
             String genero,
             String marca,
+            String talle,
+            String color,
             String q,
             Long depositoId,
             int page,
@@ -84,7 +88,8 @@ public class ArticuloTablaQueryRepository {
     ) {
         int safeSize = PaginationUtils.normalizeSize(size);
         int safePage = PaginationUtils.normalizePage(page);
-        FilterSql filters = buildTablaFilters(categoria, subCategoria, clasificaciones, genero, marca, q, depositoId);
+        FilterSql filters = buildTablaFilters(
+                categoria, subCategoria, clasificaciones, genero, marca, talle, color, q, depositoId);
 
         long total = countTabla(filters, depositoId);
         if (total == 0) {
@@ -156,13 +161,21 @@ public class ArticuloTablaQueryRepository {
 
     public PageResponse<ArticuloParaVentaResponse> findParaVentaPage(
             Long sucursalId,
+            String categoria,
+            String subCategoria,
+            List<String> clasificaciones,
+            String genero,
+            String marca,
+            String talle,
+            String color,
             String q,
             int page,
             int size
     ) {
         int safeSize = PaginationUtils.normalizeSize(size);
         int safePage = PaginationUtils.normalizePage(page);
-        FilterSql filters = buildVentaFilters(sucursalId, q);
+        FilterSql filters = buildVentaFilters(
+                sucursalId, categoria, subCategoria, clasificaciones, genero, marca, talle, color, q);
 
         long total = countVenta(filters, tieneBusqueda(q));
         if (total == 0) {
@@ -242,7 +255,7 @@ public class ArticuloTablaQueryRepository {
     }
 
     private long countVenta(FilterSql filters, boolean conBusqueda) {
-        String busquedaJoins = conBusqueda ? JOIN_VENTA_BUSQUEDA : "";
+        String busquedaJoins = JOIN_VENTA_BUSQUEDA;
 
         String sql = """
                 SELECT COUNT(*)
@@ -287,7 +300,8 @@ public class ArticuloTablaQueryRepository {
 
     private FilterSql buildTablaFilters(
             String categoria, String subCategoria, List<String> clasificaciones,
-            String genero, String marca, String q, Long depositoId) {
+            String genero, String marca, String talle, String color,
+            String q, Long depositoId) {
         StringBuilder where = new StringBuilder();
         Map<String, Object> params = new HashMap<>();
 
@@ -295,9 +309,53 @@ public class ArticuloTablaQueryRepository {
             params.put("depositoId", depositoId);
         }
 
+        appendFiltrosDimensiones(where, params, categoria, subCategoria, clasificaciones, genero, marca, talle, color);
+
+        appendSearchFilter(where, params, q,
+                "a.codigo", "a.modelo", "m.nombre", "cat.nombre", "g.nombre",
+                "tal.numero", "col.nombre", "v.codigo_barras");
+
+        return new FilterSql(where.toString(), params);
+    }
+
+    private FilterSql buildVentaFilters(
+            Long sucursalId,
+            String categoria,
+            String subCategoria,
+            List<String> clasificaciones,
+            String genero,
+            String marca,
+            String talle,
+            String color,
+            String q) {
+        StringBuilder where = new StringBuilder();
+        Map<String, Object> params = new HashMap<>();
+        params.put("sucursalId", sucursalId);
+
+        appendFiltrosDimensiones(where, params, categoria, subCategoria, clasificaciones, genero, marca, talle, color);
+
+        appendSearchFilter(where, params, q,
+                "a.codigo", "a.modelo", "m.nombre", "cat.nombre", "g.nombre",
+                "tal.numero", "col.nombre", "v.codigo_barras");
+
+        return new FilterSql(where.toString(), params);
+    }
+
+    private void appendFiltrosDimensiones(
+            StringBuilder where,
+            Map<String, Object> params,
+            String categoria,
+            String subCategoria,
+            List<String> clasificaciones,
+            String genero,
+            String marca,
+            String talle,
+            String color) {
         appendExactFilter(where, params, "cat.nombre", "categoria", categoria);
         appendExactFilter(where, params, "g.nombre", "genero", genero);
         appendExactFilter(where, params, "m.nombre", "marca", marca);
+        appendExactFilter(where, params, "tal.numero", "talle", talle);
+        appendExactFilter(where, params, "col.nombre", "color", color);
 
         if (subCategoria != null && !subCategoria.isBlank()) {
             where.append("""
@@ -333,21 +391,6 @@ public class ArticuloTablaQueryRepository {
                 params.put("clasificacionesFiltro", nombres);
             }
         }
-
-        appendSearchFilter(where, params, q,
-                "a.codigo", "a.modelo", "m.nombre", "cat.nombre", "g.nombre",
-                "tal.numero", "col.nombre", "v.codigo_barras");
-
-        return new FilterSql(where.toString(), params);
-    }
-
-    private FilterSql buildVentaFilters(Long sucursalId, String q) {
-        StringBuilder where = new StringBuilder();
-        Map<String, Object> params = new HashMap<>();
-        params.put("sucursalId", sucursalId);
-        appendSearchFilter(where, params, q,
-                "a.codigo", "a.modelo", "m.nombre", "tal.numero", "col.nombre", "v.codigo_barras");
-        return new FilterSql(where.toString(), params);
     }
 
     private void appendExactFilter(
@@ -411,7 +454,9 @@ public class ArticuloTablaQueryRepository {
     private static boolean necesitaJoinsDimension(FilterSql filters) {
         if (filters.params().containsKey("categoria")
                 || filters.params().containsKey("genero")
-                || filters.params().containsKey("marca")) {
+                || filters.params().containsKey("marca")
+                || filters.params().containsKey("talle")
+                || filters.params().containsKey("color")) {
             return true;
         }
         return filters.params().keySet().stream()

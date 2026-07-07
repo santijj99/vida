@@ -18,13 +18,16 @@ import com.vida.apirest.dto.venta.VentaResponse;
 import com.vida.apirest.servicies.VentaService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/venta")
@@ -73,6 +76,22 @@ public class VentaController {
     @PreAuthorize("hasAnyAuthority('VER_VENTAS', 'VER_HISTORIAL_VENTAS')")
     public ResponseEntity<VentaResponse> obtenerVenta(@PathVariable Long id) {
         return ResponseEntity.ok(ventaService.obtenerVenta(id));
+    }
+
+    @GetMapping("/{id}/ticket")
+    @PreAuthorize("hasAuthority('VER_VENTAS')")
+    public ResponseEntity<?> descargarTicketVenta(@PathVariable Long id) {
+        try {
+            byte[] pdf = ventaService.generarTicketVentaPdf(id);
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_PDF);
+            headers.setContentDispositionFormData("attachment", "ticket-venta-" + id + ".pdf");
+            return new ResponseEntity<>(pdf, headers, HttpStatus.OK);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
+                    "message", e.getMessage() != null ? e.getMessage() : "Error al generar ticket",
+                    "statusCode", HttpStatus.BAD_REQUEST.value()));
+        }
     }
 
     @PostMapping("/{id}/cancelar")

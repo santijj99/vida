@@ -22,8 +22,10 @@ import com.vida.apirest.model.almacen.Sucursal;
 import com.vida.apirest.model.articulo.Articulo;
 import com.vida.apirest.model.articulo.VarianteArticulo;
 import com.vida.apirest.model.credito.Credito;
+import com.vida.apirest.model.credito.CreditoConfigEmpresa;
 import com.vida.apirest.model.credito.Cuota;
 import com.vida.apirest.model.credito.Cuenta;
+import com.vida.apirest.model.empresa.Empresa;
 import com.vida.apirest.model.finanzas.CuentaFinanciera;
 import com.vida.apirest.model.persona.Cliente;
 import com.vida.apirest.model.persona.Empleado;
@@ -47,7 +49,9 @@ import com.vida.apirest.repositories.VarianteArticuloRepository;
 import com.vida.apirest.security.SucursalScopeService;
 import com.vida.apirest.dto.afip.FacturaAFIPResponse;
 import com.vida.apirest.model.afip.FacturaAFIP;
+import com.vida.apirest.servicies.afip.AfipContextService;
 import com.vida.apirest.servicies.afip.FacturaAFIPService;
+import com.vida.apirest.servicies.afip.TicketPDFService;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -63,6 +67,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -87,9 +92,12 @@ public class VentaService {
     private final MovimientoFinancieroRepository movimientoFinancieroRepository;
     private final VentaCambioArticuloRepository ventaCambioArticuloRepository;
     private final FacturaAFIPService facturaAFIPService;
+    private final AfipContextService afipContextService;
+    private final TicketPDFService ticketPDFService;
     private final CajaMovimientoService cajaMovimientoService;
     private final VentaDetalleSupport ventaDetalleSupport;
     private final SucursalScopeService sucursalScopeService;
+    private final CreditoConfigService creditoConfigService;
 
     @Transactional
     public VentaResponse registrarVenta(VentaCreateRequest request) {
@@ -130,7 +138,7 @@ public class VentaService {
     }
 
     private Cliente cargarCliente(String dni) {
-        return clienteRepository.findByDni(dni)
+        return clienteRepository.findFirstByDniOrderByIdAsc(dni)
                 .orElseThrow(() -> new RuntimeException("Cliente no encontrado con DNI: " + dni));
     }
 
@@ -244,7 +252,8 @@ public class VentaService {
                 pagoReq.getCreditoTasaInteres(),
                 pagoReq.getCreditoMontoAnticipo() != null ? pagoReq.getCreditoMontoAnticipo() : BigDecimal.ZERO,
                 pagoReq.getCreditoModoDistribucion(),
-                ventaGuardada.getFechaVenta()
+                ventaGuardada.getFechaVenta(),
+                resolverModoVencimiento(sucursal)
         );
         credito.setImporte(plan.montoFinanciado);
         credito.setSaldo(plan.montoFinanciado);
@@ -306,7 +315,23 @@ public class VentaService {
             return cuentaRepository.findById(pagoReq.getCuentaId())
                     .orElseThrow(() -> new RuntimeException("Cuenta financiera no encontrada con ID: " + pagoReq.getCuentaId()));
         }
-        return cuentaRepository.findFirstByTipoAndActivoTrue(CuentaFinanciera.TipoCuenta.CAJA).orElse(null);
+        CuentaFinanciera.TipoCuenta tipo = resolverTipoCuentaPorMetodo(pagoReq.getMetodoPago());
+        return cuentaRepository.findFirstByTipoAndActivoTrue(tipo)
+                .or(() -> cuentaRepository.findFirstByTipoAndActivoTrue(CuentaFinanciera.TipoCuenta.CAJA))
+                .orElse(null);
+    }
+
+    private CuentaFinanciera.TipoCuenta resolverTipoCuentaPorMetodo(String metodoPago) {
+        if (metodoPago == null || metodoPago.isBlank()) {
+            return CuentaFinanciera.TipoCuenta.CAJA;
+        }
+        return switch (metodoPago.trim().toUpperCase()) {
+            case "TRANSFERENCIA" -> CuentaFinanciera.TipoCuenta.BANCO;
+            case "TARJETA DE CREDITO", "TARJETA CREDITO" -> CuentaFinanciera.TipoCuenta.TARJETA_CREDITO;
+            case "TARJETA DE DEBITO", "TARJETA DEBITO" -> CuentaFinanciera.TipoCuenta.TARJETA_DEBITO;
+            case "QR" -> CuentaFinanciera.TipoCuenta.BILLETERA;
+            default -> CuentaFinanciera.TipoCuenta.CAJA;
+        };
     }
 
     private PagoVenta crearPagoBase(Venta ventaGuardada, PagoVentaRequest pagoReq) {
@@ -324,7 +349,10 @@ public class VentaService {
     private VentaResponse construirRespuestaVenta(Long ventaId, VentaCreateRequest request) {
         Venta ventaCompleta = ventaRepository.findByIdWithDetalles(ventaId)
                 .orElseThrow(() -> new RuntimeException("Error al recuperar la venta registrada"));
-        FacturaAFIP facturaArca = facturaAFIPService.intentarFacturarVenta(ventaCompleta.getId(), request.getFacturaAfip());
+        FacturaAFIP facturaArca = facturaAFIPService.intentarFacturarVenta(
+                ventaCompleta.getId(),
+                request.getFacturaAfip(),
+                request.getPagos());
 
         VentaResponse response = mapVentaResponse(ventaCompleta);
         if (facturaArca != null && facturaArca.getIdFacturaAFIP() != null) {
@@ -367,7 +395,8 @@ public class VentaService {
                 tasa,
                 anticipo,
                 request.getModoDistribucion(),
-                resolverBaseFechaCredito(request.getFechaPrimerVencimiento())
+                resolverBaseFechaCredito(request.getFechaPrimerVencimiento()),
+                null
         );
         return CreditoPlanificador.toSimulacionResponse(plan, plazo, tasa);
     }
@@ -393,7 +422,8 @@ public class VentaService {
                 tasa,
                 anticipo,
                 request.getModoDistribucion(),
-                resolverBaseFechaCredito(request.getFechaPrimerVencimiento())
+                resolverBaseFechaCredito(request.getFechaPrimerVencimiento()),
+                resolverModoVencimiento(request.getSucursalId())
         );
 
         VentaCreateRequest internalRequest = new VentaCreateRequest();
@@ -431,6 +461,7 @@ public class VentaService {
         pagos.add(pagoCredito);
 
         internalRequest.setPagos(pagos);
+        internalRequest.setFacturaAfip(request.getFacturaAfip());
         return registrarVenta(internalRequest, descontarStock);
     }
 
@@ -493,6 +524,51 @@ public class VentaService {
                 .orElseThrow(() -> new RuntimeException("Venta no encontrada con ID: " + id));
         sucursalScopeService.assertCanAccess(venta.getSucursal().getId());
         return mapVentaResponseCompleto(venta);
+    }
+
+    @Transactional(readOnly = true)
+    public byte[] generarTicketVentaPdf(Long ventaId) throws Exception {
+        Venta venta = ventaRepository.findByIdWithDetalles(ventaId)
+                .orElseThrow(() -> new RuntimeException("Venta no encontrada con ID: " + ventaId));
+        sucursalScopeService.assertCanAccess(venta.getSucursal().getId());
+
+        if (venta.getEstado() == Venta.EstadoVenta.BORRADOR) {
+            throw new RuntimeException("La venta no está confirmada");
+        }
+
+        Credito credito = null;
+        List<Cuota> cuotas = List.of();
+        List<Credito> creditos = creditoRepository.findByVentaIdWithCuotas(ventaId);
+        if (!creditos.isEmpty()) {
+            credito = creditos.get(0);
+            cuotas = TicketPDFService.ordenarCuotas(credito.getCuotas());
+        }
+
+        Empresa empresa = resolverEmpresaDeVenta(venta);
+        TicketPDFService.DatosEmpresaTicket datosEmpresa = resolverDatosEmpresaTicket(empresa);
+        return ticketPDFService.generarTicketVentaBytes(venta, datosEmpresa, credito, cuotas);
+    }
+
+    private Empresa resolverEmpresaDeVenta(Venta venta) {
+        if (venta.getSucursal() != null && venta.getSucursal().getEmpresa() != null) {
+            return venta.getSucursal().getEmpresa();
+        }
+        Long sucursalId = venta.getSucursal() != null ? venta.getSucursal().getId() : null;
+        if (sucursalId == null) {
+            throw new RuntimeException("La venta no tiene sucursal asociada");
+        }
+        Sucursal sucursal = sucursalRepository.findById(sucursalId)
+                .orElseThrow(() -> new RuntimeException("Sucursal no encontrada"));
+        if (sucursal.getEmpresa() == null) {
+            throw new RuntimeException("La sucursal no tiene empresa asociada");
+        }
+        return sucursal.getEmpresa();
+    }
+
+    private TicketPDFService.DatosEmpresaTicket resolverDatosEmpresaTicket(Empresa empresa) {
+        return afipContextService.resolveOptionalForEmpresaId(empresa.getId())
+                .map(TicketPDFService.DatosEmpresaTicket::from)
+                .orElseGet(() -> TicketPDFService.DatosEmpresaTicket.fromEmpresa(empresa));
     }
 
     @Transactional
@@ -950,6 +1026,25 @@ public class VentaService {
             return fechaPrimerVencimiento.minusMonths(1).atStartOfDay();
         }
         return LocalDateTime.now();
+    }
+
+    private CreditoConfigEmpresa.ModoDiaVencimiento resolverModoVencimiento(Sucursal sucursal) {
+        if (sucursal == null) {
+            return CreditoConfigEmpresa.ModoDiaVencimiento.DIA_10;
+        }
+        Long empresaId = sucursal.getEmpresa() != null
+                ? sucursal.getEmpresa().getId()
+                : sucursalRepository.findById(sucursal.getId()).map(s -> s.getEmpresa().getId()).orElse(null);
+        return creditoConfigService.obtenerODefault(empresaId).getModoDiaVencimiento();
+    }
+
+    private CreditoConfigEmpresa.ModoDiaVencimiento resolverModoVencimiento(Long sucursalId) {
+        if (sucursalId == null) {
+            return CreditoConfigEmpresa.ModoDiaVencimiento.DIA_10;
+        }
+        return sucursalRepository.findById(sucursalId)
+                .map(this::resolverModoVencimiento)
+                .orElse(CreditoConfigEmpresa.ModoDiaVencimiento.DIA_10);
     }
 
     private CajaMovimientoResponse mapCajaMovimientoResponse(MovimientoFinanciero movimiento) {

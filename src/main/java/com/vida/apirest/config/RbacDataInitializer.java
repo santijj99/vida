@@ -82,6 +82,8 @@ public class RbacDataInitializer {
             catalogo.put(PermisoCodigo.VER_PROVEEDORES, new PermisoSeed("Navegación", "Ver Proveedores", "Submenú Proveedores"));
             catalogo.put(PermisoCodigo.VER_PEDIDOS, new PermisoSeed("Navegación", "Ver Pedidos", "Submenú Pedidos en Proveedores"));
             catalogo.put(PermisoCodigo.VER_CUENTAS, new PermisoSeed("Navegación", "Ver Cuentas", "Sección Cuentas del menú lateral"));
+            catalogo.put(PermisoCodigo.CONFIGURAR_CREDITOS, new PermisoSeed("Créditos", "Configurar créditos", "Política de mora, gracia y vencimientos"));
+            catalogo.put(PermisoCodigo.EDITAR_CREDITOS, new PermisoSeed("Créditos", "Editar créditos", "Refinanciar y modificar cuotas"));
             catalogo.put(PermisoCodigo.VER_GASTOS, new PermisoSeed("Finanzas", "Ver gastos", "Listar gastos (GET /api/gastos)"));
             catalogo.put(PermisoCodigo.GESTIONAR_GASTOS, new PermisoSeed("Finanzas", "Gestionar gastos", "Alta, pago y cancelación de gastos"));
             catalogo.put(PermisoCodigo.VER_ORGANIZACION, new PermisoSeed("Navegación", "Ver Organización", "Empresas, sucursales, depósitos, cajas y monedas"));
@@ -135,6 +137,7 @@ public class RbacDataInitializer {
                         PermisoCodigo.VER_ARTICULOS,
                         PermisoCodigo.VER_CLIENTES,
                         PermisoCodigo.VER_CUENTAS,
+                        PermisoCodigo.EDITAR_CREDITOS,
                         PermisoCodigo.VER_GASTOS,
                         PermisoCodigo.GESTIONAR_GASTOS
                 ));
