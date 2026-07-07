@@ -20,4 +20,6 @@ public class CreditoClienteResponse {
     private String numeroFactura;
     private LocalDateTime createdAt;
     private List<CuotaCreditoResponse> cuotas;
+    private Integer diasAtraso;
+    private BigDecimal recargoAcumulado;
 }

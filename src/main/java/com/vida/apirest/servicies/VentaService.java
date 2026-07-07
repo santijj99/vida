@@ -22,6 +22,7 @@ import com.vida.apirest.model.almacen.Sucursal;
 import com.vida.apirest.model.articulo.Articulo;
 import com.vida.apirest.model.articulo.VarianteArticulo;
 import com.vida.apirest.model.credito.Credito;
+import com.vida.apirest.model.credito.CreditoConfigEmpresa;
 import com.vida.apirest.model.credito.Cuota;
 import com.vida.apirest.model.credito.Cuenta;
 import com.vida.apirest.model.empresa.Empresa;
@@ -96,6 +97,7 @@ public class VentaService {
     private final CajaMovimientoService cajaMovimientoService;
     private final VentaDetalleSupport ventaDetalleSupport;
     private final SucursalScopeService sucursalScopeService;
+    private final CreditoConfigService creditoConfigService;
 
     @Transactional
     public VentaResponse registrarVenta(VentaCreateRequest request) {
@@ -250,7 +252,8 @@ public class VentaService {
                 pagoReq.getCreditoTasaInteres(),
                 pagoReq.getCreditoMontoAnticipo() != null ? pagoReq.getCreditoMontoAnticipo() : BigDecimal.ZERO,
                 pagoReq.getCreditoModoDistribucion(),
-                ventaGuardada.getFechaVenta()
+                ventaGuardada.getFechaVenta(),
+                resolverModoVencimiento(sucursal)
         );
         credito.setImporte(plan.montoFinanciado);
         credito.setSaldo(plan.montoFinanciado);
@@ -392,7 +395,8 @@ public class VentaService {
                 tasa,
                 anticipo,
                 request.getModoDistribucion(),
-                resolverBaseFechaCredito(request.getFechaPrimerVencimiento())
+                resolverBaseFechaCredito(request.getFechaPrimerVencimiento()),
+                null
         );
         return CreditoPlanificador.toSimulacionResponse(plan, plazo, tasa);
     }
@@ -418,7 +422,8 @@ public class VentaService {
                 tasa,
                 anticipo,
                 request.getModoDistribucion(),
-                resolverBaseFechaCredito(request.getFechaPrimerVencimiento())
+                resolverBaseFechaCredito(request.getFechaPrimerVencimiento()),
+                resolverModoVencimiento(request.getSucursalId())
         );
 
         VentaCreateRequest internalRequest = new VentaCreateRequest();
@@ -1021,6 +1026,25 @@ public class VentaService {
             return fechaPrimerVencimiento.minusMonths(1).atStartOfDay();
         }
         return LocalDateTime.now();
+    }
+
+    private CreditoConfigEmpresa.ModoDiaVencimiento resolverModoVencimiento(Sucursal sucursal) {
+        if (sucursal == null) {
+            return CreditoConfigEmpresa.ModoDiaVencimiento.DIA_10;
+        }
+        Long empresaId = sucursal.getEmpresa() != null
+                ? sucursal.getEmpresa().getId()
+                : sucursalRepository.findById(sucursal.getId()).map(s -> s.getEmpresa().getId()).orElse(null);
+        return creditoConfigService.obtenerODefault(empresaId).getModoDiaVencimiento();
+    }
+
+    private CreditoConfigEmpresa.ModoDiaVencimiento resolverModoVencimiento(Long sucursalId) {
+        if (sucursalId == null) {
+            return CreditoConfigEmpresa.ModoDiaVencimiento.DIA_10;
+        }
+        return sucursalRepository.findById(sucursalId)
+                .map(this::resolverModoVencimiento)
+                .orElse(CreditoConfigEmpresa.ModoDiaVencimiento.DIA_10);
     }
 
     private CajaMovimientoResponse mapCajaMovimientoResponse(MovimientoFinanciero movimiento) {

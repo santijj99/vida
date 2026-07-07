@@ -37,7 +37,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
-import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -57,6 +56,8 @@ public class CreditoCuentaService {
     private final AfipContextService afipContextService;
     private final TicketPDFService ticketPDFService;
     private final SucursalRepository sucursalRepository;
+    private final CreditoEstadoService creditoEstadoService;
+    private final CreditoRecargoService creditoRecargoService;
 
     @Transactional(readOnly = true)
     public List<CuentaCreditoListResponse> listarCuentas(Long sucursalId) {
@@ -251,8 +252,11 @@ public class CreditoCuentaService {
     }
 
     private BigDecimal calcularTotalPendiente(List<Cuota> cuotas) {
+        for (Cuota cuota : cuotas) {
+            creditoRecargoService.aplicarRecargoIdempotente(cuota);
+        }
         return cuotas.stream()
-                .map(q -> q.getSaldo() != null ? q.getSaldo() : q.getMonto())
+                .map(creditoRecargoService::saldoTotalPendiente)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
@@ -274,19 +278,28 @@ public class CreditoCuentaService {
             if (montoRestante.compareTo(BigDecimal.ZERO) <= 0) {
                 break;
             }
-            BigDecimal saldoPendiente = cuota.getSaldo() != null ? cuota.getSaldo() : cuota.getMonto();
+            creditoRecargoService.aplicarRecargoIdempotente(cuota);
+            BigDecimal saldoCapital = cuota.getSaldo() != null ? cuota.getSaldo() : cuota.getMonto();
+            BigDecimal recargo = creditoRecargoService.getRecargoEfectivo(cuota);
+            BigDecimal saldoPendiente = saldoCapital.add(recargo);
             if (saldoPendiente.compareTo(BigDecimal.ZERO) <= 0) {
                 continue;
             }
 
             BigDecimal aAplicar = montoRestante.min(saldoPendiente);
-            BigDecimal nuevoSaldo = saldoPendiente.subtract(aAplicar);
 
-            if (nuevoSaldo.compareTo(BigDecimal.ZERO) <= 0) {
+            BigDecimal aplicarRecargo = aAplicar.min(recargo);
+            BigDecimal nuevoRecargo = recargo.subtract(aplicarRecargo);
+            BigDecimal aplicarCapital = aAplicar.subtract(aplicarRecargo);
+            BigDecimal nuevoSaldoCapital = saldoCapital.subtract(aplicarCapital);
+
+            cuota.setRecargo(nuevoRecargo.max(BigDecimal.ZERO));
+            if (nuevoSaldoCapital.compareTo(BigDecimal.ZERO) <= 0 && nuevoRecargo.compareTo(BigDecimal.ZERO) <= 0) {
                 cuota.setSaldo(BigDecimal.ZERO);
+                cuota.setRecargo(BigDecimal.ZERO);
                 cuota.setEstado(Cuota.EstadoCuota.PAGADA);
             } else {
-                cuota.setSaldo(nuevoSaldo);
+                cuota.setSaldo(nuevoSaldoCapital.max(BigDecimal.ZERO));
             }
             cuotaRepository.save(cuota);
             pagadoPorCreditoId.merge(cuota.getCredito().getId(), aAplicar, BigDecimal::add);
@@ -558,7 +571,11 @@ public class CreditoCuentaService {
             return Map.of();
         }
         List<Long> ids = creditos.stream().map(Credito::getId).collect(Collectors.toList());
-        return cuotaRepository.findByCreditoIdIn(ids).stream()
+        List<Cuota> todas = cuotaRepository.findByCreditoIdIn(ids);
+        for (Cuota cuota : todas) {
+            creditoRecargoService.aplicarRecargoIdempotente(cuota);
+        }
+        return todas.stream()
                 .collect(Collectors.groupingBy(q -> q.getCredito().getId()));
     }
 
@@ -588,16 +605,13 @@ public class CreditoCuentaService {
                 .min(Comparator.naturalOrder())
                 .orElse(cuotasOrdenadas.isEmpty() ? null : cuotasOrdenadas.get(cuotasOrdenadas.size() - 1).getFechaVencimiento()));
         dto.setCuotas(cuotasOrdenadas.stream().map(q -> mapCuota(q, q)).collect(Collectors.toList()));
+        dto.setDiasAtraso(creditoEstadoService.diasAtrasoCredito(cuotasOrdenadas));
+        dto.setRecargoAcumulado(creditoRecargoService.recargoAcumuladoCredito(cuotasOrdenadas));
         return dto;
     }
 
     private String estadoCuotaEfectivo(Cuota q) {
-        if (q.getEstado() == Cuota.EstadoCuota.PENDIENTE
-                && q.getFechaVencimiento() != null
-                && q.getFechaVencimiento().isBefore(LocalDateTime.now())) {
-            return Cuota.EstadoCuota.VENCIDA.name();
-        }
-        return q.getEstado() != null ? q.getEstado().name() : Cuota.EstadoCuota.PENDIENTE.name();
+        return creditoEstadoService.estadoCuotaEfectivo(q);
     }
 
     private void actualizarEstadoCredito(Credito credito, List<Cuota> cuotas) {
@@ -616,14 +630,12 @@ public class CreditoCuentaService {
         }
     }
 
-    private static final BigDecimal PORCENTAJE_RECARGO = BigDecimal.valueOf(0.10);
-
     private CuotaCreditoResponse mapCuota(Cuota q, Cuota ref) {
         BigDecimal monto = ref.getMonto() != null ? ref.getMonto() : BigDecimal.ZERO;
-        BigDecimal recargo = calcularRecargo(ref);
-        BigDecimal saldo = ref.getSaldo() != null ? ref.getSaldo() : BigDecimal.ZERO;
-        BigDecimal totalCuota = monto.add(recargo);
-        BigDecimal pago = totalCuota.subtract(saldo).max(BigDecimal.ZERO);
+        BigDecimal recargo = creditoRecargoService.getRecargoEfectivo(ref);
+        BigDecimal saldoCapital = ref.getSaldo() != null ? ref.getSaldo() : BigDecimal.ZERO;
+        BigDecimal saldoTotal = saldoCapital.add(recargo);
+        BigDecimal pagoCapital = monto.subtract(saldoCapital).max(BigDecimal.ZERO);
 
         CuotaCreditoResponse dto = new CuotaCreditoResponse();
         dto.setId(ref.getId());
@@ -631,35 +643,13 @@ public class CreditoCuentaService {
         dto.setNumero(ref.getNumero());
         dto.setFechaVencimiento(ref.getFechaVencimiento());
         dto.setMonto(monto);
-        dto.setPagoRealizado(pago);
-        dto.setSaldo(saldo);
+        dto.setPagoRealizado(pagoCapital);
+        dto.setSaldo(saldoTotal);
         dto.setEstado(estadoCuotaEfectivo(ref));
         dto.setDescripcion(ref.getDescripcion());
-        dto.setRecargo(calcularRecargo(ref));
-        dto.setDiasAtraso(calcularDiasAtraso(ref));
+        dto.setRecargo(recargo);
+        dto.setDiasAtraso(creditoEstadoService.diasDesdeVencimiento(ref));
         return dto;
-    }
-
-    private BigDecimal calcularRecargo(Cuota q) {
-        if (!"VENCIDA".equals(estadoCuotaEfectivo(q))) {
-            return BigDecimal.ZERO;
-        }
-        BigDecimal monto = q.getMonto() != null ? q.getMonto() : BigDecimal.ZERO;
-        return monto.multiply(PORCENTAJE_RECARGO).setScale(2, java.math.RoundingMode.HALF_UP);
-    }
-
-    private Integer calcularDiasAtraso(Cuota q) {
-        if (q.getFechaVencimiento() == null) return 0;
-        if (q.getEstado() == Cuota.EstadoCuota.PAGADA
-                || q.getEstado() == Cuota.EstadoCuota.CANCELADA
-                || q.getEstado() == Cuota.EstadoCuota.ELIMINADA) {
-            return 0;
-        }
-        if (!"VENCIDA".equals(estadoCuotaEfectivo(q)) && q.getEstado() != Cuota.EstadoCuota.PENDIENTE) {
-            return 0;
-        }
-        long dias = ChronoUnit.DAYS.between(q.getFechaVencimiento().toLocalDate(), LocalDateTime.now().toLocalDate());
-        return (int) Math.max(0, dias);
     }
 
     private CuentaCreditoListResponse mapCuentaList(Cuenta cuenta) {

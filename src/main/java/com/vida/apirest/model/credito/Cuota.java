@@ -55,6 +55,12 @@ public class Cuota {
     @Column(name = "descripcion", columnDefinition = "TEXT")
     private String descripcion;
 
+    @Column(name = "recargo", precision = 15, scale = 2)
+    private BigDecimal recargo = BigDecimal.ZERO;
+
+    @Column(name = "recargo_exento")
+    private Boolean recargoExento = false;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
