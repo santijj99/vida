@@ -1,8 +1,10 @@
 package com.vida.apirest.controller;
 
 import com.vida.apirest.dto.usuario.CreateUsuarioRequest;
+import com.vida.apirest.dto.usuario.ForgotPasswordRequest;
 import com.vida.apirest.dto.usuario.LoginRequest;
 import com.vida.apirest.dto.usuario.LoginResponse;
+import com.vida.apirest.dto.usuario.ResetPasswordRequest;
 import com.vida.apirest.dto.usuario.UsuarioResponse;
 import com.vida.apirest.servicies.UsuarioService;
 import com.vida.apirest.security.AppUserDetails;
@@ -34,6 +36,18 @@ public class AuthController {
     @PostMapping(value = "/login")
     public ResponseEntity<LoginResponse> login(@RequestBody LoginRequest request) {
         return ResponseEntity.ok(usuarioService.login(request));
+    }
+
+    @PostMapping("/forgot-password")
+    public ResponseEntity<Map<String, Object>> forgotPassword(@RequestBody ForgotPasswordRequest request) {
+        usuarioService.forgotPassword(request);
+        return ResponseEntity.ok(Map.of("message", "Código enviado al correo", "statusCode", 200));
+    }
+
+    @PostMapping("/reset-password")
+    public ResponseEntity<Map<String, Object>> resetPassword(@RequestBody ResetPasswordRequest request) {
+        usuarioService.resetPassword(request);
+        return ResponseEntity.ok(Map.of("message", "Contraseña actualizada", "statusCode", 200));
     }
 
     @GetMapping("/me")

@@ -16,8 +16,8 @@ public class CustomUserDetailService implements UserDetailsService {
     private final PermissionResolverService permissionResolverService;
 
     @Override
-    public UserDetails loadUserByUsername(String email) throws UsernameNotFoundException {
-        var usuario = usuarioRepository.findByEmailWithRolesAndRolPrincipal(email)
+    public UserDetails loadUserByUsername(String identificador) throws UsernameNotFoundException {
+        var usuario = usuarioRepository.findByIdentificadorWithRolesAndRolPrincipal(identificador)
                 .orElseThrow(() -> new UsernameNotFoundException("Usuario no encontrado"));
         return new AppUserDetails(usuario, permissionResolverService.buildAuthorities(usuario));
     }

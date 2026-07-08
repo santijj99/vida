@@ -4,13 +4,18 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
+import java.util.Random;
 import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.mail.SimpleMailMessage;
+import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -20,8 +25,10 @@ import com.vida.apirest.config.AppSecurityProperties;
 import com.vida.apirest.exception.RegistrationDisabledException;
 import com.vida.apirest.dto.afip.TokenValidationResponse;
 import com.vida.apirest.dto.usuario.CreateUsuarioRequest;
+import com.vida.apirest.dto.usuario.ForgotPasswordRequest;
 import com.vida.apirest.dto.usuario.LoginRequest;
 import com.vida.apirest.dto.usuario.LoginResponse;
+import com.vida.apirest.dto.usuario.ResetPasswordRequest;
 import com.vida.apirest.dto.usuario.UpdateUsuarioRequest;
 import com.vida.apirest.dto.usuario.UsuarioResponse;
 import com.vida.apirest.dto.usuario.mapper.UsuarioMapper;
@@ -75,6 +82,12 @@ public class UsuarioService {
     @Autowired
     private AppSecurityProperties appSecurityProperties;
 
+    @Autowired(required = false)
+    private JavaMailSender mailSender;
+
+    @Value("${spring.mail.username:}")
+    private String mailFrom;
+
     @Transactional
     public LoginResponse create(CreateUsuarioRequest request) {
         if (!appSecurityProperties.isAllowPublicRegister()) {
@@ -82,6 +95,9 @@ public class UsuarioService {
         }
         if (usuarioRepository.existsByEmail(request.email)) {
             throw new RuntimeException("El correo ya esta en uso");
+        }
+        if (usuarioRepository.existsByUsuario(request.usuario)) {
+            throw new RuntimeException("El nombre de usuario ya está en uso");
         }
         Usuario usuario = new Usuario();
         usuario.setUsuario(request.usuario);
@@ -114,22 +130,35 @@ public class UsuarioService {
 
     @Transactional
     public UsuarioResponse createByAdmin(CreateUsuarioRequest request) {
-        if (usuarioRepository.existsByEmail(request.email)) {
+        if (request.email != null && usuarioRepository.existsByEmail(request.email)) {
             throw new RuntimeException("El correo ya está en uso");
+        }
+        if (usuarioRepository.existsByUsuario(request.usuario)) {
+            throw new RuntimeException("El nombre de usuario ya está en uso");
+        }
+        String celular = celularNormalizado(request.celular);
+        if (celular != null && usuarioRepository.existsByCelular(celular)) {
+            throw new RuntimeException("El celular ya está en uso");
         }
 
         Usuario usuario = new Usuario();
         usuario.setUsuario(request.usuario);
         usuario.setEmail(request.email);
-        usuario.setCelular(celularNormalizado(request.celular));
+        usuario.setCelular(celular);
         usuario.setActivo(true);
 
         String encryptedPassword = passwordEncoder.encode(request.password);
         usuario.setPassword(encryptedPassword);
         Usuario savedUser = usuarioRepository.save(usuario);
 
-        if (request.rolId != null) {
-            asignarRolSiNoExiste(savedUser, request.rolId);
+        Long rolId = request.rolId;
+        if (rolId == null) {
+            rolId = roleRepository.findByNombre("CLIENTE")
+                    .map(Role::getId)
+                    .orElse(null);
+        }
+        if (rolId != null) {
+            asignarRolSiNoExiste(savedUser, rolId);
         }
 
         return buildProfileResponse(savedUser);
@@ -137,12 +166,64 @@ public class UsuarioService {
 
     @Transactional
     public LoginResponse login(LoginRequest request) {
-        Usuario usuario = usuarioRepository.findByEmailWithRolesAndRolPrincipal(request.getEmail())
-                .orElseThrow(() -> new RuntimeException("El email o password no son validos"));
+        String identificador = request.getIdentificador();
+        if (identificador == null || identificador.isBlank()) {
+            identificador = request.getEmail();
+        }
+        if (identificador == null || identificador.isBlank()) {
+            throw new RuntimeException("Debes ingresar usuario o email");
+        }
+        Usuario usuario = usuarioRepository.findByIdentificadorWithRolesAndRolPrincipal(identificador.trim())
+                .orElseThrow(() -> new RuntimeException("El usuario/email o password no son validos"));
         if (!passwordEncoder.matches(request.getPassword(), usuario.getPassword())) {
-            throw new RuntimeException("El email o password no son validos");
+            throw new RuntimeException("El usuario/email o password no son validos");
         }
         return buildLoginResponse(usuario);
+    }
+
+    @Transactional
+    public void forgotPassword(ForgotPasswordRequest request) {
+        if (request.getEmail() == null || request.getEmail().isBlank()) {
+            throw new RuntimeException("Debes ingresar un email");
+        }
+        Usuario usuario = usuarioRepository.findByEmail(request.getEmail().trim())
+                .orElseThrow(() -> new RuntimeException("No existe un usuario con ese email"));
+
+        String codigo = generarCodigo6Digitos();
+        usuario.setResetCodigo(codigo);
+        usuario.setResetCodigoExpiraAt(LocalDateTime.now().plusMinutes(15));
+        usuarioRepository.save(usuario);
+
+        enviarCodigoReset(usuario.getEmail(), codigo, usuario.getUsuario());
+    }
+
+    @Transactional
+    public void resetPassword(ResetPasswordRequest request) {
+        if (request.getEmail() == null || request.getEmail().isBlank()
+                || request.getCodigo() == null || request.getCodigo().isBlank()
+                || request.getNuevaPassword() == null || request.getNuevaPassword().isBlank()) {
+            throw new RuntimeException("Email, código y nueva contraseña son obligatorios");
+        }
+        if (request.getNuevaPassword().length() < 6) {
+            throw new RuntimeException("La nueva contraseña debe tener al menos 6 caracteres");
+        }
+        Usuario usuario = usuarioRepository.findByEmail(request.getEmail().trim())
+                .orElseThrow(() -> new RuntimeException("No existe un usuario con ese email"));
+
+        if (usuario.getResetCodigo() == null || usuario.getResetCodigoExpiraAt() == null) {
+            throw new RuntimeException("No hay código de recuperación activo");
+        }
+        if (usuario.getResetCodigoExpiraAt().isBefore(LocalDateTime.now())) {
+            throw new RuntimeException("El código ya expiró");
+        }
+        if (!usuario.getResetCodigo().equals(request.getCodigo().trim())) {
+            throw new RuntimeException("Código inválido");
+        }
+
+        usuario.setPassword(passwordEncoder.encode(request.getNuevaPassword()));
+        usuario.setResetCodigo(null);
+        usuario.setResetCodigoExpiraAt(null);
+        usuarioRepository.save(usuario);
     }
 
     @Transactional(readOnly = true)
@@ -264,5 +345,29 @@ public class UsuarioService {
 
         UsuarioHasRoles usuarioHasRoles = new UsuarioHasRoles(usuario, role);
         usuarioHasRoleRepository.save(usuarioHasRoles);
+    }
+
+    private String generarCodigo6Digitos() {
+        int n = 100000 + new Random().nextInt(900000);
+        return String.valueOf(n);
+    }
+
+    private void enviarCodigoReset(String emailDestino, String codigo, String usuario) {
+        if (mailSender == null || mailFrom == null || mailFrom.isBlank()) {
+            throw new RuntimeException("El envío de correos no está configurado en el servidor");
+        }
+        SimpleMailMessage msg = new SimpleMailMessage();
+        msg.setFrom(mailFrom);
+        msg.setTo(emailDestino);
+        msg.setSubject("Recuperación de contraseña ATHLAND");
+        msg.setText("""
+                Hola %s,
+
+                Tu código para recuperar la contraseña es: %s
+
+                Este código vence en 15 minutos.
+                Si no solicitaste este cambio, ignora este mensaje.
+                """.formatted(usuario != null ? usuario : "usuario", codigo));
+        mailSender.send(msg);
     }
 }

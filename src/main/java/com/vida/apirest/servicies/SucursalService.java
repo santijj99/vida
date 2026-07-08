@@ -2,10 +2,18 @@ package com.vida.apirest.servicies;
 
 import com.vida.apirest.dto.almacen.SucursalCreateRequest;
 import com.vida.apirest.dto.almacen.SucursalResponse;
+import com.vida.apirest.dto.empleado.EmpleadoResponse;
 import com.vida.apirest.model.almacen.Sucursal;
+import com.vida.apirest.model.auth.Role;
+import com.vida.apirest.model.auth.Usuario;
+import com.vida.apirest.model.auth.UsuarioSucursal;
 import com.vida.apirest.model.empresa.Empresa;
+import com.vida.apirest.model.persona.Empleado;
+import com.vida.apirest.repositories.EmpleadoRepository;
 import com.vida.apirest.repositories.EmpresaRepository;
+import com.vida.apirest.repositories.RoleRepository;
 import com.vida.apirest.repositories.SucursalRepository;
+import com.vida.apirest.repositories.UsuarioSucursalRepository;
 import com.vida.apirest.utils.EntityLookup;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -19,6 +27,9 @@ public class SucursalService {
 
     private final SucursalRepository sucursalRepository;
     private final EmpresaRepository empresaRepository;
+    private final EmpleadoRepository empleadoRepository;
+    private final UsuarioSucursalRepository usuarioSucursalRepository;
+    private final RoleRepository roleRepository;
 
     @Transactional
     public SucursalResponse create(SucursalCreateRequest request) {
@@ -40,6 +51,76 @@ public class SucursalService {
     @Transactional(readOnly = true)
     public List<SucursalResponse> findAll() {
         return sucursalRepository.findAll().stream().map(this::toResponse).toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<EmpleadoResponse> listarEmpleados(Long sucursalId) {
+        requireSucursal(sucursalId);
+        return usuarioSucursalRepository.findEmpleadosBySucursalId(sucursalId).stream()
+                .map(this::toEmpleadoResponse)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<EmpleadoResponse> listarEmpleadosDisponibles(Long sucursalId) {
+        requireSucursal(sucursalId);
+        return empleadoRepository.findDisponiblesParaSucursal(sucursalId).stream()
+                .map(this::toEmpleadoResponse)
+                .toList();
+    }
+
+    @Transactional
+    public EmpleadoResponse asignarEmpleado(Long sucursalId, Long empleadoId) {
+        Sucursal sucursal = requireSucursal(sucursalId);
+        Empleado empleado = empleadoRepository.findById(empleadoId)
+                .orElseThrow(() -> new RuntimeException("Empleado no encontrado con ID: " + empleadoId));
+        Usuario usuario = empleado.getUsuario();
+        if (usuario == null) {
+            throw new RuntimeException("El empleado no tiene usuario vinculado; no se puede asignar a la sucursal");
+        }
+        if (usuarioSucursalRepository.existsByUsuario_IdAndSucursal_Id(usuario.getId(), sucursalId)) {
+            return toEmpleadoResponse(empleado);
+        }
+        usuarioSucursalRepository.save(new UsuarioSucursal(usuario, sucursal));
+        return toEmpleadoResponse(empleado);
+    }
+
+    @Transactional
+    public void quitarEmpleado(Long sucursalId, Long empleadoId) {
+        requireSucursal(sucursalId);
+        Empleado empleado = empleadoRepository.findById(empleadoId)
+                .orElseThrow(() -> new RuntimeException("Empleado no encontrado con ID: " + empleadoId));
+        if (empleado.getUsuario() == null) {
+            throw new RuntimeException("El empleado no tiene usuario vinculado");
+        }
+        usuarioSucursalRepository.deleteByUsuario_IdAndSucursal_Id(empleado.getUsuario().getId(), sucursalId);
+    }
+
+    private Sucursal requireSucursal(Long sucursalId) {
+        return EntityLookup.require(
+                sucursalRepository.findById(sucursalId),
+                "Sucursal no encontrada con ID: " + sucursalId);
+    }
+
+    private EmpleadoResponse toEmpleadoResponse(Empleado empleado) {
+        EmpleadoResponse response = new EmpleadoResponse();
+        response.setId(empleado.getId());
+        response.setNombre(empleado.getNombre());
+        response.setApellido(empleado.getApellido());
+        response.setDni(empleado.getDni());
+        response.setImage(empleado.getImage());
+        response.setActivo(empleado.getActivo());
+        if (empleado.getUsuario() != null) {
+            response.setUsuarioId(empleado.getUsuario().getId());
+            response.setCelular(empleado.getUsuario().getCelular());
+            List<Role> rolesBD = roleRepository.findAllByUsuariosHasRoles_Usuario_Id(empleado.getUsuario().getId());
+            List<String> nombresRoles = rolesBD.stream().map(Role::getNombre).toList();
+            response.setRoles(nombresRoles);
+            response.setRolPrincipal(nombresRoles.contains("ADMINISTRADOR")
+                    ? "ADMINISTRADOR"
+                    : (nombresRoles.isEmpty() ? null : nombresRoles.get(0)));
+        }
+        return response;
     }
 
     private SucursalResponse toResponse(Sucursal sucursal) {

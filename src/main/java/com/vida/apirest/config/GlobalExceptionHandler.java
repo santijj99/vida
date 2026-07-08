@@ -88,7 +88,16 @@ public class GlobalExceptionHandler {
         if (lower.contains("articulo_id") || lower.contains("variante_id")) {
             return "Uno de los artículos del pedido no es válido";
         }
-        return "No se pudo guardar el pedido: datos inconsistentes";
+        if (lower.contains("(celular)=") || lower.contains("celular")) {
+            return "El celular ya está registrado en otro usuario";
+        }
+        if (lower.contains("(email)=") || lower.contains("email")) {
+            return "El correo ya está registrado en otro usuario";
+        }
+        if (lower.contains("(usuario)=") || lower.contains("usuario")) {
+            return "El nombre de usuario ya está en uso";
+        }
+        return "No se pudo guardar: datos inconsistentes";
     }
 
     private ResponseEntity<ApiErrorResponse> buildResponse(String message, HttpStatus status) {

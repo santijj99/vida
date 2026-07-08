@@ -17,6 +17,7 @@ import com.vida.apirest.model.persona.Empleado;
 import com.vida.apirest.repositories.EmpleadoRepository;
 import com.vida.apirest.repositories.RoleRepository;
 import com.vida.apirest.repositories.UsuarioRepository;
+import com.vida.apirest.repositories.UsuarioSucursalRepository;
 import com.vida.apirest.model.auth.Role;
 import com.vida.apirest.utils.FileUploadUtils;
 
@@ -31,6 +32,9 @@ public class EmpleadoService {
 
     @Autowired
     private RoleRepository roleRepository;
+
+    @Autowired
+    private UsuarioSucursalRepository usuarioSucursalRepository;
 
     @Transactional
     public List<EmpleadoResponse> findAll() {
@@ -103,9 +107,7 @@ public class EmpleadoService {
         }
 
         guardarImagenSiExiste(request, empleado);
-        if (request.getUsuarioId() != null) {
-            vincularUsuario(empleado, request.getUsuarioId());
-        }
+        vincularUsuario(empleado, request.getUsuarioId());
     }
 
     private Empleado guardarImagenSiExiste(CreateEmpleadoRequest request, Empleado empleado) throws IOException {
@@ -148,6 +150,9 @@ public class EmpleadoService {
             List<String> nombresRoles = rolesBD.stream().map(Role::getNombre).toList();
             response.setRoles(nombresRoles);
             response.setRolPrincipal(resolverRolPrincipal(nombresRoles));
+            response.setSucursales(usuarioSucursalRepository.findSucursalNombresByUsuarioId(empleado.getUsuario().getId()));
+        } else {
+            response.setSucursales(List.of());
         }
 
         return response;

@@ -9,7 +9,6 @@ import com.vida.apirest.model.auth.Usuario;
 import com.vida.apirest.model.auth.UsuarioHasRoles;
 import com.vida.apirest.model.auth.UsuarioSucursal;
 import com.vida.apirest.model.auth.id.UsuarioRoleId;
-import com.vida.apirest.model.auth.id.UsuarioSucursalId;
 import com.vida.apirest.model.empresa.Empresa;
 import com.vida.apirest.model.empresa.EmpresaAfipConfig;
 import com.vida.apirest.model.finanzas.CuentaFinanciera;
@@ -137,7 +136,7 @@ public class DataInitializer {
             );
 
             for (Empleado empleado : empleados) {
-                if (empleadoRepository.findByDni(empleado.getDni()).isEmpty()) {
+                if (empleadoRepository.findFirstByDniOrderByIdAsc(empleado.getDni()).isEmpty()) {
                     empleadoRepository.save(empleado);
                 }
             }

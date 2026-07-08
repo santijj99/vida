@@ -10,7 +10,10 @@ import java.util.Optional;
 
 public interface UsuarioRepository extends JpaRepository<Usuario, Long> {
     boolean existsByEmail(String email);
+    boolean existsByUsuario(String usuario);
+    boolean existsByCelular(String celular);
     Optional<Usuario> findByEmail(String email);
+    Optional<Usuario> findByUsuario(String usuario);
 
     @Query("""
             SELECT u FROM Usuario u
@@ -20,6 +23,15 @@ public interface UsuarioRepository extends JpaRepository<Usuario, Long> {
             WHERE u.email = :email
             """)
     Optional<Usuario> findByEmailWithRolesAndRolPrincipal(@Param("email") String email);
+
+    @Query("""
+            SELECT u FROM Usuario u
+            LEFT JOIN FETCH u.usuarioHasRoles uhr
+            LEFT JOIN FETCH uhr.role
+            LEFT JOIN FETCH u.rolPrincipal
+            WHERE lower(u.email) = lower(:identificador) OR lower(u.usuario) = lower(:identificador)
+            """)
+    Optional<Usuario> findByIdentificadorWithRolesAndRolPrincipal(@Param("identificador") String identificador);
 
     @Query("""
             SELECT DISTINCT u FROM Usuario u

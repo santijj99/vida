@@ -3,9 +3,6 @@ package com.vida.apirest.dto.usuario;
 import lombok.Data;
 
 @Data
-public class LoginRequest {
-
-    private String identificador;
+public class ForgotPasswordRequest {
     private String email;
-    private String password;
 }
