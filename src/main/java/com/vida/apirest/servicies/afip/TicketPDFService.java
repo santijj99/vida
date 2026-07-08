@@ -15,8 +15,6 @@ import com.vida.apirest.servicies.afip.AfipContextHolder;
 import com.vida.apirest.model.afip.FacturaAFIP;
 import com.vida.apirest.model.afip.FacturaItemAFIP;
 import com.vida.apirest.model.afip.FacturaIvaAFIP;
-import com.vida.apirest.model.articulo.Articulo;
-import com.vida.apirest.model.articulo.VarianteArticulo;
 import com.vida.apirest.dto.credito.ClienteCreditosResponse;
 import com.vida.apirest.dto.credito.CreditoClienteResponse;
 import com.vida.apirest.dto.credito.CuotaCreditoResponse;
@@ -28,6 +26,10 @@ import com.vida.apirest.model.persona.Cliente;
 import com.vida.apirest.model.venta.PagoVenta;
 import com.vida.apirest.model.venta.Venta;
 import com.vida.apirest.model.venta.VentaDetalle;
+import com.vida.apirest.model.empresa.FormatoTicketPdf;
+import com.vida.apirest.servicies.TicketConfigService;
+import com.vida.apirest.servicies.VentaDetalleSupport;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
@@ -50,7 +52,11 @@ import java.util.Objects;
 
 @Slf4j
 @Service
+@RequiredArgsConstructor
 public class TicketPDFService {
+
+    private final TicketConfigService ticketConfigService;
+    private final TicketPdfA4Renderer ticketPdfA4Renderer;
 
     private static final float ANCHO_TICKET = 226f;
     private static final float ALTO_BASE = 800f;
@@ -65,6 +71,7 @@ public class TicketPDFService {
     private static final DecimalFormat DECIMAL_FORMAT = new DecimalFormat("#,##0.00");
 
     public record DatosEmpresaTicket(
+            Long empresaId,
             String razonSocial,
             String direccion,
             String cuit,
@@ -74,6 +81,7 @@ public class TicketPDFService {
     ) {
         public static DatosEmpresaTicket from(AfipContext ctx) {
             return new DatosEmpresaTicket(
+                    ctx.empresaId(),
                     ctx.razonSocial(),
                     ctx.direccion(),
                     ctx.cuit(),
@@ -88,6 +96,7 @@ public class TicketPDFService {
                     ? empresa.getRazonSocial()
                     : empresa.getNombre();
             return new DatosEmpresaTicket(
+                    empresa.getId(),
                     razon != null ? razon : "",
                     empresa.getDomicilio() != null ? empresa.getDomicilio() : "",
                     empresa.getCuit() != null ? empresa.getCuit() : "",
@@ -130,9 +139,17 @@ public class TicketPDFService {
     }
 
     public byte[] generarTicketPDFBytes(FacturaAFIP facturaAFIP, Credito credito, List<Cuota> cuotas) throws Exception {
+        Long empresaId = null;
+        AfipContext ctxAfip = AfipContextHolder.get();
+        if (ctxAfip != null) {
+            empresaId = ctxAfip.empresaId();
+        }
+        if (esFormatoA4(empresaId)) {
+            return ticketPdfA4Renderer.generarFacturaAfip(facturaAFIP, credito, cuotas);
+        }
         int numItems = facturaAFIP.getItems() != null ? facturaAFIP.getItems().size() : 0;
         int numCuotas = cuotas != null ? cuotas.size() : 0;
-        Document document = crearDocumento(numItems, numCuotas);
+        Document document = crearDocumento(numItems, numCuotas, 0, empresaId);
         
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         PdfWriter.getInstance(document, baos);
@@ -173,10 +190,13 @@ public class TicketPDFService {
             Credito credito,
             List<Cuota> cuotas
     ) throws Exception {
+        if (esFormatoA4(empresa.empresaId())) {
+            return ticketPdfA4Renderer.generarComprobanteVenta(venta, empresa, credito, cuotas);
+        }
         int numItems = venta.getDetalles() != null ? venta.getDetalles().size() : 0;
         int numCuotas = cuotas != null ? cuotas.size() : 0;
         int numPagos = contarPagosTicket(venta.getPagos());
-        Document document = crearDocumento(numItems, numCuotas, numPagos);
+        Document document = crearDocumento(numItems, numCuotas, numPagos, empresa.empresaId());
 
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         PdfWriter.getInstance(document, baos);
@@ -212,7 +232,13 @@ public class TicketPDFService {
                 .count();
     }
 
-    private Document crearDocumento(int numItems, int numCuotas, int numPagos) {
+    private Document crearDocumento(int numItems, int numCuotas, int numPagos, Long empresaId) {
+        FormatoTicketPdf formato = ticketConfigService.resolverFormato(empresaId);
+        if (formato == FormatoTicketPdf.A4) {
+            Document document = new Document(PageSize.A4);
+            document.setMargins(40, 40, 40, 40);
+            return document;
+        }
         float altoTicket = ALTO_BASE
                 + Math.max(0, numItems - 3) * ALTO_POR_ITEM_EXTRA
                 + numCuotas * ALTO_POR_CUOTA
@@ -223,7 +249,7 @@ public class TicketPDFService {
     }
 
     private Document crearDocumento(int numItems, int numCuotas) {
-        return crearDocumento(numItems, numCuotas, 0);
+        return crearDocumento(numItems, numCuotas, 0, null);
     }
     
     private void agregarInfoEmpresa(Document document) throws DocumentException {
@@ -450,33 +476,7 @@ public class TicketPDFService {
     }
 
     private String descripcionDetalle(VentaDetalle detalle) {
-        StringBuilder sb = new StringBuilder();
-        Articulo articulo = detalle.getArticulo();
-        if (articulo != null) {
-            if (articulo.getModelo() != null && !articulo.getModelo().isBlank()) {
-                sb.append(articulo.getModelo());
-            } else if (articulo.getDescripcion() != null && !articulo.getDescripcion().isBlank()) {
-                sb.append(articulo.getDescripcion());
-            } else if (articulo.getCodigo() != null) {
-                sb.append(articulo.getCodigo());
-            }
-        }
-        VarianteArticulo variante = detalle.getVariante();
-        if (variante != null) {
-            if (variante.getTalle() != null && variante.getTalle().getNumero() != null) {
-                if (!sb.isEmpty()) {
-                    sb.append(" ");
-                }
-                sb.append(variante.getTalle().getNumero());
-            }
-            if (variante.getColor() != null && variante.getColor().getNombre() != null) {
-                if (!sb.isEmpty()) {
-                    sb.append(" ");
-                }
-                sb.append(variante.getColor().getNombre());
-            }
-        }
-        return !sb.isEmpty() ? sb.toString() : "Artículo";
+        return VentaDetalleSupport.descripcionLinea(detalle);
     }
 
     private String obtenerIVADetalle(VentaDetalle detalle) {
@@ -867,12 +867,15 @@ public class TicketPDFService {
         if (pagos == null || pagos.isEmpty()) {
             throw new IllegalArgumentException("No hay pagos para imprimir");
         }
+        if (esFormatoA4(empresa.empresaId())) {
+            return ticketPdfA4Renderer.generarCobroCuotas(pagos, empresa);
+        }
 
         PagoCuota primerPago = pagos.get(0);
         var credito = primerPago.getCuota().getCredito();
         var cliente = credito.getCliente();
         int lineas = pagos.size() + 8;
-        Document document = crearDocumento(0, 0, lineas);
+        Document document = crearDocumento(0, 0, lineas, empresa.empresaId());
 
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         PdfWriter.getInstance(document, baos);
@@ -892,11 +895,14 @@ public class TicketPDFService {
     }
 
     public byte[] generarResumenCuentaCreditoBytes(ClienteCreditosResponse cuenta, DatosEmpresaTicket empresa) throws Exception {
+        if (esFormatoA4(empresa.empresaId())) {
+            return ticketPdfA4Renderer.generarResumenCuenta(cuenta, empresa);
+        }
         int cuotasActivas = cuenta.getCreditosActivos() != null
                 ? cuenta.getCreditosActivos().stream().mapToInt(c -> c.getCuotas() != null ? c.getCuotas().size() : 0).sum()
                 : 0;
         int lineas = cuotasActivas + (cuenta.getCreditosActivos() != null ? cuenta.getCreditosActivos().size() * 3 : 0) + 12;
-        Document document = crearDocumento(0, 0, lineas);
+        Document document = crearDocumento(0, 0, lineas, empresa.empresaId());
 
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         PdfWriter.getInstance(document, baos);
@@ -1091,6 +1097,10 @@ public class TicketPDFService {
 
     private BigDecimal valorSeguro(BigDecimal valor) {
         return valor != null ? valor : BigDecimal.ZERO;
+    }
+
+    private boolean esFormatoA4(Long empresaId) {
+        return ticketConfigService.resolverFormato(empresaId) == FormatoTicketPdf.A4;
     }
 }
 

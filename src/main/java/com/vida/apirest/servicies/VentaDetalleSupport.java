@@ -137,4 +137,37 @@ public class VentaDetalleSupport {
         }
         return null;
     }
+
+    public static String descripcionLinea(VentaDetalle detalle) {
+        if (detalle == null) {
+            return "Artículo";
+        }
+        StringBuilder sb = new StringBuilder();
+        Articulo articulo = detalle.getArticulo();
+        if (articulo != null) {
+            if (articulo.getModelo() != null && !articulo.getModelo().isBlank()) {
+                sb.append(articulo.getModelo());
+            } else if (articulo.getDescripcion() != null && !articulo.getDescripcion().isBlank()) {
+                sb.append(articulo.getDescripcion());
+            } else if (articulo.getCodigo() != null) {
+                sb.append(articulo.getCodigo());
+            }
+        }
+        VarianteArticulo variante = detalle.getVariante();
+        if (variante != null) {
+            if (variante.getTalle() != null && variante.getTalle().getNumero() != null) {
+                if (!sb.isEmpty()) {
+                    sb.append(' ');
+                }
+                sb.append("Talle ").append(variante.getTalle().getNumero());
+            }
+            if (variante.getColor() != null && variante.getColor().getNombre() != null) {
+                if (!sb.isEmpty()) {
+                    sb.append(' ');
+                }
+                sb.append(variante.getColor().getNombre());
+            }
+        }
+        return !sb.isEmpty() ? sb.toString() : "Artículo";
+    }
 }

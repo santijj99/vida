@@ -13,7 +13,9 @@ import org.hibernate.annotations.UpdateTimestamp;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
-import java.util.HashSet;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Set;
 
 @Data
@@ -101,8 +103,9 @@ public class Venta {
 
     // Relaciones
     @OneToMany(mappedBy = "venta", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
-    private Set<VentaDetalle> detalles = new HashSet<>();
+    @OrderBy("id ASC")
+    private List<VentaDetalle> detalles = new ArrayList<>();
 
     @OneToMany(mappedBy = "venta", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
-    private Set<PagoVenta> pagos = new HashSet<>();
+    private Set<PagoVenta> pagos = new LinkedHashSet<>();
 }
