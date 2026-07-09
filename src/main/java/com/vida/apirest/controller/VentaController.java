@@ -135,6 +135,12 @@ public class VentaController {
         return ResponseEntity.ok(cajaSesionService.listarSesiones(cuentaId));
     }
 
+    @GetMapping("/caja/sesiones/{id}/movimientos")
+    @PreAuthorize("hasAuthority('VER_CAJA')")
+    public ResponseEntity<List<CajaMovimientoResponse>> listarMovimientosSesion(@PathVariable Long id) {
+        return ResponseEntity.ok(cajaSesionService.listarMovimientosSesion(id));
+    }
+
     @PostMapping("/caja/sesiones/abrir")
     @PreAuthorize("hasAuthority('VER_CAJA')")
     public ResponseEntity<CajaSesionResponse> abrirCaja(@RequestBody AbrirCajaRequest request) {
