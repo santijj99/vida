@@ -16,4 +16,5 @@ public class EmpleadoResponse {
     private String celular;
     private List<String> roles;
     private String rolPrincipal;
+    private List<String> sucursales;
 }

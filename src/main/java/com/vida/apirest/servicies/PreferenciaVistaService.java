@@ -26,8 +26,10 @@ import java.util.stream.Collectors;
 public class PreferenciaVistaService {
 
     public static final String CLAVE_COLUMNAS_ARTICULOS = "vista_articulos_columnas";
+    public static final String CLAVE_COLUMNAS_PEDIDOS = "vista_pedidos_columnas";
 
     private static final Map<String, String> COLUMNAS_ARTICULOS = new LinkedHashMap<>();
+    private static final Map<String, String> COLUMNAS_PEDIDOS = new LinkedHashMap<>();
 
     static {
         COLUMNAS_ARTICULOS.put("codigo", "CÓDIGO");
@@ -41,6 +43,24 @@ public class PreferenciaVistaService {
         COLUMNAS_ARTICULOS.put("codigoBarras", "CÓD. BARRAS");
         COLUMNAS_ARTICULOS.put("precio", "PRECIO");
         COLUMNAS_ARTICULOS.put("cantidad", "STOCK");
+        COLUMNAS_PEDIDOS.put("barras", "BARRAS");
+        COLUMNAS_PEDIDOS.put("codigo", "CÓDIGO");
+        COLUMNAS_PEDIDOS.put("marca", "MARCA");
+        COLUMNAS_PEDIDOS.put("modelo", "MODELO");
+        COLUMNAS_PEDIDOS.put("categoria", "CATEGORÍA");
+        COLUMNAS_PEDIDOS.put("sub_categoria", "SUBCATEGORÍA");
+        COLUMNAS_PEDIDOS.put("genero", "GÉNERO");
+        COLUMNAS_PEDIDOS.put("pais", "PAÍS");
+        COLUMNAS_PEDIDOS.put("talle", "TALLE");
+        COLUMNAS_PEDIDOS.put("color", "COLOR");
+        COLUMNAS_PEDIDOS.put("costo", "COSTO");
+        COLUMNAS_PEDIDOS.put("margen", "MARG%");
+        COLUMNAS_PEDIDOS.put("p_venta", "P. VENTA");
+        COLUMNAS_PEDIDOS.put("cant", "CANT.");
+        COLUMNAS_PEDIDOS.put("desc", "DESC%");
+        COLUMNAS_PEDIDOS.put("subtotal", "SUBTOTAL");
+        COLUMNAS_PEDIDOS.put("estado", "ESTADO");
+        COLUMNAS_PEDIDOS.put("obs", "OBS.");
     }
 
     private static final ObjectMapper JSON = new ObjectMapper();
@@ -59,49 +79,73 @@ public class PreferenciaVistaService {
 
     @Transactional
     public ColumnasVistaResponse guardarColumnasArticulos(List<String> columnas) {
-        List<String> validadas = validarColumnas(columnas);
+        List<String> validadas = validarColumnas(columnas, COLUMNAS_ARTICULOS);
+        guardarPreferenciaColumnas(CLAVE_COLUMNAS_ARTICULOS, validadas);
+        return obtenerColumnasArticulos();
+    }
+
+    @Transactional(readOnly = true)
+    public ColumnasVistaResponse obtenerColumnasPedidos() {
+        List<String> activas = cargarColumnasActivas(CLAVE_COLUMNAS_PEDIDOS, COLUMNAS_PEDIDOS);
+        List<ColumnaVistaItem> disponibles = COLUMNAS_PEDIDOS.entrySet().stream()
+                .map(e -> new ColumnaVistaItem(e.getKey(), e.getValue()))
+                .collect(Collectors.toList());
+        return new ColumnasVistaResponse(disponibles, activas);
+    }
+
+    @Transactional
+    public ColumnasVistaResponse guardarColumnasPedidos(List<String> columnas) {
+        List<String> validadas = validarColumnas(columnas, COLUMNAS_PEDIDOS);
+        guardarPreferenciaColumnas(CLAVE_COLUMNAS_PEDIDOS, validadas);
+        return obtenerColumnasPedidos();
+    }
+
+    private void guardarPreferenciaColumnas(String clave, List<String> validadas) {
         Long usuarioId = obtenerUsuarioIdActual();
         String json = escribirJson(validadas);
 
-        PreferenciaUsuario preferencia = buscarPreferencia(usuarioId, CLAVE_COLUMNAS_ARTICULOS)
+        PreferenciaUsuario preferencia = buscarPreferencia(usuarioId, clave)
                 .orElseGet(() -> {
                     PreferenciaUsuario nueva = new PreferenciaUsuario();
                     nueva.setUsuarioId(usuarioId);
-                    nueva.setClave(CLAVE_COLUMNAS_ARTICULOS);
+                    nueva.setClave(clave);
                     return nueva;
                 });
 
         preferencia.setValor(json);
         preferenciaUsuarioRepository.save(preferencia);
-        return obtenerColumnasArticulos();
     }
 
     private List<String> cargarColumnasActivas() {
+        return cargarColumnasActivas(CLAVE_COLUMNAS_ARTICULOS, COLUMNAS_ARTICULOS);
+    }
+
+    private List<String> cargarColumnasActivas(String clave, Map<String, String> catalogo) {
         Long usuarioId = obtenerUsuarioIdActual();
-        String json = buscarPreferencia(usuarioId, CLAVE_COLUMNAS_ARTICULOS)
+        String json = buscarPreferencia(usuarioId, clave)
                 .map(PreferenciaUsuario::getValor)
                 .orElseGet(() -> usuarioId != null
-                        ? buscarPreferencia(null, CLAVE_COLUMNAS_ARTICULOS)
+                        ? buscarPreferencia(null, clave)
                                 .map(PreferenciaUsuario::getValor)
                                 .orElse(null)
                         : null);
 
         if (json == null || json.isBlank()) {
-            return new ArrayList<>(COLUMNAS_ARTICULOS.keySet());
+            return new ArrayList<>(catalogo.keySet());
         }
-        return validarColumnas(leerJson(json));
+        return validarColumnas(leerJson(json, catalogo), catalogo);
     }
 
-    private List<String> validarColumnas(List<String> columnas) {
+    private List<String> validarColumnas(List<String> columnas, Map<String, String> catalogo) {
         if (columnas == null || columnas.isEmpty()) {
-            return new ArrayList<>(COLUMNAS_ARTICULOS.keySet());
+            return new ArrayList<>(catalogo.keySet());
         }
         List<String> validadas = columnas.stream()
-                .filter(COLUMNAS_ARTICULOS::containsKey)
+                .filter(catalogo::containsKey)
                 .distinct()
                 .collect(Collectors.toList());
         if (validadas.isEmpty()) {
-            return new ArrayList<>(COLUMNAS_ARTICULOS.keySet());
+            return new ArrayList<>(catalogo.keySet());
         }
         return validadas;
     }
@@ -123,11 +167,11 @@ public class PreferenciaVistaService {
                 .orElse(null);
     }
 
-    private List<String> leerJson(String json) {
+    private List<String> leerJson(String json, Map<String, String> catalogo) {
         try {
             return JSON.readValue(json, new TypeReference<List<String>>() {});
         } catch (Exception e) {
-            return new ArrayList<>(COLUMNAS_ARTICULOS.keySet());
+            return new ArrayList<>(catalogo.keySet());
         }
     }
 

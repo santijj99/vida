@@ -46,7 +46,9 @@ public class SecurityConfig {
                 .csrf(csrf -> csrf.disable())
                 .authorizeHttpRequests(auth -> {
                     auth.requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-                            .requestMatchers(HttpMethod.POST, "/auth/login").permitAll();
+                            .requestMatchers(HttpMethod.POST, "/auth/login").permitAll()
+                            .requestMatchers(HttpMethod.POST, "/auth/forgot-password").permitAll()
+                            .requestMatchers(HttpMethod.POST, "/auth/reset-password").permitAll();
                     if (appSecurityProperties.isAllowPublicRegister()) {
                         auth.requestMatchers(HttpMethod.POST, "/auth/register").permitAll();
                     }
