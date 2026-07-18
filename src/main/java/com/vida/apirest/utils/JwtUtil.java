@@ -30,26 +30,42 @@ public class JwtUtil {
     }
 
     public String generateToken(Usuario usuario, Collection<String> roles, Collection<String> permissions) {
+        return generateToken(usuario, roles, permissions, null);
+    }
+
+    public String generateToken(
+            Usuario usuario,
+            Collection<String> roles,
+            Collection<String> permissions,
+            String codigoLicencia
+    ) {
         long expirationMillis = jwtProperties.getExpirationHours() * 60 * 60 * 1000;
         Date now = new Date();
         Date expiry = new Date(now.getTime() + expirationMillis);
-        return Jwts.builder()
+        var builder = Jwts.builder()
                 .subject(usuario.getUsuario())
                 .claim("roles", roles)
                 .claim("permissions", permissions)
                 .issuedAt(now)
-                .expiration(expiry)
-                .signWith(key)
-                .compact();
+                .expiration(expiry);
+        if (codigoLicencia != null && !codigoLicencia.isBlank()) {
+            builder.claim("licencia", codigoLicencia.trim());
+        }
+        return builder.signWith(key).compact();
     }
 
     /** Compatibilidad con llamadas existentes. */
     public String generatToken(Usuario usuario) {
-        return generateToken(usuario, List.of(), List.of());
+        return generateToken(usuario, List.of(), List.of(), null);
     }
 
     public String extractNombreDeUsuario(String token) {
         return parseClaims(token).getSubject();
+    }
+
+    public String extractLicencia(String token) {
+        Object raw = parseClaims(token).get("licencia");
+        return raw == null ? null : String.valueOf(raw);
     }
 
     @SuppressWarnings("unchecked")
