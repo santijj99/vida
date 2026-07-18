@@ -14,7 +14,7 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
-import com.vida.apirest.config.AppSecurityProperties;
+import com.vida.apirest.tenant.TenantFilter;
 import lombok.RequiredArgsConstructor;
 
 import java.util.List;
@@ -35,6 +35,7 @@ public class SecurityConfig {
     );
 
     private final JwtAuthenticationFilter jwtFilter;
+    private final TenantFilter tenantFilter;
     private final JwtAuthenticationEntryPoint jwtAuthenticationEntryPoint;
     private final CustomAccessDeniedHandler customAccessDeniedHandler;
     private final AppSecurityProperties appSecurityProperties;
@@ -61,7 +62,8 @@ public class SecurityConfig {
                 .sessionManagement(session -> session
                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
                 )
-                .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);
+                .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class)
+                .addFilterBefore(tenantFilter, JwtAuthenticationFilter.class);
 
         return http.build();
     }

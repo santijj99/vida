@@ -22,6 +22,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.vida.apirest.config.AfipProperties;
 import com.vida.apirest.config.AppSecurityProperties;
+import com.vida.apirest.config.LicenciaProperties;
+import com.vida.apirest.exception.ForbiddenException;
 import com.vida.apirest.exception.RegistrationDisabledException;
 import com.vida.apirest.dto.afip.TokenValidationResponse;
 import com.vida.apirest.dto.usuario.CreateUsuarioRequest;
@@ -82,6 +84,15 @@ public class UsuarioService {
     @Autowired
     private AppSecurityProperties appSecurityProperties;
 
+    @Autowired
+    private LicenciaProperties licenciaProperties;
+
+    @Autowired
+    private com.vida.apirest.servicies.licencia.SistemaLicenciaService sistemaLicenciaService;
+
+    @Autowired
+    private com.vida.apirest.tenant.TenantDataSourceManager tenantDataSourceManager;
+
     @Autowired(required = false)
     private JavaMailSender mailSender;
 
@@ -115,7 +126,7 @@ public class UsuarioService {
         UsuarioHasRoles usuarioHasRoles = new UsuarioHasRoles(savedUser, clientRole);
         usuarioHasRoleRepository.save(usuarioHasRoles);
 
-        return buildLoginResponse(savedUser);
+        return buildLoginResponse(savedUser, resolveCodigoLicencia(null));
     }
 
     @Transactional(readOnly = true)
@@ -166,6 +177,11 @@ public class UsuarioService {
 
     @Transactional
     public LoginResponse login(LoginRequest request) {
+        String codigoLicencia = resolveCodigoLicencia(request.getCodigoLicencia());
+        if (tenantDataSourceManager.isMultiTenantEnabled()) {
+            tenantDataSourceManager.ensureTenantReady(codigoLicencia);
+        }
+
         String identificador = request.getIdentificador();
         if (identificador == null || identificador.isBlank()) {
             identificador = request.getEmail();
@@ -178,7 +194,14 @@ public class UsuarioService {
         if (!passwordEncoder.matches(request.getPassword(), usuario.getPassword())) {
             throw new RuntimeException("El usuario/email o password no son validos");
         }
-        return buildLoginResponse(usuario);
+        if (!tenantDataSourceManager.isMultiTenantEnabled()
+                && licenciaProperties.isEnabled()
+                && licenciaProperties.isBloquearSiInvalida()
+                && !sistemaLicenciaService.isLicenciaOperativa()) {
+            throw new ForbiddenException(
+                    "La licencia del sistema no está activa. Contactá al proveedor para renovarla.");
+        }
+        return buildLoginResponse(usuario, codigoLicencia);
     }
 
     @Transactional
@@ -276,6 +299,10 @@ public class UsuarioService {
     }
 
     private LoginResponse buildLoginResponse(Usuario usuario) {
+        return buildLoginResponse(usuario, resolveCodigoLicencia(null));
+    }
+
+    private LoginResponse buildLoginResponse(Usuario usuario, String codigoLicencia) {
         EffectivePermissions permissions = permissionResolverService.resolve(usuario);
         List<Role> roles = rolesFromUsuario(usuario);
 
@@ -283,7 +310,8 @@ public class UsuarioService {
         String token = jwtUtil.generateToken(
                 usuario,
                 roleNames,
-                permissions.getPermisosEfectivos()
+                permissions.getPermisosEfectivos(),
+                codigoLicencia
         );
 
         LoginResponse response = new LoginResponse();
@@ -291,6 +319,21 @@ public class UsuarioService {
         response.setUsuario(usuarioMapper.toUsuarioResponse(usuario, roles, permissions));
         response.setAfipToken(validarTokenAfipEnLogin());
         return response;
+    }
+
+    private String resolveCodigoLicencia(String fromRequest) {
+        if (fromRequest != null && !fromRequest.isBlank()) {
+            return fromRequest.trim();
+        }
+        String fromContext = com.vida.apirest.tenant.TenantContext.getCodigoLicencia();
+        if (fromContext != null && !fromContext.isBlank()) {
+            return fromContext.trim();
+        }
+        if (tenantDataSourceManager.isMultiTenantEnabled()) {
+            throw new ForbiddenException("Debés indicar el código de licencia de la empresa");
+        }
+        String configured = licenciaProperties.getCodigo();
+        return configured == null || configured.isBlank() ? null : configured.trim();
     }
 
     private TokenValidationResponse validarTokenAfipEnLogin() {
