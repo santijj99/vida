@@ -2,7 +2,6 @@ package com.vida.apirest.servicies.afip;
 
 import com.vida.apirest.config.AfipProperties;
 import com.vida.apirest.dto.afip.AfipAmbienteResponse;
-import com.vida.apirest.utils.AfipTokenPathResolver;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,9 +20,19 @@ public class AfipConfigService {
 
     private final AfipProperties afipProperties;
     private final WSAAService wsaaService;
+    private final AfipContextService afipContextService;
 
     public AfipAmbienteResponse consultarAmbiente() {
-        return construirRespuesta(null);
+        return construirRespuesta(null, null);
+    }
+
+    public AfipAmbienteResponse consultarAmbiente(Long empresaId) {
+        AfipContext context = empresaId != null
+                ? afipContextService.resolveOptionalForEmpresaId(empresaId).orElse(null)
+                : afipContextService.resolveEmpresaIdForCurrentUser()
+                        .flatMap(afipContextService::resolveOptionalForEmpresaId)
+                        .orElse(null);
+        return construirRespuesta(null, context);
     }
 
     public AfipAmbienteResponse cambiarAmbiente(boolean homologacion) {
@@ -32,27 +41,28 @@ public class AfipConfigService {
         wsaaService.limpiarCache();
 
         String mensaje = homologacion
-                ? "Ambiente cambiado a Homologación. Regenerá el token TA.xml con certificado de testing."
-                : "Ambiente cambiado a Producción. Regenerá el token TA.xml con certificado de producción.";
+                ? "Ambiente cambiado a Homologaci?n. Regener? el token con el certificado de testing."
+                : "Ambiente cambiado a Producci?n. Regener? el token con el certificado de producci?n.";
 
         if (anterior != homologacion) {
-            log.info("AFIP ambiente: {} → {}", anterior ? "Homologación" : "Producción",
-                    homologacion ? "Homologación" : "Producción");
+            log.info("AFIP ambiente: {} -> {}", anterior ? "Homologaci?n" : "Producci?n",
+                    homologacion ? "Homologaci?n" : "Producci?n");
         }
 
-        return construirRespuesta(mensaje);
+        return construirRespuesta(mensaje, null);
     }
 
-    private AfipAmbienteResponse construirRespuesta(String mensaje) {
+    private AfipAmbienteResponse construirRespuesta(String mensaje, AfipContext context) {
         boolean homo = afipProperties.isHomologacion();
-        java.io.File certDir = AfipTokenPathResolver.resolveCertificadosDir(afipProperties);
         return AfipAmbienteResponse.builder()
                 .homologacion(homo)
-                .ambiente(homo ? "Homologación" : "Producción")
+                .ambiente(homo ? "Homologaci?n" : "Producci?n")
                 .wsaaUrl(homo ? WSAA_HOMO : WSAA_PROD)
                 .wsfeUrl(homo ? WSFE_HOMO : WSFE_PROD)
-                .certificadosDir(certDir != null ? certDir.getAbsolutePath() : null)
-                .phpScriptPath(AfipTokenPathResolver.resolvePhpScriptPath(afipProperties))
+                .certificadosDir(context != null ? context.certificadosDir().toString() : null)
+                .empresaId(context != null ? context.empresaId() : null)
+                .cuit(context != null ? context.cuit() : null)
+                .razonSocial(context != null ? context.razonSocial() : null)
                 .mensaje(mensaje)
                 .build();
     }

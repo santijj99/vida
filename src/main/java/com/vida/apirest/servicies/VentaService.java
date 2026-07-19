@@ -22,8 +22,10 @@ import com.vida.apirest.model.almacen.Sucursal;
 import com.vida.apirest.model.articulo.Articulo;
 import com.vida.apirest.model.articulo.VarianteArticulo;
 import com.vida.apirest.model.credito.Credito;
+import com.vida.apirest.model.credito.CreditoConfigEmpresa;
 import com.vida.apirest.model.credito.Cuota;
 import com.vida.apirest.model.credito.Cuenta;
+import com.vida.apirest.model.empresa.Empresa;
 import com.vida.apirest.model.finanzas.CuentaFinanciera;
 import com.vida.apirest.model.persona.Cliente;
 import com.vida.apirest.model.persona.Empleado;
@@ -40,14 +42,16 @@ import com.vida.apirest.repositories.FinanzasCuentaFinancieraRepository;
 import com.vida.apirest.repositories.MovimientoFinancieroRepository;
 import com.vida.apirest.repositories.PagoVentaRepository;
 import com.vida.apirest.repositories.SucursalRepository;
-import com.vida.apirest.repositories.StockMovimientoRepository;
 import com.vida.apirest.repositories.StockRepository;
 import com.vida.apirest.repositories.VentaCambioArticuloRepository;
 import com.vida.apirest.repositories.VentaRepository;
 import com.vida.apirest.repositories.VarianteArticuloRepository;
+import com.vida.apirest.security.SucursalScopeService;
 import com.vida.apirest.dto.afip.FacturaAFIPResponse;
 import com.vida.apirest.model.afip.FacturaAFIP;
+import com.vida.apirest.servicies.afip.AfipContextService;
 import com.vida.apirest.servicies.afip.FacturaAFIPService;
+import com.vida.apirest.servicies.afip.TicketPDFService;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -63,6 +67,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -77,7 +82,7 @@ public class VentaService {
     private final ArticuloRepository articuloRepository;
     private final VarianteArticuloRepository varianteArticuloRepository;
     private final StockRepository stockRepository;
-    private final StockMovimientoRepository stockMovimientoRepository;
+    private final StockOperacionesService stockOperacionesService;
     private final SucursalRepository sucursalRepository;
     private final EmpleadoRepository empleadoRepository;
     private final PagoVentaRepository pagoVentaRepository;
@@ -87,7 +92,12 @@ public class VentaService {
     private final MovimientoFinancieroRepository movimientoFinancieroRepository;
     private final VentaCambioArticuloRepository ventaCambioArticuloRepository;
     private final FacturaAFIPService facturaAFIPService;
-    private final PromocionService promocionService;
+    private final AfipContextService afipContextService;
+    private final TicketPDFService ticketPDFService;
+    private final CajaMovimientoService cajaMovimientoService;
+    private final VentaDetalleSupport ventaDetalleSupport;
+    private final SucursalScopeService sucursalScopeService;
+    private final CreditoConfigService creditoConfigService;
 
     @Transactional
     public VentaResponse registrarVenta(VentaCreateRequest request) {
@@ -96,30 +106,62 @@ public class VentaService {
 
     @Transactional
     public VentaResponse registrarVenta(VentaCreateRequest request, boolean descontarStock) {
+        validarRegistroVenta(request);
+
+        Cliente cliente = cargarCliente(request.getClienteDni());
+        Sucursal sucursal = cargarSucursal(request.getSucursalId());
+        Empleado empleado = cargarEmpleadoOpcional(request.getEmpleadoId());
+
+        Venta venta = inicializarVentaCabecera(request, cliente, sucursal, empleado);
+        TotalesAcumulados totales = agregarDetallesAVenta(venta, request.getDetalles(), sucursal, descontarStock);
+        aplicarTotalesVenta(venta, totales);
+        venta.setEstado(tienePagos(request) ? Venta.EstadoVenta.CONFIRMADA : Venta.EstadoVenta.BORRADOR);
+
+        Venta ventaGuardada = ventaRepository.save(venta);
+        if (tienePagos(request)) {
+            procesarPagosVenta(ventaGuardada, request.getPagos(), cliente, sucursal);
+        }
+
+        return construirRespuestaVenta(ventaGuardada.getId(), request);
+    }
+
+    private void validarRegistroVenta(VentaCreateRequest request) {
         if (request.getClienteDni() == null || request.getClienteDni().isBlank()) {
             throw new RuntimeException("DNI de cliente requerido para registrar la venta");
         }
-
         if (request.getDetalles() == null || request.getDetalles().isEmpty()) {
             throw new RuntimeException("Debe incluir al menos un detalle de venta");
         }
-
-        Cliente cliente = clienteRepository.findByDni(request.getClienteDni())
-                .orElseThrow(() -> new RuntimeException("Cliente no encontrado con DNI: " + request.getClienteDni()));
-
         if (request.getSucursalId() == null) {
             throw new RuntimeException("Sucursal requerida para registrar la venta");
         }
+    }
 
-        var sucursal = sucursalRepository.findById(request.getSucursalId())
-                .orElseThrow(() -> new RuntimeException("Sucursal no encontrada con ID: " + request.getSucursalId()));
+    private Cliente cargarCliente(String dni) {
+        return clienteRepository.findFirstByDniOrderByIdAsc(dni)
+                .orElseThrow(() -> new RuntimeException("Cliente no encontrado con DNI: " + dni));
+    }
 
-        Empleado empleado = null;
-        if (request.getEmpleadoId() != null) {
-            empleado = empleadoRepository.findById(request.getEmpleadoId())
-                    .orElseThrow(() -> new RuntimeException("Empleado no encontrado con ID: " + request.getEmpleadoId()));
+    private Sucursal cargarSucursal(Long sucursalId) {
+        sucursalScopeService.assertCanUse(sucursalId);
+        return sucursalRepository.findById(sucursalId)
+                .orElseThrow(() -> new RuntimeException("Sucursal no encontrada con ID: " + sucursalId));
+    }
+
+    private Empleado cargarEmpleadoOpcional(Long empleadoId) {
+        if (empleadoId == null) {
+            return null;
         }
+        return empleadoRepository.findById(empleadoId)
+                .orElseThrow(() -> new RuntimeException("Empleado no encontrado con ID: " + empleadoId));
+    }
 
+    private Venta inicializarVentaCabecera(
+            VentaCreateRequest request,
+            Cliente cliente,
+            Sucursal sucursal,
+            Empleado empleado
+    ) {
         Venta venta = new Venta();
         venta.setCliente(cliente);
         venta.setSucursal(sucursal);
@@ -130,184 +172,215 @@ public class VentaService {
         venta.setFechaVenta(request.getFechaVenta() != null ? request.getFechaVenta() : LocalDateTime.now());
         venta.setObservaciones(request.getObservaciones());
         venta.setMetodoPago(request.getMetodoPago());
+        return venta;
+    }
 
-        BigDecimal subtotal = BigDecimal.ZERO;
-        BigDecimal descuento = BigDecimal.ZERO;
-        BigDecimal impuesto = BigDecimal.ZERO;
-        BigDecimal total = BigDecimal.ZERO;
+    private TotalesAcumulados agregarDetallesAVenta(
+            Venta venta,
+            List<com.vida.apirest.dto.venta.VentaDetalleRequest> detalles,
+            Sucursal sucursal,
+            boolean descontarStock
+    ) {
+        TotalesAcumulados totales = new TotalesAcumulados();
+        for (var detalleReq : detalles) {
+            VentaDetalleSupport.ArticuloVarianteResuelto resolucion = ventaDetalleSupport.resolverArticuloYVariante(detalleReq);
+            ventaDetalleSupport.validarCantidad(detalleReq.getCantidad());
 
-        for (var detalleReq : request.getDetalles()) {
-            VarianteArticulo variante = null;
-            Articulo articulo = null;
-
-            if (detalleReq.getVarianteId() != null) {
-                Long varianteId = detalleReq.getVarianteId();
-                variante = varianteArticuloRepository.findById(varianteId)
-                        .orElseThrow(() -> new RuntimeException("Variante no encontrada con ID: " + varianteId));
-                Long articuloId = variante.getArticuloId();
-                articulo = articuloRepository.findById(articuloId)
-                        .orElseThrow(() -> new RuntimeException("Artículo de la variante no encontrado con ID: " + articuloId));
-            } else {
-                if (detalleReq.getArticuloId() == null) {
-                    throw new RuntimeException("Cada detalle requiere articuloId o varianteId");
-                }
-                Long articuloId = detalleReq.getArticuloId();
-                articulo = articuloRepository.findById(articuloId)
-                        .orElseThrow(() -> new RuntimeException("Artículo no encontrado con ID: " + articuloId));
-            }
-
-            if (detalleReq.getCantidad() == null || detalleReq.getCantidad() <= 0) {
-                throw new RuntimeException("La cantidad del detalle debe ser mayor a cero");
-            }
-
-            BigDecimal precioUnitario;
-            if (variante != null) {
-                precioUnitario = obtenerPrecioUnitarioDesdeVariante(variante);
-                if (precioUnitario == null || precioUnitario.compareTo(BigDecimal.ZERO) <= 0) {
-                    throw new RuntimeException("No existe precio unitario válido para la variante con ID: " + variante.getId());
-                }
-            } else {
-                if (detalleReq.getPrecioUnitario() == null || detalleReq.getPrecioUnitario().compareTo(BigDecimal.ZERO) < 0) {
-                    throw new RuntimeException("El precio unitario del detalle debe ser un valor válido");
-                }
-                precioUnitario = detalleReq.getPrecioUnitario();
-            }
-
+            BigDecimal precioUnitario = ventaDetalleSupport.resolverPrecioUnitario(detalleReq, resolucion.variante());
             if (descontarStock) {
-                Stock stock = variante != null
-                        ? findStockByVariante(variante.getId(), sucursal.getId())
-                        : findStock(articulo.getId(), null, sucursal.getId());
-                ajustarStock(stock, detalleReq.getCantidad(), venta.getNumeroFactura());
+                descontarStockDetalle(resolucion, detalleReq.getCantidad(), sucursal.getId(), venta.getNumeroFactura());
             }
 
-            VentaDetalle detalle = new VentaDetalle();
-            detalle.setVenta(venta);
-            detalle.setArticulo(articulo);
-            detalle.setVariante(variante);
-            detalle.setCantidad(detalleReq.getCantidad());
-            detalle.setPrecioUnitario(precioUnitario);
-            detalle.setDescuentoPorcentaje(detalleReq.getDescuentoPorcentaje() != null ? detalleReq.getDescuentoPorcentaje() : BigDecimal.ZERO);
-            detalle.setDescuentoMonto(detalleReq.getDescuentoMonto() != null ? detalleReq.getDescuentoMonto() : BigDecimal.ZERO);
-            detalle.setImpuesto(detalleReq.getImpuesto() != null ? detalleReq.getImpuesto() : BigDecimal.ZERO);
-            detalle.setLote(detalleReq.getLote());
-            detalle.setNumeroSerie(detalleReq.getNumeroSerie());
-
-            BigDecimal detalleSubtotal = detalle.getPrecioUnitario().multiply(BigDecimal.valueOf(detalle.getCantidad()))
-                    .subtract(detalle.getDescuentoMonto());
-            BigDecimal detalleTotal = detalleSubtotal.add(detalle.getImpuesto());
-
-            detalle.setSubtotal(detalleSubtotal);
-            detalle.setTotal(detalleTotal);
-
-            subtotal = subtotal.add(detalleSubtotal);
-            descuento = descuento.add(detalle.getDescuentoMonto());
-            impuesto = impuesto.add(detalle.getImpuesto());
-            total = total.add(detalleTotal);
-
+            VentaDetalleSupport.MontosDetalle montos = ventaDetalleSupport.calcularMontos(precioUnitario, detalleReq);
+            VentaDetalle detalle = ventaDetalleSupport.construirDetalle(venta, resolucion, detalleReq, precioUnitario, montos);
+            totales.acumular(montos);
             venta.getDetalles().add(detalle);
         }
+        return totales;
+    }
 
-        venta.setSubtotal(subtotal);
-        venta.setDescuento(descuento);
-        venta.setImpuesto(impuesto);
-        venta.setTotal(total);
-        venta.setEstado((request.getPagos() != null && !request.getPagos().isEmpty()) ? Venta.EstadoVenta.CONFIRMADA : Venta.EstadoVenta.BORRADOR);
+    private void descontarStockDetalle(
+            VentaDetalleSupport.ArticuloVarianteResuelto resolucion,
+            Integer cantidad,
+            Long sucursalId,
+            String referencia
+    ) {
+        Stock stock = resolucion.variante() != null
+                ? stockOperacionesService.requireStockByVariante(resolucion.variante().getId(), sucursalId)
+                : stockOperacionesService.requireStock(resolucion.articulo().getId(), null, sucursalId);
+        ajustarStock(stock, cantidad, referencia);
+    }
 
-        Venta ventaGuardada = ventaRepository.save(venta);
+    private void aplicarTotalesVenta(Venta venta, TotalesAcumulados totales) {
+        venta.setSubtotal(totales.subtotal);
+        venta.setDescuento(totales.descuento);
+        venta.setImpuesto(totales.impuesto);
+        venta.setTotal(totales.total);
+    }
 
-        if (request.getPagos() != null && !request.getPagos().isEmpty()) {
-            for (PagoVentaRequest pagoReq : request.getPagos()) {
-                if (pagoReq.getMonto() == null || pagoReq.getMonto().compareTo(BigDecimal.ZERO) <= 0) {
-                    throw new RuntimeException("Cada pago debe tener un monto mayor a cero");
-                }
+    private boolean tienePagos(VentaCreateRequest request) {
+        return request.getPagos() != null && !request.getPagos().isEmpty();
+    }
 
-                PagoVenta pago = new PagoVenta();
-                pago.setVenta(ventaGuardada);
-                pago.setMonto(pagoReq.getMonto());
-                pago.setMetodoPago(pagoReq.getMetodoPago());
-                pago.setReferencia(pagoReq.getReferencia());
-                pago.setNumeroComprobante(pagoReq.getNumeroComprobante());
-                pago.setObservaciones(pagoReq.getObservaciones());
-                pago.setNumero("PV-" + UUID.randomUUID().toString().replace("-", ""));
-
-                if (pagoReq.getMetodoPago() != null && pagoReq.getMetodoPago().equalsIgnoreCase("CREDITO")) {
-                    if (pagoReq.getCreditoPlazoMeses() == null || pagoReq.getCreditoPlazoMeses() <= 0) {
-                        throw new RuntimeException("Para pagos con crédito se requiere un plazo en meses mayor a cero");
-                    }
-
-                    Cuenta cuentaCredito = crearOEncontrarCuentaCredito(cliente, sucursal);
-                    Credito credito = new Credito();
-                    credito.setCliente(cliente);
-                    credito.setSucursal(sucursal);
-                    credito.setVenta(ventaGuardada);
-                    credito.setNumero("CR-" + cliente.getId() + "-" + sucursal.getId() + "-" + UUID.randomUUID().toString().replace("-", "").substring(0, 10).toUpperCase());
-                    credito.setPlazoMeses(pagoReq.getCreditoPlazoMeses());
-                    credito.setTasaInteres(pagoReq.getCreditoTasaInteres() != null ? pagoReq.getCreditoTasaInteres() : BigDecimal.ZERO);
-                    credito.setDescripcion(pagoReq.getCreditoDescripcion());
-                    credito.setEstado(Credito.EstadoCredito.ACTIVO);
-                    CreditoPlanificador.ResultadoPlan plan = CreditoPlanificador.planificar(
-                            ventaGuardada.getTotal(),
-                            pagoReq.getCreditoPlazoMeses(),
-                            pagoReq.getCreditoTasaInteres(),
-                            pagoReq.getCreditoMontoAnticipo() != null ? pagoReq.getCreditoMontoAnticipo() : BigDecimal.ZERO,
-                            pagoReq.getCreditoModoDistribucion(),
-                            ventaGuardada.getFechaVenta()
-                    );
-                    credito.setImporte(plan.montoFinanciado);
-                    credito.setSaldo(plan.montoFinanciado);
-                    credito.setCuotas(CreditoPlanificador.materializarCuotas(credito, plan));
-                    pago.setMonto(plan.montoFinanciado);
-                    creditoRepository.save(credito);
-
-                    BigDecimal saldoAnteriorCredito = cuentaCredito.getSaldoActual() != null ? cuentaCredito.getSaldoActual() : BigDecimal.ZERO;
-                    cuentaCredito.setSaldoActual(saldoAnteriorCredito.add(plan.montoFinanciado));
-                    creditoCuentaRepository.save(cuentaCredito);
-
-                    pago.setEstado(PagoVenta.EstadoPago.PENDIENTE);
-                    pago.setObservaciones((pago.getObservaciones() != null ? pago.getObservaciones() + " " : "") + "Crédito generado: " + credito.getNumero());
-                    pagoVentaRepository.save(pago);
-                    ventaGuardada.getPagos().add(pago);
-                } else {
-                    pago.setEstado(PagoVenta.EstadoPago.RECIBIDO);
-                    CuentaFinanciera cuenta = null;
-                    if (pagoReq.getCuentaId() != null) {
-                        cuenta = cuentaRepository.findById(pagoReq.getCuentaId())
-                                .orElseThrow(() -> new RuntimeException("Cuenta financiera no encontrada con ID: " + pagoReq.getCuentaId()));
-                    } else {
-                        cuenta = cuentaRepository.findFirstByTipoAndActivoTrue(CuentaFinanciera.TipoCuenta.CAJA)
-                                .orElse(null); // No throw exception, allow payment without cash account
-                    }
-
-                    if (cuenta != null) {
-                        pago.setCuenta(cuenta);
-                        pagoVentaRepository.save(pago);
-                        ventaGuardada.getPagos().add(pago);
-                        registrarMovimientoCaja(cuenta, pago, ventaGuardada.getNumeroFactura());
-                    } else {
-                        // Save payment without account, mark as pending
-                        pago.setEstado(PagoVenta.EstadoPago.PENDIENTE);
-                        pagoVentaRepository.save(pago);
-                        ventaGuardada.getPagos().add(pago);
-                    }
-                }
+    private void procesarPagosVenta(Venta ventaGuardada, List<PagoVentaRequest> pagos, Cliente cliente, Sucursal sucursal) {
+        for (PagoVentaRequest pagoReq : pagos) {
+            if (pagoReq.getMonto() == null || pagoReq.getMonto().compareTo(BigDecimal.ZERO) <= 0) {
+                throw new RuntimeException("Cada pago debe tener un monto mayor a cero");
+            }
+            if (esPagoCredito(pagoReq)) {
+                registrarPagoCredito(ventaGuardada, pagoReq, cliente, sucursal);
+            } else {
+                registrarPagoEfectivoOUOtro(ventaGuardada, pagoReq);
             }
         }
+    }
 
-        Venta ventaCompleta = ventaRepository.findByIdWithDetalles(ventaGuardada.getId())
+    private boolean esPagoCredito(PagoVentaRequest pagoReq) {
+        return pagoReq.getMetodoPago() != null && pagoReq.getMetodoPago().equalsIgnoreCase("CREDITO");
+    }
+
+    private void registrarPagoCredito(Venta ventaGuardada, PagoVentaRequest pagoReq, Cliente cliente, Sucursal sucursal) {
+        if (pagoReq.getCreditoPlazoMeses() == null || pagoReq.getCreditoPlazoMeses() <= 0) {
+            throw new RuntimeException("Para pagos con crédito se requiere un plazo en meses mayor a cero");
+        }
+
+        Cuenta cuentaCredito = crearOEncontrarCuentaCredito(cliente, sucursal);
+        Credito credito = construirCreditoDesdePago(ventaGuardada, pagoReq, cliente, sucursal);
+        CreditoPlanificador.ResultadoPlan plan = CreditoPlanificador.planificar(
+                ventaGuardada.getTotal(),
+                pagoReq.getCreditoPlazoMeses(),
+                pagoReq.getCreditoTasaInteres(),
+                pagoReq.getCreditoMontoAnticipo() != null ? pagoReq.getCreditoMontoAnticipo() : BigDecimal.ZERO,
+                pagoReq.getCreditoModoDistribucion(),
+                ventaGuardada.getFechaVenta(),
+                resolverModoVencimiento(sucursal)
+        );
+        credito.setImporte(plan.montoFinanciado);
+        credito.setSaldo(plan.montoFinanciado);
+        credito.setCuotas(CreditoPlanificador.materializarCuotas(credito, plan));
+        creditoRepository.save(credito);
+
+        BigDecimal saldoAnteriorCredito = cuentaCredito.getSaldoActual() != null ? cuentaCredito.getSaldoActual() : BigDecimal.ZERO;
+        cuentaCredito.setSaldoActual(saldoAnteriorCredito.add(plan.montoFinanciado));
+        creditoCuentaRepository.save(cuentaCredito);
+
+        PagoVenta pago = crearPagoBase(ventaGuardada, pagoReq);
+        pago.setMonto(plan.montoFinanciado);
+        pago.setEstado(PagoVenta.EstadoPago.PENDIENTE);
+        pago.setObservaciones((pago.getObservaciones() != null ? pago.getObservaciones() + " " : "")
+                + "Crédito generado: " + credito.getNumero());
+        pagoVentaRepository.save(pago);
+        ventaGuardada.getPagos().add(pago);
+    }
+
+    private Credito construirCreditoDesdePago(
+            Venta ventaGuardada,
+            PagoVentaRequest pagoReq,
+            Cliente cliente,
+            Sucursal sucursal
+    ) {
+        Credito credito = new Credito();
+        credito.setCliente(cliente);
+        credito.setSucursal(sucursal);
+        credito.setVenta(ventaGuardada);
+        credito.setNumero("CR-" + cliente.getId() + "-" + sucursal.getId() + "-"
+                + UUID.randomUUID().toString().replace("-", "").substring(0, 10).toUpperCase());
+        credito.setPlazoMeses(pagoReq.getCreditoPlazoMeses());
+        credito.setTasaInteres(pagoReq.getCreditoTasaInteres() != null ? pagoReq.getCreditoTasaInteres() : BigDecimal.ZERO);
+        credito.setDescripcion(pagoReq.getCreditoDescripcion());
+        credito.setEstado(Credito.EstadoCredito.ACTIVO);
+        return credito;
+    }
+
+    private void registrarPagoEfectivoOUOtro(Venta ventaGuardada, PagoVentaRequest pagoReq) {
+        PagoVenta pago = crearPagoBase(ventaGuardada, pagoReq);
+        pago.setEstado(PagoVenta.EstadoPago.RECIBIDO);
+
+        CuentaFinanciera cuenta = resolverCuentaFinancieraPago(pagoReq);
+        if (cuenta == null) {
+            pago.setEstado(PagoVenta.EstadoPago.PENDIENTE);
+            pagoVentaRepository.save(pago);
+            ventaGuardada.getPagos().add(pago);
+            return;
+        }
+
+        pago.setCuenta(cuenta);
+        pagoVentaRepository.save(pago);
+        ventaGuardada.getPagos().add(pago);
+        registrarMovimientoCaja(cuenta, pago, ventaGuardada.getNumeroFactura());
+    }
+
+    private CuentaFinanciera resolverCuentaFinancieraPago(PagoVentaRequest pagoReq) {
+        if (pagoReq.getCuentaId() != null) {
+            return cuentaRepository.findById(pagoReq.getCuentaId())
+                    .orElseThrow(() -> new RuntimeException("Cuenta financiera no encontrada con ID: " + pagoReq.getCuentaId()));
+        }
+        CuentaFinanciera.TipoCuenta tipo = resolverTipoCuentaPorMetodo(pagoReq.getMetodoPago());
+        return cuentaRepository.findFirstByTipoAndActivoTrue(tipo)
+                .or(() -> cuentaRepository.findFirstByTipoAndActivoTrue(CuentaFinanciera.TipoCuenta.CAJA))
+                .orElse(null);
+    }
+
+    private CuentaFinanciera.TipoCuenta resolverTipoCuentaPorMetodo(String metodoPago) {
+        if (metodoPago == null || metodoPago.isBlank()) {
+            return CuentaFinanciera.TipoCuenta.CAJA;
+        }
+        return switch (metodoPago.trim().toUpperCase()) {
+            case "TRANSFERENCIA" -> CuentaFinanciera.TipoCuenta.BANCO;
+            case "TARJETA DE CREDITO", "TARJETA CREDITO" -> CuentaFinanciera.TipoCuenta.TARJETA_CREDITO;
+            case "TARJETA DE DEBITO", "TARJETA DEBITO" -> CuentaFinanciera.TipoCuenta.TARJETA_DEBITO;
+            case "QR" -> CuentaFinanciera.TipoCuenta.BILLETERA;
+            default -> CuentaFinanciera.TipoCuenta.CAJA;
+        };
+    }
+
+    private PagoVenta crearPagoBase(Venta ventaGuardada, PagoVentaRequest pagoReq) {
+        PagoVenta pago = new PagoVenta();
+        pago.setVenta(ventaGuardada);
+        pago.setMonto(pagoReq.getMonto());
+        pago.setMetodoPago(pagoReq.getMetodoPago());
+        pago.setReferencia(pagoReq.getReferencia());
+        pago.setNumeroComprobante(pagoReq.getNumeroComprobante());
+        pago.setObservaciones(pagoReq.getObservaciones());
+        pago.setNumero("PV-" + UUID.randomUUID().toString().replace("-", ""));
+        return pago;
+    }
+
+    private VentaResponse construirRespuestaVenta(Long ventaId, VentaCreateRequest request) {
+        Venta ventaCompleta = ventaRepository.findByIdWithDetalles(ventaId)
                 .orElseThrow(() -> new RuntimeException("Error al recuperar la venta registrada"));
         FacturaAFIP facturaArca = facturaAFIPService.intentarFacturarVenta(
-                ventaCompleta.getId(), request.getFacturaAfip());
+                ventaCompleta.getId(),
+                request.getFacturaAfip(),
+                request.getPagos());
 
         VentaResponse response = mapVentaResponse(ventaCompleta);
         if (facturaArca != null && facturaArca.getIdFacturaAFIP() != null) {
-            try {
-                response.setFacturaAfip(facturaAFIPService.obtenerDetalle(facturaArca.getIdFacturaAFIP()));
-            } catch (Exception e) {
-                log.warn("No se pudo adjuntar detalle AFIP en la respuesta de venta {}: {}",
-                        ventaCompleta.getId(), e.getMessage());
-            }
+            adjuntarDetalleAfipSiDisponible(response, facturaArca.getIdFacturaAFIP(), ventaCompleta.getId());
         }
         return response;
+    }
+
+    private void adjuntarDetalleAfipSiDisponible(VentaResponse response, Long idFacturaAfip, Long ventaId) {
+        try {
+            response.setFacturaAfip(facturaAFIPService.obtenerDetalle(idFacturaAfip));
+        } catch (Exception e) {
+            log.debug("Detalle AFIP no adjunto en venta {}: {}", ventaId, e.getMessage());
+        }
+    }
+
+    private static final class TotalesAcumulados {
+        private BigDecimal subtotal = BigDecimal.ZERO;
+        private BigDecimal descuento = BigDecimal.ZERO;
+        private BigDecimal impuesto = BigDecimal.ZERO;
+        private BigDecimal total = BigDecimal.ZERO;
+
+        private void acumular(VentaDetalleSupport.MontosDetalle montos) {
+            subtotal = subtotal.add(montos.subtotal());
+            descuento = descuento.add(montos.descuentoMonto());
+            impuesto = impuesto.add(montos.impuesto());
+            total = total.add(montos.total());
+        }
     }
 
     @Transactional(readOnly = true)
@@ -322,7 +395,8 @@ public class VentaService {
                 tasa,
                 anticipo,
                 request.getModoDistribucion(),
-                resolverBaseFechaCredito(request.getFechaPrimerVencimiento())
+                resolverBaseFechaCredito(request.getFechaPrimerVencimiento()),
+                null
         );
         return CreditoPlanificador.toSimulacionResponse(plan, plazo, tasa);
     }
@@ -348,7 +422,8 @@ public class VentaService {
                 tasa,
                 anticipo,
                 request.getModoDistribucion(),
-                resolverBaseFechaCredito(request.getFechaPrimerVencimiento())
+                resolverBaseFechaCredito(request.getFechaPrimerVencimiento()),
+                resolverModoVencimiento(request.getSucursalId())
         );
 
         VentaCreateRequest internalRequest = new VentaCreateRequest();
@@ -386,6 +461,7 @@ public class VentaService {
         pagos.add(pagoCredito);
 
         internalRequest.setPagos(pagos);
+        internalRequest.setFacturaAfip(request.getFacturaAfip());
         return registrarVenta(internalRequest, descontarStock);
     }
 
@@ -405,49 +481,12 @@ public class VentaService {
 
         BigDecimal total = BigDecimal.ZERO;
         for (var detalleReq : request.getDetalles()) {
-            VarianteArticulo variante = null;
-            Articulo articulo = null;
-
-            if (detalleReq.getVarianteId() != null) {
-                Long varianteId = detalleReq.getVarianteId();
-                variante = varianteArticuloRepository.findById(varianteId)
-                        .orElseThrow(() -> new RuntimeException("Variante no encontrada con ID: " + varianteId));
-                Long articuloId = variante.getArticuloId();
-                articulo = articuloRepository.findById(articuloId)
-                        .orElseThrow(() -> new RuntimeException("Artículo de la variante no encontrado con ID: " + articuloId));
-            } else {
-                if (detalleReq.getArticuloId() == null) {
-                    throw new RuntimeException("Cada detalle requiere articuloId o varianteId");
-                }
-                Long articuloId = detalleReq.getArticuloId();
-                articulo = articuloRepository.findById(articuloId)
-                        .orElseThrow(() -> new RuntimeException("Artículo no encontrado con ID: " + articuloId));
-            }
-
-            if (detalleReq.getCantidad() == null || detalleReq.getCantidad() <= 0) {
-                throw new RuntimeException("La cantidad del detalle debe ser mayor a cero");
-            }
-
-            BigDecimal precioUnitario;
-            if (variante != null) {
-                precioUnitario = obtenerPrecioUnitarioDesdeVariante(variante);
-                if (precioUnitario == null || precioUnitario.compareTo(BigDecimal.ZERO) <= 0) {
-                    throw new RuntimeException("No existe precio unitario válido para la variante con ID: " + variante.getId());
-                }
-            } else {
-                if (detalleReq.getPrecioUnitario() == null || detalleReq.getPrecioUnitario().compareTo(BigDecimal.ZERO) < 0) {
-                    throw new RuntimeException("El precio unitario del detalle debe ser un valor válido");
-                }
-                precioUnitario = detalleReq.getPrecioUnitario();
-            }
-
-            BigDecimal descuentoMonto = detalleReq.getDescuentoMonto() != null ? detalleReq.getDescuentoMonto() : BigDecimal.ZERO;
-            BigDecimal impuesto = detalleReq.getImpuesto() != null ? detalleReq.getImpuesto() : BigDecimal.ZERO;
-            BigDecimal detalleSubtotal = precioUnitario.multiply(BigDecimal.valueOf(detalleReq.getCantidad())).subtract(descuentoMonto);
-            BigDecimal detalleTotal = detalleSubtotal.add(impuesto);
-            total = total.add(detalleTotal);
+            VentaDetalleSupport.ArticuloVarianteResuelto resolucion = ventaDetalleSupport.resolverArticuloYVariante(detalleReq);
+            ventaDetalleSupport.validarCantidad(detalleReq.getCantidad());
+            BigDecimal precioUnitario = ventaDetalleSupport.resolverPrecioUnitario(detalleReq, resolucion.variante());
+            VentaDetalleSupport.MontosDetalle montos = ventaDetalleSupport.calcularMontos(precioUnitario, detalleReq);
+            total = total.add(montos.total());
         }
-
         return total;
     }
 
@@ -466,9 +505,10 @@ public class VentaService {
         LocalDateTime hastaExclusivo = hastaInclusive.plusDays(1).atStartOfDay();
 
         String estadoFilter = (estado == null || estado.isBlank()) ? null : estado.trim().toUpperCase();
+        Long scopedSucursalId = sucursalScopeService.enforceFilter(sucursalId);
         Pageable pageable = PageRequest.of(Math.max(page, 0), Math.max(size, 1));
         Page<Venta> result = ventaRepository.searchHistorial(
-                sucursalId,
+                scopedSucursalId,
                 estadoFilter,
                 desdeDt,
                 hastaExclusivo,
@@ -482,7 +522,53 @@ public class VentaService {
     public VentaResponse obtenerVenta(Long id) {
         Venta venta = ventaRepository.findByIdWithDetalles(id)
                 .orElseThrow(() -> new RuntimeException("Venta no encontrada con ID: " + id));
+        sucursalScopeService.assertCanAccess(venta.getSucursal().getId());
         return mapVentaResponseCompleto(venta);
+    }
+
+    @Transactional(readOnly = true)
+    public byte[] generarTicketVentaPdf(Long ventaId) throws Exception {
+        Venta venta = ventaRepository.findByIdWithDetalles(ventaId)
+                .orElseThrow(() -> new RuntimeException("Venta no encontrada con ID: " + ventaId));
+        sucursalScopeService.assertCanAccess(venta.getSucursal().getId());
+
+        if (venta.getEstado() == Venta.EstadoVenta.BORRADOR) {
+            throw new RuntimeException("La venta no está confirmada");
+        }
+
+        Credito credito = null;
+        List<Cuota> cuotas = List.of();
+        List<Credito> creditos = creditoRepository.findByVentaIdWithCuotas(ventaId);
+        if (!creditos.isEmpty()) {
+            credito = creditos.get(0);
+            cuotas = TicketPDFService.ordenarCuotas(credito.getCuotas());
+        }
+
+        Empresa empresa = resolverEmpresaDeVenta(venta);
+        TicketPDFService.DatosEmpresaTicket datosEmpresa = resolverDatosEmpresaTicket(empresa);
+        return ticketPDFService.generarTicketVentaBytes(venta, datosEmpresa, credito, cuotas);
+    }
+
+    private Empresa resolverEmpresaDeVenta(Venta venta) {
+        if (venta.getSucursal() != null && venta.getSucursal().getEmpresa() != null) {
+            return venta.getSucursal().getEmpresa();
+        }
+        Long sucursalId = venta.getSucursal() != null ? venta.getSucursal().getId() : null;
+        if (sucursalId == null) {
+            throw new RuntimeException("La venta no tiene sucursal asociada");
+        }
+        Sucursal sucursal = sucursalRepository.findById(sucursalId)
+                .orElseThrow(() -> new RuntimeException("Sucursal no encontrada"));
+        if (sucursal.getEmpresa() == null) {
+            throw new RuntimeException("La sucursal no tiene empresa asociada");
+        }
+        return sucursal.getEmpresa();
+    }
+
+    private TicketPDFService.DatosEmpresaTicket resolverDatosEmpresaTicket(Empresa empresa) {
+        return afipContextService.resolveOptionalForEmpresaId(empresa.getId())
+                .map(TicketPDFService.DatosEmpresaTicket::from)
+                .orElseGet(() -> TicketPDFService.DatosEmpresaTicket.fromEmpresa(empresa));
     }
 
     @Transactional
@@ -493,6 +579,7 @@ public class VentaService {
 
         Venta venta = ventaRepository.findByIdWithDetalles(id)
                 .orElseThrow(() -> new RuntimeException("Venta no encontrada con ID: " + id));
+        sucursalScopeService.assertCanAccess(venta.getSucursal().getId());
 
         if (venta.getEstado() == Venta.EstadoVenta.CANCELADA) {
             throw new RuntimeException("La venta ya está cancelada");
@@ -506,10 +593,10 @@ public class VentaService {
 
         for (VentaDetalle detalle : venta.getDetalles()) {
             if (detalle.getVariante() != null) {
-                Stock stock = findStockByVariante(detalle.getVariante().getId(), sucursalId);
+                Stock stock = stockOperacionesService.requireStockByVariante(detalle.getVariante().getId(), sucursalId);
                 ingresarStockDevolucion(stock, detalle.getCantidad(), referencia);
             } else if (detalle.getArticulo() != null) {
-                Stock stock = findStock(detalle.getArticulo().getId(), null, sucursalId);
+                Stock stock = stockOperacionesService.requireStock(detalle.getArticulo().getId(), null, sucursalId);
                 ingresarStockDevolucion(stock, detalle.getCantidad(), referencia);
             }
         }
@@ -554,6 +641,7 @@ public class VentaService {
 
         Venta venta = ventaRepository.findByIdWithDetalles(ventaId)
                 .orElseThrow(() -> new RuntimeException("Venta no encontrada con ID: " + ventaId));
+        sucursalScopeService.assertCanAccess(venta.getSucursal().getId());
 
         if (venta.getEstado() == Venta.EstadoVenta.CANCELADA) {
             throw new RuntimeException("No se puede cambiar artículos en una venta cancelada");
@@ -584,21 +672,21 @@ public class VentaService {
         String referencia = venta.getNumeroFactura();
 
         if (varianteDevuelta != null) {
-            Stock stockDevuelto = findStockByVariante(varianteDevuelta.getId(), sucursalId);
+            Stock stockDevuelto = stockOperacionesService.requireStockByVariante(varianteDevuelta.getId(), sucursalId);
             ingresarStockDevolucion(stockDevuelto, cantidad, referencia);
         } else {
-            Stock stockDevuelto = findStock(detalle.getArticulo().getId(), null, sucursalId);
+            Stock stockDevuelto = stockOperacionesService.requireStock(detalle.getArticulo().getId(), null, sucursalId);
             ingresarStockDevolucion(stockDevuelto, cantidad, referencia);
         }
 
-        Stock stockNuevo = findStockByVariante(varianteNueva.getId(), sucursalId);
+        Stock stockNuevo = stockOperacionesService.requireStockByVariante(varianteNueva.getId(), sucursalId);
         ajustarStock(stockNuevo, cantidad, referencia + "-CAMBIO");
 
         Articulo articuloNuevo = articuloRepository.findById(varianteNueva.getArticuloId())
                 .orElseThrow(() -> new RuntimeException("Artículo de la variante nueva no encontrado"));
 
         BigDecimal precioAnterior = detalle.getPrecioUnitario();
-        BigDecimal precioNuevo = obtenerPrecioUnitarioDesdeVariante(varianteNueva);
+        BigDecimal precioNuevo = ventaDetalleSupport.obtenerPrecioUnitarioDesdeVariante(varianteNueva);
         if (precioNuevo == null || precioNuevo.compareTo(BigDecimal.ZERO) <= 0) {
             throw new RuntimeException("No existe precio válido para la variante nueva");
         }
@@ -653,43 +741,6 @@ public class VentaService {
                 .collect(Collectors.toList());
     }
 
-    private Stock findStock(Long articuloId, Long varianteId, Long sucursalId) {
-        return varianteId != null
-                ? stockRepository.findByArticuloIdAndVarianteIdAndSucursalId(articuloId, varianteId, sucursalId)
-                .orElseThrow(() -> new RuntimeException("Stock no encontrado para el artículo/variante en la sucursal"))
-                : stockRepository.findByArticuloIdAndSucursalId(articuloId, sucursalId)
-                .orElseThrow(() -> new RuntimeException("Stock no encontrado para el artículo en la sucursal"));
-    }
-
-    private Stock findStockByVariante(Long varianteId, Long sucursalId) {
-        return stockRepository.findByVarianteIdAndSucursalId(varianteId, sucursalId)
-                .orElseThrow(() -> new RuntimeException("Stock no encontrado para la variante en la sucursal"));
-    }
-
-    private BigDecimal obtenerPrecioUnitarioDesdeVariante(VarianteArticulo variante) {
-        if (variante == null) {
-            return null;
-        }
-        BigDecimal precioLista = obtenerPrecioListaDesdeVariante(variante);
-        if (precioLista == null) {
-            return null;
-        }
-        return promocionService.resolverPrecioVenta(variante.getId(), precioLista);
-    }
-
-    private BigDecimal obtenerPrecioListaDesdeVariante(VarianteArticulo variante) {
-        if (variante.getHistorialPrecios() != null && !variante.getHistorialPrecios().isEmpty()) {
-            return variante.getHistorialPrecios().stream()
-                    .max((a, b) -> a.getFecha().compareTo(b.getFecha()))
-                    .map(historialPrecio -> historialPrecio.getPrecioNuevo())
-                    .orElse(null);
-        }
-        if (variante.getListaPrecio() != null && variante.getListaPrecio().getPrecio() != null) {
-            return variante.getListaPrecio().getPrecio();
-        }
-        return null;
-    }
-
     private void ajustarStock(Stock stock, Integer cantidad, String referencia) {
         Integer disponibleAnterior = stock.getCantidadDisponible();
         if (disponibleAnterior == null) {
@@ -704,37 +755,23 @@ public class VentaService {
         stock.setCantidadActual(Math.max(0, stock.getCantidadActual() - cantidad));
         stockRepository.save(stock);
 
-        StockMovimiento movimiento = new StockMovimiento();
-        movimiento.setStock(stock);
-        movimiento.setTipo(StockMovimiento.TipoMovimiento.SALIDA_VENTA);
-        movimiento.setCantidad(cantidad);
-        movimiento.setSaldoAnterior(disponibleAnterior);
-        movimiento.setSaldoNuevo(nuevoDisponible);
-        movimiento.setReferencia(referencia);
-        movimiento.setDescripcion("Salida por venta");
-        movimiento.setUsuario("sistema");
-
-        stockMovimientoRepository.save(movimiento);
+        stockOperacionesService.registrarMovimiento(
+                stock,
+                StockMovimiento.TipoMovimiento.SALIDA_VENTA,
+                cantidad,
+                disponibleAnterior,
+                nuevoDisponible,
+                referencia,
+                "Salida por venta"
+        );
     }
 
     private void registrarMovimientoCaja(CuentaFinanciera cuenta, PagoVenta pago, String referenciaVenta) {
-        BigDecimal saldoAnterior = cuenta.getSaldoActual() != null ? cuenta.getSaldoActual() : BigDecimal.ZERO;
-        BigDecimal saldoNuevo = saldoAnterior.add(pago.getMonto());
-        cuenta.setSaldoActual(saldoNuevo);
-        cuentaRepository.save(cuenta);
-
-        MovimientoFinanciero movimiento = new MovimientoFinanciero();
-        movimiento.setCuenta(cuenta);
-        movimiento.setNumero("MV-" + UUID.randomUUID().toString().replace("-", ""));
-        movimiento.setTipo(MovimientoFinanciero.TipoMovimiento.INGRESO);
-        movimiento.setMonto(pago.getMonto());
-        movimiento.setSaldoAnterior(saldoAnterior);
-        movimiento.setSaldoNuevo(saldoNuevo);
-        movimiento.setDescripcion("Pago de venta " + referenciaVenta);
-        movimiento.setReferencia(pago.getReferencia());
-        movimiento.setResponsable("sistema");
-
-        movimientoFinancieroRepository.save(movimiento);
+        cajaMovimientoService.registrarIngreso(
+                cuenta,
+                pago.getMonto(),
+                "Pago de venta " + referenciaVenta,
+                pago.getReferencia());
     }
 
     private Cuenta crearOEncontrarCuentaCredito(Cliente cliente, Sucursal sucursal) {
@@ -758,35 +795,23 @@ public class VentaService {
         stock.setCantidadActual((stock.getCantidadActual() != null ? stock.getCantidadActual() : 0) + cantidad);
         stockRepository.save(stock);
 
-        StockMovimiento movimiento = new StockMovimiento();
-        movimiento.setStock(stock);
-        movimiento.setTipo(StockMovimiento.TipoMovimiento.INGRESO_DEVOLUCION);
-        movimiento.setCantidad(cantidad);
-        movimiento.setSaldoAnterior(disponibleAnterior);
-        movimiento.setSaldoNuevo(nuevoDisponible);
-        movimiento.setReferencia(referencia);
-        movimiento.setDescripcion("Ingreso por devolución o cambio");
-        movimiento.setUsuario("sistema");
-        stockMovimientoRepository.save(movimiento);
+        stockOperacionesService.registrarMovimiento(
+                stock,
+                StockMovimiento.TipoMovimiento.INGRESO_DEVOLUCION,
+                cantidad,
+                disponibleAnterior,
+                nuevoDisponible,
+                referencia,
+                "Ingreso por devolución o cambio"
+        );
     }
 
     private void revertirMovimientoCaja(CuentaFinanciera cuenta, PagoVenta pago, String referenciaVenta) {
-        BigDecimal saldoAnterior = cuenta.getSaldoActual() != null ? cuenta.getSaldoActual() : BigDecimal.ZERO;
-        BigDecimal saldoNuevo = saldoAnterior.subtract(pago.getMonto());
-        cuenta.setSaldoActual(saldoNuevo);
-        cuentaRepository.save(cuenta);
-
-        MovimientoFinanciero movimiento = new MovimientoFinanciero();
-        movimiento.setCuenta(cuenta);
-        movimiento.setNumero("MV-" + UUID.randomUUID().toString().replace("-", ""));
-        movimiento.setTipo(MovimientoFinanciero.TipoMovimiento.EGRESO);
-        movimiento.setMonto(pago.getMonto());
-        movimiento.setSaldoAnterior(saldoAnterior);
-        movimiento.setSaldoNuevo(saldoNuevo);
-        movimiento.setDescripcion("Reversión por cancelación de venta " + referenciaVenta);
-        movimiento.setReferencia(pago.getReferencia());
-        movimiento.setResponsable("sistema");
-        movimientoFinancieroRepository.save(movimiento);
+        cajaMovimientoService.registrarEgreso(
+                cuenta,
+                pago.getMonto(),
+                "Reversión por cancelación de venta " + referenciaVenta,
+                pago.getReferencia());
     }
 
     private void cancelarCreditosVenta(Venta venta) {
@@ -1001,6 +1026,25 @@ public class VentaService {
             return fechaPrimerVencimiento.minusMonths(1).atStartOfDay();
         }
         return LocalDateTime.now();
+    }
+
+    private CreditoConfigEmpresa.ModoDiaVencimiento resolverModoVencimiento(Sucursal sucursal) {
+        if (sucursal == null) {
+            return CreditoConfigEmpresa.ModoDiaVencimiento.DIA_10;
+        }
+        Long empresaId = sucursal.getEmpresa() != null
+                ? sucursal.getEmpresa().getId()
+                : sucursalRepository.findById(sucursal.getId()).map(s -> s.getEmpresa().getId()).orElse(null);
+        return creditoConfigService.obtenerODefault(empresaId).getModoDiaVencimiento();
+    }
+
+    private CreditoConfigEmpresa.ModoDiaVencimiento resolverModoVencimiento(Long sucursalId) {
+        if (sucursalId == null) {
+            return CreditoConfigEmpresa.ModoDiaVencimiento.DIA_10;
+        }
+        return sucursalRepository.findById(sucursalId)
+                .map(this::resolverModoVencimiento)
+                .orElse(CreditoConfigEmpresa.ModoDiaVencimiento.DIA_10);
     }
 
     private CajaMovimientoResponse mapCajaMovimientoResponse(MovimientoFinanciero movimiento) {

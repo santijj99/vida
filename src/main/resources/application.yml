@@ -6,12 +6,44 @@ server:
     mime-types: application/json,application/xml,text/html,text/plain
     min-response-size: 1024
 
+app:
+  jwt:
+    secret: ${JWT_SECRET:dev-only-change-me-before-production-min-32-chars}
+    expiration-hours: ${JWT_EXPIRATION_HOURS:24}
+  security:
+    allow-public-register: true
+  licencia:
+    enabled: ${LICENCIA_ENABLED:true}
+    # Modelo B: un solo apirest enruta a la DB de cada empresa (X-Licencia-Codigo)
+    multi-tenant: ${LICENCIA_MULTI_TENANT:true}
+    server-url: ${LICENCIA_SERVER_URL:http://localhost:8080}
+    codigo: ${LICENCIA_CODIGO:}
+    # Misma clave que app.encryption.aes-key del servidor licencias
+    aes-key: ${LICENCIA_AES_KEY:0123456789abcdef0123456789abcdef}
+    device-uuid: ${LICENCIA_DEVICE_UUID:}
+    cache-minutos: ${LICENCIA_CACHE_MINUTOS:60}
+    gracia-dias: ${LICENCIA_GRACIA_DIAS:7}
+    bloquear-si-invalida: ${LICENCIA_BLOQUEAR:false}
+
 spring:
   application:
     name: apirest
+  mail:
+    host: ${SPRING_MAIL_HOST:smtp.gmail.com}
+    port: ${SPRING_MAIL_PORT:587}
+    username: ${SPRING_MAIL_USERNAME:}
+    password: ${SPRING_MAIL_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
 
   datasource:
-    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://ep-noisy-wildflower-acnenufm-pooler.sa-east-1.aws.neon.tech/neondb?user=neondb_owner&password=npg_KszX8HyOTk4B&sslmode=require&channelBinding=require}
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/db_punto}
+    username: ${SPRING_DATASOURCE_USERNAME:postgres}
+    password: ${SPRING_DATASOURCE_PASSWORD:1234}
     driver-class-name: org.postgresql.Driver
 
   jpa:
@@ -35,21 +67,10 @@ logging:
     org.apache.tomcat: WARN
     com.zaxxer.hikari: WARN
 
+# Configuración global ARCA/AFIP (los datos fiscales de cada cliente van en la entidad Empresa + empresa_afip_config)
 afip:
   enabled: true
-  homologacion: false
-  cuit: "27242400068"
-  pto-vta: 3
-  cbte-tipo: 6
-  token-xml-path: classpath:certificados/TA.xml
+  homologacion: ${AFIP_HOMOLOGACION:true}
+  certificados-base-dir: ${AFIP_CERT_BASE_DIR:./data/afip}
   auto-facturar-en-venta: true
   validar-token-en-login: true
-  php-script-path: "C:/Users/santi/OneDrive/Documentos/NetBeansProjects/ATHLAND/ARCHIVOS AFIP VEIJOS/certificados/wsaa-client.php"
-  php-script-path-homologacion: "C:/Users/santi/OneDrive/Documentos/NetBeansProjects/ATHLAND/testing/wsaa-client.php"
-  empresa:
-    razon-social: "ATHLAND S.R.L."
-    direccion: ""
-    cuit: "27242400068"
-    condicion-iva: "IVA Responsable Inscripto"
-    iibb: ""
-    inicio-actividad: ""

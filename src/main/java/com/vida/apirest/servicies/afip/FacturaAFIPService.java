@@ -3,12 +3,17 @@ package com.vida.apirest.servicies.afip;
 import com.vida.apirest.config.AfipProperties;
 import com.vida.apirest.dto.afip.EmitirFacturaAFIPRequest;
 import com.vida.apirest.dto.afip.FacturaAFIPResponse;
+import com.vida.apirest.dto.venta.PagoVentaRequest;
 import com.vida.apirest.model.afip.*;
+import com.vida.apirest.model.credito.Credito;
+import com.vida.apirest.model.credito.Cuota;
 import com.vida.apirest.model.persona.Cliente;
 import com.vida.apirest.model.persona.Direccion;
+import com.vida.apirest.model.venta.PagoVenta;
 import com.vida.apirest.model.venta.Venta;
 import com.vida.apirest.model.venta.VentaDetalle;
 import com.vida.apirest.repositories.*;
+import com.vida.apirest.servicies.VentaDetalleSupport;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,6 +26,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Date;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -33,6 +39,7 @@ public class FacturaAFIPService {
     private static final DateTimeFormatter CBTE_FCH = DateTimeFormatter.ofPattern("yyyyMMdd");
 
     private final AfipProperties afipProperties;
+    private final AfipContextService afipContextService;
     private final WSFEService wsfeService;
     private final TicketPDFService ticketPDFService;
     private final FacturaAFIPRepository facturaAFIPRepository;
@@ -41,6 +48,7 @@ public class FacturaAFIPService {
     private final ClienteAFIPRepository clienteAFIPRepository;
     private final CAERepository caeRepository;
     private final VentaRepository ventaRepository;
+    private final CreditoRepository creditoRepository;
 
     @Transactional
     public FacturaAFIP emitirFactura(Long ventaId) throws Exception {
@@ -56,20 +64,31 @@ public class FacturaAFIPService {
         Venta venta = ventaRepository.findByIdWithDetalles(ventaId)
                 .orElseThrow(() -> new RuntimeException("Venta no encontrada con ID: " + ventaId));
 
+        AfipContext context = afipContextService.resolveForVenta(venta);
+        return afipContextService.callWithContext(context, () -> emitirFacturaConContexto(venta, ventaId, request, context));
+    }
+
+    private FacturaAFIP emitirFacturaConContexto(
+            Venta venta,
+            Long ventaId,
+            EmitirFacturaAFIPRequest request,
+            AfipContext context
+    ) throws Exception {
+
         facturaAFIPRepository.findByVenta_Id(ventaId).ifPresent(existing -> {
             throw new RuntimeException("La venta ya tiene una factura AFIP asociada");
         });
 
         Integer cbteTipoAUsar = request != null && request.getCbteTipo() != null
                 ? request.getCbteTipo()
-                : afipProperties.getCbteTipo();
+                : context.cbteTipoDefault();
 
         ClienteAFIP clienteAFIP = obtenerOCrearClienteAFIP(venta.getCliente(), request, cbteTipoAUsar);
-        Long ultimoCbteNro = obtenerUltimoComprobanteAutorizado(cbteTipoAUsar);
+        Long ultimoCbteNro = obtenerUltimoComprobanteAutorizado(context, cbteTipoAUsar);
         Long nuevoCbteNro = ultimoCbteNro + 1;
 
         BigDecimal montoAFacturar = request != null ? request.getMontoAFacturar() : null;
-        FacturaAFIP facturaAFIP = crearFacturaAFIP(venta, clienteAFIP, nuevoCbteNro, cbteTipoAUsar, montoAFacturar);
+        FacturaAFIP facturaAFIP = crearFacturaAFIP(venta, clienteAFIP, nuevoCbteNro, cbteTipoAUsar, montoAFacturar, context);
 
         WSFEService.FECAERequest fecaeRequest = prepararFECAERequest(facturaAFIP);
         WSFEService.FECAEResponse fecaeResponse = wsfeService.solicitarCAE(fecaeRequest);
@@ -81,14 +100,21 @@ public class FacturaAFIPService {
         facturaAFIP.setObservaciones(fecaeResponse.getObservaciones());
 
         if ("A".equals(fecaeResponse.getResultado())) {
-            actualizarUltimoComprobante(nuevoCbteNro, cbteTipoAUsar);
+            actualizarUltimoComprobante(context, nuevoCbteNro, cbteTipoAUsar);
         }
 
         FacturaAFIP facturaGuardada = facturaAFIPRepository.save(facturaAFIP);
 
         if ("A".equals(fecaeResponse.getResultado())) {
             try {
-                byte[] pdf = ticketPDFService.generarTicketPDFBytes(facturaGuardada);
+                Credito credito = null;
+                List<Cuota> cuotas = List.of();
+                List<Credito> creditos = creditoRepository.findByVentaIdWithCuotas(ventaId);
+                if (!creditos.isEmpty()) {
+                    credito = creditos.get(0);
+                    cuotas = TicketPDFService.ordenarCuotas(credito.getCuotas());
+                }
+                byte[] pdf = ticketPDFService.generarTicketPDFBytes(facturaGuardada, credito, cuotas);
                 log.info("Ticket PDF generado para factura AFIP {} ({} bytes)", facturaGuardada.getIdFacturaAFIP(), pdf.length);
             } catch (Exception e) {
                 log.warn("No se pudo generar el PDF del ticket: {}", e.getMessage());
@@ -137,7 +163,20 @@ public class FacturaAFIPService {
         if (factura.getCae() == null || factura.getCae().isBlank()) {
             throw new RuntimeException("La factura no tiene CAE asignado");
         }
-        return ticketPDFService.generarTicketPDFBytes(factura);
+        Venta venta = ventaRepository.findByIdWithDetalles(factura.getVenta().getId())
+                .orElseThrow(() -> new RuntimeException("Venta no encontrada"));
+        AfipContext context = afipContextService.resolveForVenta(venta);
+        Credito credito = null;
+        List<Cuota> cuotas = List.of();
+        List<Credito> creditos = creditoRepository.findByVentaIdWithCuotas(venta.getId());
+        if (!creditos.isEmpty()) {
+            credito = creditos.get(0);
+            cuotas = TicketPDFService.ordenarCuotas(credito.getCuotas());
+        }
+        final Credito creditoFinal = credito;
+        final List<Cuota> cuotasFinal = cuotas;
+        return afipContextService.callWithContext(context,
+                () -> ticketPDFService.generarTicketPDFBytes(factura, creditoFinal, cuotasFinal));
     }
 
     public boolean requiereFacturacionAutomatica(String metodoPago) {
@@ -159,22 +198,27 @@ public class FacturaAFIPService {
 
     @Transactional
     public FacturaAFIP intentarFacturarVenta(Long ventaId, EmitirFacturaAFIPRequest configOpcional) {
+        return intentarFacturarVenta(ventaId, configOpcional, null);
+    }
+
+    @Transactional
+    public FacturaAFIP intentarFacturarVenta(
+            Long ventaId,
+            EmitirFacturaAFIPRequest configOpcional,
+            List<PagoVentaRequest> pagosRequest
+    ) {
         if (!afipProperties.isEnabled() || !afipProperties.isAutoFacturarEnVenta()) {
             return null;
         }
 
         Venta venta = ventaRepository.findByIdWithDetalles(ventaId).orElse(null);
-        if (venta == null || venta.getPagos() == null || venta.getPagos().isEmpty()) {
-            log.warn("Facturación ARCA omitida para venta {}: sin pagos visibles", ventaId);
+        if (venta == null) {
+            log.warn("Facturación ARCA omitida para venta {}: venta no encontrada", ventaId);
             return null;
         }
 
-        java.math.BigDecimal montoArca = venta.getPagos().stream()
-                .filter(p -> requiereFacturacionAutomatica(p.getMetodoPago()))
-                .map(com.vida.apirest.model.venta.PagoVenta::getMonto)
-                .reduce(java.math.BigDecimal.ZERO, java.math.BigDecimal::add);
-
-        if (montoArca.compareTo(java.math.BigDecimal.ZERO) <= 0) {
+        BigDecimal montoArca = resolverMontoAFacturar(venta, configOpcional, pagosRequest);
+        if (montoArca.compareTo(BigDecimal.ZERO) <= 0) {
             log.debug("Venta {} sin pagos ARCA (crédito/débito/QR)", ventaId);
             return null;
         }
@@ -184,11 +228,59 @@ public class FacturaAFIPService {
                     ? configOpcional
                     : new EmitirFacturaAFIPRequest();
             request.setMontoAFacturar(montoArca);
-            return emitirFactura(ventaId, request);
+            log.info("Facturación ARCA venta {}: monto a facturar {} (total venta {})",
+                    ventaId, montoArca, venta.getTotal());
+            AfipContext context = afipContextService.resolveForVenta(venta);
+            return afipContextService.callWithContext(context, () -> emitirFacturaConContexto(venta, ventaId, request, context));
         } catch (Exception e) {
             log.error("Error al facturar automáticamente venta {}: {}", ventaId, e.getMessage());
             return null;
         }
+    }
+
+    private BigDecimal resolverMontoAFacturar(
+            Venta venta,
+            EmitirFacturaAFIPRequest config,
+            List<PagoVentaRequest> pagosRequest
+    ) {
+        BigDecimal desdeEntidad = sumarMontoPagosArcaEntidad(venta.getPagos());
+        BigDecimal desdeRequest = sumarMontoPagosArcaRequest(pagosRequest);
+        BigDecimal montoCalculado = desdeEntidad.compareTo(BigDecimal.ZERO) > 0
+                ? desdeEntidad
+                : desdeRequest;
+
+        if (config != null
+                && config.getMontoAFacturar() != null
+                && config.getMontoAFacturar().compareTo(BigDecimal.ZERO) > 0) {
+            BigDecimal tope = venta.getTotal() != null ? venta.getTotal() : montoCalculado;
+            if (tope.compareTo(BigDecimal.ZERO) <= 0) {
+                tope = config.getMontoAFacturar();
+            }
+            return config.getMontoAFacturar().min(tope);
+        }
+        return montoCalculado;
+    }
+
+    private BigDecimal sumarMontoPagosArcaEntidad(Collection<PagoVenta> pagos) {
+        if (pagos == null || pagos.isEmpty()) {
+            return BigDecimal.ZERO;
+        }
+        return pagos.stream()
+                .filter(p -> p.getMonto() != null && requiereFacturacionAutomatica(p.getMetodoPago()))
+                .map(PagoVenta::getMonto)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    private BigDecimal sumarMontoPagosArcaRequest(List<PagoVentaRequest> pagos) {
+        if (pagos == null || pagos.isEmpty()) {
+            return BigDecimal.ZERO;
+        }
+        return pagos.stream()
+                .filter(p -> p.getMonto() != null
+                        && p.getMonto().compareTo(BigDecimal.ZERO) > 0
+                        && requiereFacturacionAutomatica(p.getMetodoPago()))
+                .map(PagoVentaRequest::getMonto)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
     private ClienteAFIP obtenerOCrearClienteAFIP(Cliente cliente, EmitirFacturaAFIPRequest request, Integer cbteTipoAUsar) {
@@ -302,37 +394,39 @@ public class FacturaAFIPService {
         return null;
     }
 
-    private Long obtenerUltimoComprobanteAutorizado(Integer cbteTipoAUsar) throws Exception {
+    private Long obtenerUltimoComprobanteAutorizado(AfipContext context, Integer cbteTipoAUsar) throws Exception {
         try {
-            Long ultimoAFIP = wsfeService.obtenerUltimoComprobanteAutorizado(afipProperties.getPtoVta(), cbteTipoAUsar);
-            actualizarUltimoComprobante(ultimoAFIP, cbteTipoAUsar);
+            Long ultimoAFIP = wsfeService.obtenerUltimoComprobanteAutorizado(context.ptoVta(), cbteTipoAUsar);
+            actualizarUltimoComprobante(context, ultimoAFIP, cbteTipoAUsar);
             return ultimoAFIP;
         } catch (Exception e) {
             log.warn("No se pudo consultar AFIP, usando numeración local: {}", e.getMessage());
-            return caeRepository.findByPtoVtaAndCbteTipo(afipProperties.getPtoVta(), cbteTipoAUsar)
+            return caeRepository.findByEmpresaIdAndPtoVtaAndCbteTipo(context.empresaId(), context.ptoVta(), cbteTipoAUsar)
+                    .or(() -> caeRepository.findByPtoVtaAndCbteTipo(context.ptoVta(), cbteTipoAUsar))
                     .map(CAE::getUltimoCbteNro)
                     .orElseGet(() -> {
-                        CAE cae = new CAE(afipProperties.getPtoVta(), cbteTipoAUsar, 0L);
+                        CAE cae = new CAE(context.empresaId(), context.ptoVta(), cbteTipoAUsar, 0L);
                         caeRepository.save(cae);
                         return 0L;
                     });
         }
     }
 
-    private void actualizarUltimoComprobante(Long numero, Integer cbteTipoAUsar) {
-        CAE cae = caeRepository.findByPtoVtaAndCbteTipo(afipProperties.getPtoVta(), cbteTipoAUsar)
-                .orElseGet(() -> new CAE(afipProperties.getPtoVta(), cbteTipoAUsar, 0L));
+    private void actualizarUltimoComprobante(AfipContext context, Long numero, Integer cbteTipoAUsar) {
+        CAE cae = caeRepository.findByEmpresaIdAndPtoVtaAndCbteTipo(context.empresaId(), context.ptoVta(), cbteTipoAUsar)
+                .orElseGet(() -> new CAE(context.empresaId(), context.ptoVta(), cbteTipoAUsar, 0L));
+        cae.setEmpresaId(context.empresaId());
         cae.setUltimoCbteNro(numero);
         cae.setFechaActualizacion(new Date());
         caeRepository.save(cae);
     }
 
     private FacturaAFIP crearFacturaAFIP(Venta venta, ClienteAFIP clienteAFIP, Long cbteNro,
-                                         Integer cbteTipoAUsar, BigDecimal montoAFacturar) {
+                                         Integer cbteTipoAUsar, BigDecimal montoAFacturar, AfipContext context) {
         FacturaAFIP factura = new FacturaAFIP();
         factura.setVenta(venta);
         factura.setClienteAFIP(clienteAFIP);
-        factura.setPtoVta(afipProperties.getPtoVta());
+        factura.setPtoVta(context.ptoVta());
         factura.setCbteTipo(cbteTipoAUsar);
         factura.setCbteNro(cbteNro);
 
@@ -377,9 +471,7 @@ public class FacturaAFIPService {
             for (VentaDetalle detalle : venta.getDetalles()) {
                 FacturaItemAFIP item = new FacturaItemAFIP();
                 item.setFacturaAFIP(factura);
-                item.setDescripcion(detalle.getArticulo().getModelo() != null
-                        ? detalle.getArticulo().getModelo()
-                        : "Artículo " + detalle.getArticulo().getId());
+                item.setDescripcion(VentaDetalleSupport.descripcionLinea(detalle));
                 item.setCantidad(new BigDecimal(detalle.getCantidad()));
                 item.setPrecioUnitario(detalle.getPrecioUnitario().multiply(ratio).setScale(2, RoundingMode.HALF_UP));
                 item.setSubtotal(detalle.getSubtotal().multiply(ratio).setScale(2, RoundingMode.HALF_UP));

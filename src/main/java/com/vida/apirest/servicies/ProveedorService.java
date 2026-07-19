@@ -3,6 +3,7 @@ package com.vida.apirest.servicies;
 import com.vida.apirest.dto.common.PageResponse;
 import com.vida.apirest.dto.proveedor.ProveedorRequest;
 import com.vida.apirest.dto.proveedor.ProveedorResponse;
+import com.vida.apirest.utils.PaginationUtils;
 import com.vida.apirest.model.persona.Proveedor;
 import com.vida.apirest.repositories.ProveedorRepository;
 import lombok.RequiredArgsConstructor;
@@ -18,9 +19,6 @@ import java.util.List;
 @RequiredArgsConstructor
 public class ProveedorService {
 
-    private static final int DEFAULT_PAGE_SIZE = 15;
-    private static final int MAX_PAGE_SIZE = 100;
-
     private final ProveedorRepository proveedorRepository;
 
     @Transactional(readOnly = true)
@@ -32,12 +30,11 @@ public class ProveedorService {
 
     @Transactional(readOnly = true)
     public PageResponse<ProveedorResponse> findPage(String q, int page, int size, boolean soloActivos) {
-        int safePage = Math.max(0, page);
-        int safeSize = Math.max(1, Math.min(size <= 0 ? DEFAULT_PAGE_SIZE : size, MAX_PAGE_SIZE));
-        String query = q == null ? "" : q.trim();
+        PaginationUtils.PageParams params = PaginationUtils.normalize(page, size);
+        String query = PaginationUtils.normalizeQuery(q);
         Pageable pageable = PageRequest.of(
-                safePage,
-                safeSize,
+                params.page(),
+                params.size(),
                 Sort.by("razonSocial").ascending().and(Sort.by("nombre").ascending())
         );
         return PageResponse.from(

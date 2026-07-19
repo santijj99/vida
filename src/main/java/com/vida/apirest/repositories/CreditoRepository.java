@@ -16,6 +16,9 @@ public interface CreditoRepository extends JpaRepository<Credito, Long> {
 
     List<Credito> findByVentaId(Long ventaId);
 
+    @Query("SELECT DISTINCT c FROM Credito c LEFT JOIN FETCH c.cuotas WHERE c.venta.id = :ventaId")
+    List<Credito> findByVentaIdWithCuotas(@Param("ventaId") Long ventaId);
+
     @Query("""
             SELECT c.cliente.id AS clienteId,
                    COALESCE(SUM(c.importe), 0) AS totalCreditosSacados,
@@ -40,4 +43,14 @@ public interface CreditoRepository extends JpaRepository<Credito, Long> {
             WHERE c.estado = com.vida.apirest.model.credito.Credito.EstadoCredito.ACTIVO
             """)
     List<Long> findClienteIdsConCreditosActivos();
+
+    @Query("""
+            SELECT c FROM Credito c
+            WHERE c.sucursal.empresa.id = :empresaId
+            AND c.estado IN (
+                com.vida.apirest.model.credito.Credito.EstadoCredito.ACTIVO,
+                com.vida.apirest.model.credito.Credito.EstadoCredito.VENCIDO
+            )
+            """)
+    List<Credito> findActivosByEmpresaId(@Param("empresaId") Long empresaId);
 }

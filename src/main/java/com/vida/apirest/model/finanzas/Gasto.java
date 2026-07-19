@@ -24,7 +24,8 @@ import java.util.List;
         indexes = {
                 @Index(name = "ix_gasto_sucursal", columnList = "sucursal_id"),
                 @Index(name = "ix_gasto_numero", columnList = "numero", unique = true),
-                @Index(name = "ix_gasto_categoria", columnList = "categoria_id")
+                @Index(name = "ix_gasto_categoria", columnList = "categoria_id"),
+                @Index(name = "ix_gasto_estado", columnList = "estado")
         }
 )
 public class Gasto {

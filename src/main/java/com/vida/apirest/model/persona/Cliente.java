@@ -12,7 +12,12 @@ import java.util.Set;
 @EqualsAndHashCode(exclude = {"garante", "garantizados", "contactos", "direccion"})
 @ToString(exclude = {"garante", "garantizados", "contactos", "direccion"})
 @Entity
-@Table(name = "cliente")
+@Table(
+        name = "cliente",
+        indexes = {
+                @Index(name = "ix_cliente_dni", columnList = "dni")
+        }
+)
 public class Cliente {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

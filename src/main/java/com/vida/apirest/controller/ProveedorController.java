@@ -7,14 +7,15 @@ import com.vida.apirest.servicies.ProveedorService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
-import java.util.Map;
 
 @RestController
 @RequestMapping("/api/proveedores")
 @RequiredArgsConstructor
+@PreAuthorize("hasAuthority('VER_PROVEEDORES')")
 public class ProveedorController {
 
     private final ProveedorService proveedorService;
@@ -34,46 +35,24 @@ public class ProveedorController {
     }
 
     @GetMapping("/{id:[0-9]+}")
-    public ResponseEntity<?> obtener(@PathVariable Long id) {
-        try {
-            return ResponseEntity.ok(proveedorService.findById(id));
-        } catch (RuntimeException e) {
-            return error(HttpStatus.NOT_FOUND, e.getMessage());
-        }
+    public ResponseEntity<ProveedorResponse> obtener(@PathVariable Long id) {
+        return ResponseEntity.ok(proveedorService.findById(id));
     }
 
     @PostMapping
-    public ResponseEntity<?> crear(@RequestBody ProveedorRequest request) {
-        try {
-            ProveedorResponse response = proveedorService.create(request);
-            return ResponseEntity.status(HttpStatus.CREATED).body(response);
-        } catch (RuntimeException e) {
-            return error(HttpStatus.BAD_REQUEST, e.getMessage());
-        }
+    public ResponseEntity<ProveedorResponse> crear(@RequestBody ProveedorRequest request) {
+        ProveedorResponse response = proveedorService.create(request);
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
     @PutMapping("/{id:[0-9]+}")
-    public ResponseEntity<?> actualizar(@PathVariable Long id, @RequestBody ProveedorRequest request) {
-        try {
-            return ResponseEntity.ok(proveedorService.update(id, request));
-        } catch (RuntimeException e) {
-            return error(HttpStatus.BAD_REQUEST, e.getMessage());
-        }
+    public ResponseEntity<ProveedorResponse> actualizar(@PathVariable Long id, @RequestBody ProveedorRequest request) {
+        return ResponseEntity.ok(proveedorService.update(id, request));
     }
 
     @DeleteMapping("/{id:[0-9]+}")
-    public ResponseEntity<?> desactivar(@PathVariable Long id) {
-        try {
-            proveedorService.desactivar(id);
-            return ResponseEntity.noContent().build();
-        } catch (RuntimeException e) {
-            return error(HttpStatus.NOT_FOUND, e.getMessage());
-        }
-    }
-
-    private ResponseEntity<Map<String, Object>> error(HttpStatus status, String message) {
-        return ResponseEntity.status(status).body(Map.of(
-                "message", message != null ? message : "Error",
-                "statusCode", status.value()));
+    public ResponseEntity<Void> desactivar(@PathVariable Long id) {
+        proveedorService.desactivar(id);
+        return ResponseEntity.noContent().build();
     }
 }

@@ -3,22 +3,29 @@ package com.vida.apirest.config;
 import com.vida.apirest.model.almacen.Deposito;
 import com.vida.apirest.model.almacen.Sucursal;
 import com.vida.apirest.model.auth.Role;
+import com.vida.apirest.model.persona.Empleado;
+import com.vida.apirest.model.persona.Proveedor;
 import com.vida.apirest.model.auth.Usuario;
 import com.vida.apirest.model.auth.UsuarioHasRoles;
+import com.vida.apirest.model.auth.UsuarioSucursal;
 import com.vida.apirest.model.auth.id.UsuarioRoleId;
 import com.vida.apirest.model.empresa.Empresa;
+import com.vida.apirest.model.empresa.EmpresaAfipConfig;
 import com.vida.apirest.model.finanzas.CuentaFinanciera;
 import com.vida.apirest.model.finanzas.Moneda;
-import com.vida.apirest.model.persona.Empleado;
 import com.vida.apirest.repositories.DepositoRepository;
 import com.vida.apirest.repositories.EmpleadoRepository;
+import com.vida.apirest.repositories.EmpresaAfipConfigRepository;
 import com.vida.apirest.repositories.EmpresaRepository;
 import com.vida.apirest.repositories.FinanzasCuentaFinancieraRepository;
 import com.vida.apirest.repositories.MonedaRepository;
+import com.vida.apirest.repositories.ProveedorRepository;
 import com.vida.apirest.repositories.RoleRepository;
+import com.vida.apirest.servicies.ClasificacionService;
 import com.vida.apirest.repositories.SucursalRepository;
 import com.vida.apirest.repositories.UsuarioHasRoleRepository;
 import com.vida.apirest.repositories.UsuarioRepository;
+import com.vida.apirest.repositories.UsuarioSucursalRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.context.annotation.Bean;
@@ -39,11 +46,15 @@ public class DataInitializer {
     private final MonedaRepository monedaRepository;
     private final EmpleadoRepository empleadoRepository;
     private final EmpresaRepository empresaRepository;
+    private final EmpresaAfipConfigRepository empresaAfipConfigRepository;
     private final SucursalRepository sucursalRepository;
     private final DepositoRepository depositoRepository;
     private final FinanzasCuentaFinancieraRepository cuentaFinancieraRepository;
     private final UsuarioRepository usuarioRepository;
     private final UsuarioHasRoleRepository usuarioHasRoleRepository;
+    private final UsuarioSucursalRepository usuarioSucursalRepository;
+    private final ProveedorRepository proveedorRepository;
+    private final ClasificacionService clasificacionService;
     private final PasswordEncoder passwordEncoder;
 
     @Bean
@@ -125,7 +136,7 @@ public class DataInitializer {
             );
 
             for (Empleado empleado : empleados) {
-                if (empleadoRepository.findByDni(empleado.getDni()).isEmpty()) {
+                if (empleadoRepository.findFirstByDniOrderByIdAsc(empleado.getDni()).isEmpty()) {
                     empleadoRepository.save(empleado);
                 }
             }
@@ -246,6 +257,85 @@ public class DataInitializer {
         };
     }
 
+    @Bean
+    @Order(10)
+    public CommandLineRunner seedUsuarioSucursales() {
+        return args -> {
+            Usuario santi = usuarioRepository.findByEmail("santi@gmail.com").orElse(null);
+            Usuario lucio = usuarioRepository.findByEmail("lucio@gmail.com").orElse(null);
+            Sucursal suc001 = sucursalRepository.findByCodigo("SUC001").orElse(null);
+            Sucursal suc002 = sucursalRepository.findByCodigo("SUC002").orElse(null);
+
+            if (santi != null && suc001 != null) {
+                vincularSucursalSiNoExiste(santi, suc001);
+            }
+            if (santi != null && suc002 != null) {
+                vincularSucursalSiNoExiste(santi, suc002);
+            }
+            if (lucio != null && suc001 != null) {
+                vincularSucursalSiNoExiste(lucio, suc001);
+            }
+        };
+    }
+
+    @Bean
+    @Order(12)
+    public CommandLineRunner seedEmpresaAfipConfig() {
+        return args -> {
+            for (Empresa empresa : empresaRepository.findAll()) {
+                if (empresaAfipConfigRepository.findByEmpresaId(empresa.getId()).isPresent()) {
+                    continue;
+                }
+                EmpresaAfipConfig config = new EmpresaAfipConfig();
+                config.setEmpresa(empresa);
+                config.setPtoVta(3);
+                config.setCbteTipoDefault(6);
+                config.setCondicionIva("IVA Responsable Inscripto");
+                String certDir = System.getenv("AFIP_CERTIFICADOS_DIR");
+                if (certDir != null && !certDir.isBlank()) {
+                    config.setCertificadosDirectorio(certDir.trim());
+                    config.setAfipHabilitado(true);
+                } else {
+                    config.setAfipHabilitado(false);
+                }
+                empresaAfipConfigRepository.save(config);
+            }
+        };
+    }
+
+    @Bean
+    @Order(11)
+    public CommandLineRunner seedProveedores() {
+        return args -> {
+            if (proveedorRepository.count() > 0) {
+                return;
+            }
+            Proveedor proveedor = new Proveedor();
+            proveedor.setCodigo("PROV001");
+            proveedor.setRazonSocial("Proveedor Demo");
+            proveedor.setNombre("Proveedor Demo");
+            proveedor.setActivo(true);
+            proveedorRepository.save(proveedor);
+        };
+    }
+
+    @Bean
+    @Order(12)
+    public CommandLineRunner seedClasificaciones() {
+        return args -> {
+            List<String> clasificaciones = List.of(
+                    "BASKET",
+                    "FUTBOL",
+                    "FUTBOL 5",
+                    "FUTBOL 11",
+                    "VERANO"
+            );
+            for (String nombre : clasificaciones) {
+                clasificacionService.seedSiNoExiste(nombre);
+            }
+        };
+    }
+
     private Deposito createDeposito(Sucursal sucursal, String nombre, String codigo, String ubicacion, String descripcion, Deposito.Tipo tipo, Integer capacidadMaxima, String responsable, boolean activo) {
         Deposito deposito = new Deposito();
         deposito.setSucursal(sucursal);
@@ -359,6 +449,12 @@ public class DataInitializer {
         userhasroles.setUsuario(usuario);
         userhasroles.setRole(roles);
         return userhasroles;
+    }
+
+    private void vincularSucursalSiNoExiste(Usuario usuario, Sucursal sucursal) {
+        if (!usuarioSucursalRepository.existsByUsuario_IdAndSucursal_Id(usuario.getId(), sucursal.getId())) {
+            usuarioSucursalRepository.save(new UsuarioSucursal(usuario, sucursal));
+        }
     }
 
 }

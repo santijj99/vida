@@ -4,15 +4,13 @@ import com.vida.apirest.dto.config.ColumnasVistaRequest;
 import com.vida.apirest.dto.config.ColumnasVistaResponse;
 import com.vida.apirest.servicies.PreferenciaVistaService;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.RestController;
-
-import java.util.Map;
 
 @RestController
 @RequestMapping("/api/configuracion-vista")
@@ -22,20 +20,26 @@ public class ConfiguracionVistaController {
     private final PreferenciaVistaService preferenciaVistaService;
 
     @GetMapping("/articulos/columnas")
+    @PreAuthorize("hasAuthority('VER_ARTICULOS')")
     public ResponseEntity<ColumnasVistaResponse> obtenerColumnasArticulos() {
         return ResponseEntity.ok(preferenciaVistaService.obtenerColumnasArticulos());
     }
 
     @PutMapping("/articulos/columnas")
-    public ResponseEntity<?> guardarColumnasArticulos(@RequestBody ColumnasVistaRequest request) {
-        try {
-            ColumnasVistaResponse response = preferenciaVistaService.guardarColumnasArticulos(request.getColumnas());
-            return ResponseEntity.ok(response);
-        } catch (RuntimeException e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
-                    "message", e.getMessage(),
-                    "statusCode", HttpStatus.BAD_REQUEST.value()
-            ));
-        }
+    @PreAuthorize("hasAuthority('VER_ARTICULOS')")
+    public ResponseEntity<ColumnasVistaResponse> guardarColumnasArticulos(@RequestBody ColumnasVistaRequest request) {
+        return ResponseEntity.ok(preferenciaVistaService.guardarColumnasArticulos(request.getColumnas()));
+    }
+
+    @GetMapping("/pedidos/columnas")
+    @PreAuthorize("hasAuthority('VER_PEDIDOS')")
+    public ResponseEntity<ColumnasVistaResponse> obtenerColumnasPedidos() {
+        return ResponseEntity.ok(preferenciaVistaService.obtenerColumnasPedidos());
+    }
+
+    @PutMapping("/pedidos/columnas")
+    @PreAuthorize("hasAuthority('VER_PEDIDOS')")
+    public ResponseEntity<ColumnasVistaResponse> guardarColumnasPedidos(@RequestBody ColumnasVistaRequest request) {
+        return ResponseEntity.ok(preferenciaVistaService.guardarColumnasPedidos(request.getColumnas()));
     }
 }

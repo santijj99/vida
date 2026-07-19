@@ -5,6 +5,7 @@ import java.util.Map;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -15,9 +16,11 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.vida.apirest.dto.ariticulo.ArticuloCodigoSugerenciaResponse;
 import com.vida.apirest.dto.ariticulo.ArticuloCompactResponse;
 import com.vida.apirest.dto.ariticulo.ArticuloCreateRequest;
 import com.vida.apirest.dto.ariticulo.ArticuloFiltrosResponse;
+import com.vida.apirest.dto.ariticulo.ArticuloParaVentaResponse;
 import com.vida.apirest.dto.ariticulo.ArticuloTablaRowResponse;
 import com.vida.apirest.dto.ariticulo.ArticuloUpdateRequest;
 import com.vida.apirest.dto.ariticulo.VariantCreateRequest;
@@ -30,6 +33,7 @@ import lombok.RequiredArgsConstructor;
 @RestController
 @RequestMapping("/api/articulos")
 @RequiredArgsConstructor
+@PreAuthorize("hasAuthority('VER_ARTICULOS')")
 public class ArticuloController {
 
     private final ArticuloService articuloService;
@@ -39,145 +43,111 @@ public class ArticuloController {
         return ResponseEntity.ok(articuloService.obtenerFiltrosTabla());
     }
 
+    @GetMapping("/codigos/sugerencias")
+    public ResponseEntity<List<ArticuloCodigoSugerenciaResponse>> sugerenciasCodigo(
+            @RequestParam String q,
+            @RequestParam(defaultValue = "10") int limit
+    ) {
+        return ResponseEntity.ok(articuloService.buscarSugerenciasCodigo(q, limit));
+    }
+
+    @GetMapping("/codigos/lookup")
+    public ResponseEntity<ArticuloCompactResponse> lookupPorCodigo(@RequestParam String codigo) {
+        return ResponseEntity.ok(articuloService.getCompactByCodigo(codigo));
+    }
+
     @GetMapping("/para-venta")
-    public ResponseEntity<?> listParaVenta(
+    public ResponseEntity<PageResponse<ArticuloParaVentaResponse>> listParaVenta(
             @RequestParam Long sucursalId,
+            @RequestParam(required = false) String categoria,
+            @RequestParam(required = false) String subCategoria,
+            @RequestParam(required = false) List<String> clasificaciones,
+            @RequestParam(required = false) String genero,
+            @RequestParam(required = false) String marca,
+            @RequestParam(required = false) String talle,
+            @RequestParam(required = false) String color,
             @RequestParam(required = false) String q,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "15") int size
     ) {
-        try {
-            PageResponse<?> response = articuloService.findParaVentaPage(sucursalId, q, page, size);
-            return ResponseEntity.ok(response);
-        } catch (RuntimeException e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
-                    "message", e.getMessage(),
-                    "statusCode", HttpStatus.BAD_REQUEST.value()
-            ));
-        }
+        return ResponseEntity.ok(articuloService.findParaVentaPage(
+                sucursalId, categoria, subCategoria, clasificaciones, genero, marca, talle, color, q, page, size));
     }
 
     @GetMapping("/tabla")
     public ResponseEntity<PageResponse<ArticuloTablaRowResponse>> listTabla(
             @RequestParam(required = false) String categoria,
             @RequestParam(required = false) String subCategoria,
+            @RequestParam(required = false) List<String> clasificaciones,
             @RequestParam(required = false) String genero,
             @RequestParam(required = false) String marca,
+            @RequestParam(required = false) String talle,
+            @RequestParam(required = false) String color,
             @RequestParam(required = false) String q,
             @RequestParam(required = false) Long depositoId,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "15") int size
     ) {
         return ResponseEntity.ok(articuloService.findTablaPage(
-                categoria, subCategoria, genero, marca, q, depositoId, page, size));
+                categoria, subCategoria, clasificaciones, genero, marca, talle, color, q, depositoId, page, size));
     }
 
     @PostMapping
-    public ResponseEntity<?> createArticulo(@RequestBody ArticuloCreateRequest request) {
-        try {
-            var articulo = articuloService.createArticulo(request);
-            return ResponseEntity.status(HttpStatus.CREATED).body(
-                    articuloService.getCompactById(articulo.getId()));
-        } catch (RuntimeException e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
-                    "message", e.getMessage(),
-                    "statusCode", HttpStatus.BAD_REQUEST.value()
-            ));
-        }
+    public ResponseEntity<ArticuloCompactResponse> createArticulo(@RequestBody ArticuloCreateRequest request) {
+        var articulo = articuloService.createArticulo(request);
+        return ResponseEntity.status(HttpStatus.CREATED).body(
+                articuloService.getCompactById(articulo.getId()));
     }
 
     @PutMapping("/{id:[0-9]+}")
-    public ResponseEntity<?> updateArticulo(
+    public ResponseEntity<ArticuloCompactResponse> updateArticulo(
             @PathVariable Long id,
             @RequestBody ArticuloUpdateRequest request
     ) {
-        try {
-            articuloService.updateArticulo(id, request);
-            return ResponseEntity.ok(articuloService.getCompactById(id));
-        } catch (RuntimeException e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
-                    "message", e.getMessage(),
-                    "statusCode", HttpStatus.BAD_REQUEST.value()
-            ));
-        }
+        articuloService.updateArticulo(id, request);
+        return ResponseEntity.ok(articuloService.getCompactById(id));
     }
 
     @PutMapping("/{articuloId:[0-9]+}/variantes/{varianteId:[0-9]+}")
-    public ResponseEntity<?> actualizarVarianteUnica(
+    public ResponseEntity<VarianteCompactResponse> actualizarVarianteUnica(
             @PathVariable Long articuloId,
             @PathVariable Long varianteId,
             @RequestBody VariantCreateRequest request
     ) {
-        try {
-            VarianteCompactResponse varianteActualizada =
-                    articuloService.actualizarVarianteUnica(articuloId, varianteId, request);
-            return ResponseEntity.ok(varianteActualizada);
-        } catch (RuntimeException e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
-                    "message", e.getMessage(),
-                    "statusCode", HttpStatus.BAD_REQUEST.value()
-            ));
-        }
+        return ResponseEntity.ok(
+                articuloService.actualizarVarianteUnica(articuloId, varianteId, request));
     }
 
     @PutMapping("/{id:[0-9]+}/archivar")
-    public ResponseEntity<?> softDeleteArticulo(@PathVariable Long id) {
-        try {
-            articuloService.softDeleteArticulo(id);
-            return ResponseEntity.ok(Map.of("message", "Artículo archivado correctamente"));
-        } catch (RuntimeException e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
-                    "message", e.getMessage(),
-                    "statusCode", HttpStatus.BAD_REQUEST.value()
-            ));
-        }
+    public ResponseEntity<Map<String, String>> softDeleteArticulo(@PathVariable Long id) {
+        articuloService.softDeleteArticulo(id);
+        return ResponseEntity.ok(Map.of("message", "Artículo archivado correctamente"));
     }
 
     @DeleteMapping("/{articuloId:[0-9]+}/variantes/{varianteId:[0-9]+}")
-    public ResponseEntity<?> softDeleteVariante(
+    public ResponseEntity<Map<String, String>> softDeleteVariante(
             @PathVariable Long articuloId,
             @PathVariable Long varianteId
     ) {
-        try {
-            articuloService.softDeleteVariante(articuloId, varianteId);
-            return ResponseEntity.ok(Map.of("message", "Variante archivada correctamente"));
-        } catch (RuntimeException e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
-                    "message", e.getMessage(),
-                    "statusCode", HttpStatus.BAD_REQUEST.value()
-            ));
-        }
+        articuloService.softDeleteVariante(articuloId, varianteId);
+        return ResponseEntity.ok(Map.of("message", "Variante archivada correctamente"));
     }
 
     @GetMapping("/{id:[0-9]+}/compact")
-    public ResponseEntity<?> getCompactById(@PathVariable Long id) {
-        try {
-            return ResponseEntity.ok(articuloService.getCompactById(id));
-        } catch (RuntimeException e) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
-                    "message", e.getMessage(),
-                    "statusCode", HttpStatus.NOT_FOUND.value()
-            ));
-        }
+    public ResponseEntity<ArticuloCompactResponse> getCompactById(@PathVariable Long id) {
+        return ResponseEntity.ok(articuloService.getCompactById(id));
     }
 
     @PostMapping("/{id:[0-9]+}/variantes")
-    public ResponseEntity<?> agregarVariante(
+    public ResponseEntity<VarianteCompactResponse> agregarVariante(
             @PathVariable Long id,
             @RequestBody VariantCreateRequest request,
             @RequestParam(required = false) Long depositoId,
             @RequestParam(required = false) Long sucursalId
     ) {
-        try {
-            VarianteCompactResponse variante = articuloService.agregarVariante(
-                    id, request, depositoId, sucursalId);
-            return ResponseEntity.status(HttpStatus.CREATED).body(variante);
-        } catch (RuntimeException e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
-                    "message", e.getMessage(),
-                    "statusCode", HttpStatus.BAD_REQUEST.value()
-            ));
-        }
+        VarianteCompactResponse variante = articuloService.agregarVariante(
+                id, request, depositoId, sucursalId);
+        return ResponseEntity.status(HttpStatus.CREATED).body(variante);
     }
 
     @GetMapping("/archivados")
@@ -186,37 +156,22 @@ public class ArticuloController {
     }
 
     @PutMapping("/{id:[0-9]+}/restaurar")
-    public ResponseEntity<?> restaurarArticulo(@PathVariable Long id) {
-        try {
-            articuloService.restaurarArticulo(id);
-            return ResponseEntity.ok(Map.of("message", "Artículo restaurado correctamente"));
-        } catch (RuntimeException e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
-                    "message", e.getMessage(),
-                    "statusCode", HttpStatus.BAD_REQUEST.value()
-            ));
-        }
+    public ResponseEntity<Map<String, String>> restaurarArticulo(@PathVariable Long id) {
+        articuloService.restaurarArticulo(id);
+        return ResponseEntity.ok(Map.of("message", "Artículo restaurado correctamente"));
     }
 
     @GetMapping("/{id:[0-9]+}/variantes/archivadas")
-    public ResponseEntity<?> getVariantesArchivadas(@PathVariable Long id) {
-        try {
-            return ResponseEntity.ok(articuloService.getVariantesArchivadas(id));
-        } catch (RuntimeException e) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("message", e.getMessage()));
-        }
+    public ResponseEntity<List<VarianteCompactResponse>> getVariantesArchivadas(@PathVariable Long id) {
+        return ResponseEntity.ok(articuloService.getVariantesArchivadas(id));
     }
 
     @PutMapping("/{articuloId:[0-9]+}/variantes/{varianteId:[0-9]+}/restaurar")
-    public ResponseEntity<?> restaurarVariante(
+    public ResponseEntity<Map<String, String>> restaurarVariante(
             @PathVariable Long articuloId,
             @PathVariable Long varianteId
     ) {
-        try {
-            articuloService.restaurarVariante(articuloId, varianteId);
-            return ResponseEntity.ok(Map.of("message", "Variante restaurada correctamente"));
-        } catch (RuntimeException e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", e.getMessage()));
-        }
+        articuloService.restaurarVariante(articuloId, varianteId);
+        return ResponseEntity.ok(Map.of("message", "Variante restaurada correctamente"));
     }
 }

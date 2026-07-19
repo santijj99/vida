@@ -1,0 +1,42 @@
+services:
+  ventas:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ventas-api
+    restart: unless-stopped
+    environment:
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-prod}
+      PORT: ${PORT:-3000}
+
+      # DB default (bootstrap / health). Las DB de clientes van por multi-tenant.
+      SPRING_DATASOURCE_URL: jdbc:postgresql://athland-postgres:5432/${VENTAS_BOOTSTRAP_DB:-ventas_bootstrap}
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-athland}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:?Definí POSTGRES_PASSWORD}
+
+      JWT_SECRET: ${JWT_SECRET:?Definí JWT_SECRET}
+      JWT_EXPIRATION_HOURS: ${JWT_EXPIRATION_HOURS:-24}
+
+      # Multi-tenant → API licencias
+      LICENCIA_ENABLED: ${LICENCIA_ENABLED:-true}
+      LICENCIA_MULTI_TENANT: ${LICENCIA_MULTI_TENANT:-true}
+      LICENCIA_SERVER_URL: ${LICENCIA_SERVER_URL:-http://licencias-api:8080}
+      LICENCIA_AES_KEY: ${LICENCIA_AES_KEY:?Definí LICENCIA_AES_KEY (= AES_KEY de licencias)}
+      LICENCIA_BLOQUEAR: ${LICENCIA_BLOQUEAR:-true}
+
+      AFIP_HOMOLOGACION: ${AFIP_HOMOLOGACION:-true}
+      JAVA_OPTS: ${JAVA_OPTS:--Xms256m -Xmx768m -XX:MaxMetaspaceSize=192m -XX:+UseG1GC}
+    ports:
+      - "${VENTAS_PUBLISH_PORT:-3000}:3000"
+    volumes:
+      - ventas_afip_data:/app/data/afip
+    networks:
+      - athland-net
+
+volumes:
+  ventas_afip_data:
+
+networks:
+  athland-net:
+    external: true
+    name: athland-net

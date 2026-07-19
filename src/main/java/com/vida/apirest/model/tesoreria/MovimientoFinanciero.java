@@ -19,7 +19,8 @@ import java.time.LocalDateTime;
         indexes = {
                 @Index(name = "ix_mov_financiero_cuenta", columnList = "cuenta_id"),
                 @Index(name = "ix_mov_financiero_numero", columnList = "numero", unique = true),
-                @Index(name = "ix_mov_financiero_tipo", columnList = "tipo")
+                @Index(name = "ix_mov_financiero_tipo", columnList = "tipo"),
+                @Index(name = "ix_mov_financiero_created", columnList = "created_at")
         }
 )
 public class MovimientoFinanciero {

@@ -9,6 +9,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 
 public interface VentaRepository extends JpaRepository<Venta, Long> {
@@ -58,4 +59,7 @@ public interface VentaRepository extends JpaRepository<Venta, Long> {
             @Param("q") String q,
             Pageable pageable
     );
+
+    @Query("SELECT DISTINCT v.sucursal.id FROM Venta v WHERE v.empleado.id = :empleadoId")
+    List<Long> findDistinctSucursalIdsByEmpleadoId(@Param("empleadoId") Long empleadoId);
 }

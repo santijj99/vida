@@ -1,5 +1,6 @@
 package com.vida.apirest.dto.venta;
 
+import com.vida.apirest.dto.afip.EmitirFacturaAFIPRequest;
 import lombok.Data;
 
 import java.math.BigDecimal;
@@ -32,4 +33,6 @@ public class VentaCreditoPersonalRequest {
      */
     private String modoDistribucion;
     private LocalDate fechaPrimerVencimiento;
+    /** Facturación ARCA/AFIP cuando el anticipo se cobra con tarjeta u otro medio fiscal. */
+    private EmitirFacturaAFIPRequest facturaAfip;
 }

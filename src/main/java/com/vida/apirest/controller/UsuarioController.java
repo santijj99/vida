@@ -2,9 +2,7 @@ package com.vida.apirest.controller;
 
 import java.io.IOException;
 import java.util.List;
-import java.util.Map;
 
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -22,12 +20,14 @@ import com.vida.apirest.dto.usuario.UpdateUsuarioRequest;
 import com.vida.apirest.dto.usuario.UsuarioResponse;
 import com.vida.apirest.servicies.UsuarioService;
 
+import lombok.RequiredArgsConstructor;
+
 @RestController
 @RequestMapping("/usuario")
+@RequiredArgsConstructor
 public class UsuarioController {
 
-    @Autowired
-    private UsuarioService usuarioService;
+    private final UsuarioService usuarioService;
 
     @GetMapping
     @PreAuthorize("hasAuthority('LEER_USUARIOS')")
@@ -37,59 +37,26 @@ public class UsuarioController {
 
     @PostMapping("/admin/create")
     @PreAuthorize("hasAuthority('CREAR_USUARIOS')")
-    public ResponseEntity<?> createByAdmin(@RequestBody CreateUsuarioRequest request) {
-        try {
-            UsuarioResponse response = usuarioService.createByAdmin(request);
-            return ResponseEntity.status(HttpStatus.CREATED).body(response);
-        } catch (RuntimeException e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
-                    "message", e.getMessage(),
-                    "statusCode", HttpStatus.BAD_REQUEST.value()
-            ));
-        }
+    public ResponseEntity<UsuarioResponse> createByAdmin(@RequestBody CreateUsuarioRequest request) {
+        UsuarioResponse response = usuarioService.createByAdmin(request);
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
     @GetMapping(value = "/{id}")
-    public ResponseEntity<?> findById(@PathVariable Long id) {
-        try {
-            UsuarioResponse response = usuarioService.findById(id);
-            return ResponseEntity.ok(response);
-        } catch (RuntimeException e) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
-                    "message", e.getMessage(),
-                    "statusCode", HttpStatus.NOT_FOUND.value()
-            ));
-        }
+    @PreAuthorize("hasAuthority('LEER_USUARIOS')")
+    public ResponseEntity<UsuarioResponse> findById(@PathVariable Long id) {
+        return ResponseEntity.ok(usuarioService.findById(id));
     }
 
     @PutMapping(value = "/upload/{id}")
-    public ResponseEntity<?> update(@PathVariable Long id, @ModelAttribute UpdateUsuarioRequest request) {
-        try {
-            UsuarioResponse response = usuarioService.updateUsuarioConImagen(id, request);
-            return ResponseEntity.ok(response);
-        } catch (RuntimeException e) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
-                    "message", e.getMessage(),
-                    "statusCode", HttpStatus.NOT_FOUND.value()
-            ));
-        } catch (IOException e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
-                    "message", e.getMessage(),
-                    "statusCode", HttpStatus.INTERNAL_SERVER_ERROR.value()));
-        }
+    @PreAuthorize("hasAuthority('MODIFICAR_USUARIOS')")
+    public ResponseEntity<UsuarioResponse> update(@PathVariable Long id, @ModelAttribute UpdateUsuarioRequest request) throws IOException {
+        return ResponseEntity.ok(usuarioService.updateUsuarioConImagen(id, request));
     }
 
     @PostMapping("/{usuarioId}/asignar-rol/{rolId}")
     @PreAuthorize("hasAuthority('MODIFICAR_USUARIOS')")
-    public ResponseEntity<?> asignarRol(@PathVariable Long usuarioId, @PathVariable Long rolId) {
-        try {
-            UsuarioResponse response = usuarioService.asignarRol(usuarioId, rolId);
-            return ResponseEntity.ok(response);
-        } catch (RuntimeException e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
-                    "message", e.getMessage(),
-                    "statusCode", HttpStatus.BAD_REQUEST.value()
-            ));
-        }
+    public ResponseEntity<UsuarioResponse> asignarRol(@PathVariable Long usuarioId, @PathVariable Long rolId) {
+        return ResponseEntity.ok(usuarioService.asignarRol(usuarioId, rolId));
     }
 }

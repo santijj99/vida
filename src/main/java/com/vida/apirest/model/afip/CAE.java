@@ -18,6 +18,9 @@ public class CAE {
     @Column(name = "id_cae")
     private Long idCAE;
 
+    @Column(name = "empresa_id")
+    private Long empresaId;
+
     @Column(name = "pto_vta", nullable = false)
     private Integer ptoVta;
 
@@ -36,7 +39,8 @@ public class CAE {
         this.fechaActualizacion = new Date();
     }
 
-    public CAE(Integer ptoVta, Integer cbteTipo, Long ultimoCbteNro) {
+    public CAE(Long empresaId, Integer ptoVta, Integer cbteTipo, Long ultimoCbteNro) {
+        this.empresaId = empresaId;
         this.ptoVta = ptoVta;
         this.cbteTipo = cbteTipo;
         this.ultimoCbteNro = ultimoCbteNro;
@@ -50,6 +54,14 @@ public class CAE {
 
     public void setIdCAE(Long idCAE) {
         this.idCAE = idCAE;
+    }
+
+    public Long getEmpresaId() {
+        return empresaId;
+    }
+
+    public void setEmpresaId(Long empresaId) {
+        this.empresaId = empresaId;
     }
 
     public Integer getPtoVta() {

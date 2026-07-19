@@ -6,6 +6,7 @@ import com.vida.apirest.servicies.GastoCategoriaService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -19,49 +20,34 @@ public class GastoCategoriaController {
     private final GastoCategoriaService gastoCategoriaService;
 
     @GetMapping
+    @PreAuthorize("hasAuthority('VER_GASTOS')")
     public ResponseEntity<List<GastoCategoriaResponse>> listar(
             @RequestParam(required = false, defaultValue = "true") Boolean soloActivas) {
         return ResponseEntity.ok(gastoCategoriaService.listar(soloActivas));
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<?> findById(@PathVariable Long id) {
-        try {
-            return ResponseEntity.ok(gastoCategoriaService.findById(id));
-        } catch (RuntimeException e) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(errorBody(e, HttpStatus.NOT_FOUND));
-        }
+    @PreAuthorize("hasAuthority('VER_GASTOS')")
+    public ResponseEntity<GastoCategoriaResponse> findById(@PathVariable Long id) {
+        return ResponseEntity.ok(gastoCategoriaService.findById(id));
     }
 
     @PostMapping
-    public ResponseEntity<?> crear(@RequestBody GastoCategoriaRequest request) {
-        try {
-            return ResponseEntity.status(HttpStatus.CREATED).body(gastoCategoriaService.crear(request));
-        } catch (RuntimeException e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errorBody(e, HttpStatus.BAD_REQUEST));
-        }
+    @PreAuthorize("hasAuthority('GESTIONAR_GASTOS')")
+    public ResponseEntity<GastoCategoriaResponse> crear(@RequestBody GastoCategoriaRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(gastoCategoriaService.crear(request));
     }
 
     @PutMapping("/{id}")
-    public ResponseEntity<?> actualizar(@PathVariable Long id, @RequestBody GastoCategoriaRequest request) {
-        try {
-            return ResponseEntity.ok(gastoCategoriaService.actualizar(id, request));
-        } catch (RuntimeException e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errorBody(e, HttpStatus.BAD_REQUEST));
-        }
+    @PreAuthorize("hasAuthority('GESTIONAR_GASTOS')")
+    public ResponseEntity<GastoCategoriaResponse> actualizar(@PathVariable Long id, @RequestBody GastoCategoriaRequest request) {
+        return ResponseEntity.ok(gastoCategoriaService.actualizar(id, request));
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<?> desactivar(@PathVariable Long id) {
-        try {
-            gastoCategoriaService.desactivar(id);
-            return ResponseEntity.ok(Map.of("message", "Categoría desactivada"));
-        } catch (RuntimeException e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errorBody(e, HttpStatus.BAD_REQUEST));
-        }
-    }
-
-    private Map<String, Object> errorBody(RuntimeException e, HttpStatus status) {
-        return Map.of("message", e.getMessage(), "statusCode", status.value());
+    @PreAuthorize("hasAuthority('GESTIONAR_GASTOS')")
+    public ResponseEntity<Map<String, String>> desactivar(@PathVariable Long id) {
+        gastoCategoriaService.desactivar(id);
+        return ResponseEntity.ok(Map.of("message", "Categoría desactivada"));
     }
 }

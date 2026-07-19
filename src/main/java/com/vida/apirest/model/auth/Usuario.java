@@ -1,6 +1,7 @@
 package com.vida.apirest.model.auth;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.Set;
@@ -62,6 +63,12 @@ public class Usuario implements UserDetails {
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDate createdAt = LocalDate.now();
 
+    @Column(name = "reset_codigo", length = 10)
+    private String resetCodigo;
+
+    @Column(name = "reset_codigo_expira_at")
+    private LocalDateTime resetCodigoExpiraAt;
+
     // Relación con Empleado (uno a uno)
     @OneToOne(mappedBy = "usuario", cascade = CascadeType.ALL)
     private Empleado empleado;
@@ -98,7 +105,7 @@ public class Usuario implements UserDetails {
 
     @Override
     public String getUsername() {
-        return this.email;
+        return this.usuario;
     }
 
     @Override

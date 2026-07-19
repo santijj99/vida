@@ -148,13 +148,14 @@ public class DashboardQueryRepository {
                 FROM stock s
                 LEFT JOIN variante_articulo va ON va.id = s.variante_id
                 LEFT JOIN lista_precio lp ON lp.id = va.lista_precio_id
-                LEFT JOIN LATERAL (
-                    SELECT hp2.precio_nuevo, hp2.costo_nuevo
-                    FROM historial_precio hp2
-                    WHERE hp2.variante_articulo_id = s.variante_id
-                    ORDER BY hp2.fecha DESC
-                    LIMIT 1
-                ) hp ON TRUE
+                LEFT JOIN (
+                    SELECT DISTINCT ON (variante_articulo_id)
+                        variante_articulo_id,
+                        precio_nuevo,
+                        costo_nuevo
+                    FROM historial_precio
+                    ORDER BY variante_articulo_id, fecha DESC
+                ) hp ON hp.variante_articulo_id = s.variante_id
                 WHERE s.cantidad_disponible > 0
                 """
                 + sucursalAndClause(sucursalId, "s.sucursal_id");

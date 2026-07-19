@@ -3,6 +3,7 @@ package com.vida.apirest.repositories;
 import com.vida.apirest.dto.ariticulo.ArticuloParaVentaResponse;
 import com.vida.apirest.dto.ariticulo.ArticuloTablaRowResponse;
 import com.vida.apirest.dto.common.PageResponse;
+import com.vida.apirest.utils.PaginationUtils;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import jakarta.persistence.Query;
@@ -13,12 +14,10 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 @Repository
 public class ArticuloTablaQueryRepository {
-
-    private static final int MAX_PAGE_SIZE = 100;
-    private static final int DEFAULT_PAGE_SIZE = 15;
 
     /** Precio vigente por variante (1 fila por variante, usa ix_hist_precio_variante_fecha). */
     private static final String JOIN_PRECIO_ACTUAL = """
@@ -31,7 +30,7 @@ public class ArticuloTablaQueryRepository {
             ) hp ON hp.variante_articulo_id = v.id
             """;
 
-    /** Primera subcategoría por artículo (misma lógica que ORDER BY t.id LIMIT 1). */
+    /** Subcategoría única por artículo (no incluye clasificaciones). */
     private static final String JOIN_SUBCATEGORIA = """
             LEFT JOIN (
                 SELECT DISTINCT ON (ta.articulo_id)
@@ -39,6 +38,7 @@ public class ArticuloTablaQueryRepository {
                     t.nombre
                 FROM taxon_articulo ta
                 JOIN taxon t ON t.id = ta.taxon_id
+                WHERE ta.tipo = 'SUBCATEGORIA'
                 ORDER BY ta.articulo_id, t.id
             ) sub ON sub.articulo_id = a.id
             """;
@@ -56,6 +56,8 @@ public class ArticuloTablaQueryRepository {
 
     private static final String JOIN_VENTA_BUSQUEDA = """
             LEFT JOIN marca m ON m.id = a.marca_id
+            LEFT JOIN categoria cat ON cat.id = a.categoria_id
+            LEFT JOIN genero g ON g.id = a.genero_id
             LEFT JOIN talle tal ON tal.id = v.talle_id
             LEFT JOIN color col ON col.id = v.color_id
             """;
@@ -74,16 +76,20 @@ public class ArticuloTablaQueryRepository {
     public PageResponse<ArticuloTablaRowResponse> findTablaPage(
             String categoria,
             String subCategoria,
+            List<String> clasificaciones,
             String genero,
             String marca,
+            String talle,
+            String color,
             String q,
             Long depositoId,
             int page,
             int size
     ) {
-        int safeSize = normalizeSize(size);
-        int safePage = Math.max(page, 0);
-        FilterSql filters = buildTablaFilters(categoria, subCategoria, genero, marca, q, depositoId);
+        int safeSize = PaginationUtils.normalizeSize(size);
+        int safePage = PaginationUtils.normalizePage(page);
+        FilterSql filters = buildTablaFilters(
+                categoria, subCategoria, clasificaciones, genero, marca, talle, color, q, depositoId);
 
         long total = countTabla(filters, depositoId);
         if (total == 0) {
@@ -155,13 +161,21 @@ public class ArticuloTablaQueryRepository {
 
     public PageResponse<ArticuloParaVentaResponse> findParaVentaPage(
             Long sucursalId,
+            String categoria,
+            String subCategoria,
+            List<String> clasificaciones,
+            String genero,
+            String marca,
+            String talle,
+            String color,
             String q,
             int page,
             int size
     ) {
-        int safeSize = normalizeSize(size);
-        int safePage = Math.max(page, 0);
-        FilterSql filters = buildVentaFilters(sucursalId, q);
+        int safeSize = PaginationUtils.normalizeSize(size);
+        int safePage = PaginationUtils.normalizePage(page);
+        FilterSql filters = buildVentaFilters(
+                sucursalId, categoria, subCategoria, clasificaciones, genero, marca, talle, color, q);
 
         long total = countVenta(filters, tieneBusqueda(q));
         if (total == 0) {
@@ -241,7 +255,7 @@ public class ArticuloTablaQueryRepository {
     }
 
     private long countVenta(FilterSql filters, boolean conBusqueda) {
-        String busquedaJoins = conBusqueda ? JOIN_VENTA_BUSQUEDA : "";
+        String busquedaJoins = JOIN_VENTA_BUSQUEDA;
 
         String sql = """
                 SELECT COUNT(*)
@@ -285,7 +299,9 @@ public class ArticuloTablaQueryRepository {
     }
 
     private FilterSql buildTablaFilters(
-            String categoria, String subCategoria, String genero, String marca, String q, Long depositoId) {
+            String categoria, String subCategoria, List<String> clasificaciones,
+            String genero, String marca, String talle, String color,
+            String q, Long depositoId) {
         StringBuilder where = new StringBuilder();
         Map<String, Object> params = new HashMap<>();
 
@@ -293,21 +309,7 @@ public class ArticuloTablaQueryRepository {
             params.put("depositoId", depositoId);
         }
 
-        appendExactFilter(where, params, "cat.nombre", "categoria", categoria);
-        appendExactFilter(where, params, "g.nombre", "genero", genero);
-        appendExactFilter(where, params, "m.nombre", "marca", marca);
-
-        if (subCategoria != null && !subCategoria.isBlank()) {
-            where.append("""
-                     AND EXISTS (
-                        SELECT 1 FROM taxon_articulo ta
-                        JOIN taxon t ON t.id = ta.taxon_id
-                        WHERE ta.articulo_id = a.id
-                          AND LOWER(t.nombre) = LOWER(:subCategoria)
-                     )
-                    """);
-            params.put("subCategoria", subCategoria.trim());
-        }
+        appendFiltrosDimensiones(where, params, categoria, subCategoria, clasificaciones, genero, marca, talle, color);
 
         appendSearchFilter(where, params, q,
                 "a.codigo", "a.modelo", "m.nombre", "cat.nombre", "g.nombre",
@@ -316,13 +318,79 @@ public class ArticuloTablaQueryRepository {
         return new FilterSql(where.toString(), params);
     }
 
-    private FilterSql buildVentaFilters(Long sucursalId, String q) {
+    private FilterSql buildVentaFilters(
+            Long sucursalId,
+            String categoria,
+            String subCategoria,
+            List<String> clasificaciones,
+            String genero,
+            String marca,
+            String talle,
+            String color,
+            String q) {
         StringBuilder where = new StringBuilder();
         Map<String, Object> params = new HashMap<>();
         params.put("sucursalId", sucursalId);
+
+        appendFiltrosDimensiones(where, params, categoria, subCategoria, clasificaciones, genero, marca, talle, color);
+
         appendSearchFilter(where, params, q,
-                "a.codigo", "a.modelo", "m.nombre", "tal.numero", "col.nombre", "v.codigo_barras");
+                "a.codigo", "a.modelo", "m.nombre", "cat.nombre", "g.nombre",
+                "tal.numero", "col.nombre", "v.codigo_barras");
+
         return new FilterSql(where.toString(), params);
+    }
+
+    private void appendFiltrosDimensiones(
+            StringBuilder where,
+            Map<String, Object> params,
+            String categoria,
+            String subCategoria,
+            List<String> clasificaciones,
+            String genero,
+            String marca,
+            String talle,
+            String color) {
+        appendExactFilter(where, params, "cat.nombre", "categoria", categoria);
+        appendExactFilter(where, params, "g.nombre", "genero", genero);
+        appendExactFilter(where, params, "m.nombre", "marca", marca);
+        appendExactFilter(where, params, "tal.numero", "talle", talle);
+        appendExactFilter(where, params, "col.nombre", "color", color);
+
+        if (subCategoria != null && !subCategoria.isBlank()) {
+            where.append("""
+                     AND EXISTS (
+                        SELECT 1 FROM taxon_articulo ta
+                        JOIN taxon t ON t.id = ta.taxon_id
+                        WHERE ta.articulo_id = a.id
+                          AND ta.tipo = 'SUBCATEGORIA'
+                          AND LOWER(t.nombre) = LOWER(:subCategoriaFiltro)
+                     )
+                    """);
+            params.put("subCategoriaFiltro", subCategoria.trim());
+        }
+
+        if (clasificaciones != null && !clasificaciones.isEmpty()) {
+            List<String> nombres = clasificaciones.stream()
+                    .filter(Objects::nonNull)
+                    .map(String::trim)
+                    .filter(s -> !s.isEmpty())
+                    .map(String::toLowerCase)
+                    .distinct()
+                    .toList();
+            if (!nombres.isEmpty()) {
+                where.append("""
+                         AND EXISTS (
+                            SELECT 1 FROM taxon_articulo ta
+                            JOIN taxon t ON t.id = ta.taxon_id
+                            WHERE ta.articulo_id = a.id
+                              AND ta.tipo = 'CLASIFICACION'
+                              AND LOWER(t.nombre) IN (:clasificacionesFiltro)
+                         )
+                        """);
+                params.put("clasificacionesFiltro", nombres);
+            }
+        }
     }
 
     private void appendExactFilter(
@@ -386,7 +454,9 @@ public class ArticuloTablaQueryRepository {
     private static boolean necesitaJoinsDimension(FilterSql filters) {
         if (filters.params().containsKey("categoria")
                 || filters.params().containsKey("genero")
-                || filters.params().containsKey("marca")) {
+                || filters.params().containsKey("marca")
+                || filters.params().containsKey("talle")
+                || filters.params().containsKey("color")) {
             return true;
         }
         return filters.params().keySet().stream()
@@ -464,13 +534,6 @@ public class ArticuloTablaQueryRepository {
             ));
         }
         return result;
-    }
-
-    private int normalizeSize(int size) {
-        if (size <= 0) {
-            return DEFAULT_PAGE_SIZE;
-        }
-        return Math.min(size, MAX_PAGE_SIZE);
     }
 
     private Long toLong(Object v) {

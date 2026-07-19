@@ -25,7 +25,7 @@ public class AppUserDetails implements UserDetails {
 
     @Override
     public String getUsername() {
-        return usuario.getEmail();
+        return usuario.getUsuario();
     }
 
     @Override

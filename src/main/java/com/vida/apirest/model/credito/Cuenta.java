@@ -24,7 +24,8 @@ import java.time.LocalDateTime;
         indexes = {
                 @Index(name = "ix_credito_cuenta_cliente", columnList = "cliente_id"),
                 @Index(name = "ix_credito_cuenta_sucursal", columnList = "sucursal_id"),
-                @Index(name = "ix_credito_cuenta_numero", columnList = "numero", unique = true)
+                @Index(name = "ix_credito_cuenta_numero", columnList = "numero", unique = true),
+                @Index(name = "ix_credito_cuenta_activo", columnList = "activo")
         }
 )
 public class Cuenta {

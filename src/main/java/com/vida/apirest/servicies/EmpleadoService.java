@@ -5,7 +5,6 @@ import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.util.List;
-import java.util.stream.Collectors;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -17,8 +16,10 @@ import com.vida.apirest.model.auth.Usuario;
 import com.vida.apirest.model.persona.Empleado;
 import com.vida.apirest.repositories.EmpleadoRepository;
 import com.vida.apirest.repositories.RoleRepository;
-import com.vida.apirest.model.auth.Role;
 import com.vida.apirest.repositories.UsuarioRepository;
+import com.vida.apirest.repositories.UsuarioSucursalRepository;
+import com.vida.apirest.model.auth.Role;
+import com.vida.apirest.utils.FileUploadUtils;
 
 @Service
 public class EmpleadoService {
@@ -32,9 +33,12 @@ public class EmpleadoService {
     @Autowired
     private RoleRepository roleRepository;
 
+    @Autowired
+    private UsuarioSucursalRepository usuarioSucursalRepository;
+
     @Transactional
     public List<EmpleadoResponse> findAll() {
-        return empleadoRepository.findAll().stream().map(this::toEmpleadoResponse).collect(Collectors.toList());
+        return empleadoRepository.findAll().stream().map(this::toEmpleadoResponse).toList();
     }
 
     @Transactional
@@ -103,15 +107,13 @@ public class EmpleadoService {
         }
 
         guardarImagenSiExiste(request, empleado);
-        if (request.getUsuarioId() != null) {
-            vincularUsuario(empleado, request.getUsuarioId());
-        }
+        vincularUsuario(empleado, request.getUsuarioId());
     }
 
     private Empleado guardarImagenSiExiste(CreateEmpleadoRequest request, Empleado empleado) throws IOException {
         if (request.getFile() != null && !request.getFile().isEmpty()) {
             String uploadDir = "uploads/empleado/" + empleado.getId();
-            String fileName = getPerfilFileName(request.getFile().getOriginalFilename());
+            String fileName = FileUploadUtils.safeProfileFileName(request.getFile().getOriginalFilename());
             String filePath = Paths.get(uploadDir, fileName).toString();
 
             Files.createDirectories(Paths.get(uploadDir));
@@ -145,9 +147,12 @@ public class EmpleadoService {
             response.setCelular(empleado.getUsuario().getCelular());
 
             List<Role> rolesBD = roleRepository.findAllByUsuariosHasRoles_Usuario_Id(empleado.getUsuario().getId());
-            List<String> nombresRoles = rolesBD.stream().map(Role::getNombre).collect(Collectors.toList());
+            List<String> nombresRoles = rolesBD.stream().map(Role::getNombre).toList();
             response.setRoles(nombresRoles);
             response.setRolPrincipal(resolverRolPrincipal(nombresRoles));
+            response.setSucursales(usuarioSucursalRepository.findSucursalNombresByUsuarioId(empleado.getUsuario().getId()));
+        } else {
+            response.setSucursales(List.of());
         }
 
         return response;
@@ -161,12 +166,5 @@ public class EmpleadoService {
             return "ADMINISTRADOR";
         }
         return roles.get(0);
-    }
-
-    private String getPerfilFileName(String originalFilename) {
-        if (originalFilename != null && originalFilename.contains(".")) {
-            return "perfil" + originalFilename.substring(originalFilename.lastIndexOf("."));
-        }
-        return "perfil";
     }
 }
