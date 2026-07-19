@@ -29,9 +29,11 @@ public class SecurityConfig {
             "http://localhost:*",
             "http://127.0.0.1:*",
             "http://192.168.100.18:*",
+            "http://179.197.229.236:*",
             "https://*.onrender.com",
             "https://*.netlify.app",
-            "https://*.up.railway.app"
+            "https://*.up.railway.app",
+            "https://*.hstgr.cloud"
     );
 
     private final JwtAuthenticationFilter jwtFilter;
@@ -47,6 +49,7 @@ public class SecurityConfig {
                 .csrf(csrf -> csrf.disable())
                 .authorizeHttpRequests(auth -> {
                     auth.requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+                            .requestMatchers("/actuator/health", "/actuator/info").permitAll()
                             .requestMatchers(HttpMethod.POST, "/auth/login").permitAll()
                             .requestMatchers(HttpMethod.POST, "/auth/forgot-password").permitAll()
                             .requestMatchers(HttpMethod.POST, "/auth/reset-password").permitAll();
