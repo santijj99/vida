@@ -16,6 +16,12 @@ public final class PermisoCodigo {
     /** DELETE /api/stock/{id} */
     public static final String ELIMINAR_STOCK = "ELIMINAR_STOCK";
 
+    /** POST /api/transferencias-stock */
+    public static final String TRANSFERIR_STOCK = "TRANSFERIR_STOCK";
+
+    /** Menú transferencias de stock */
+    public static final String VER_TRANSFERENCIAS_STOCK = "VER_TRANSFERENCIAS_STOCK";
+
     /** GET /usuario */
     public static final String LEER_USUARIOS = "LEER_USUARIOS";
 
@@ -36,11 +42,20 @@ public final class PermisoCodigo {
     public static final String VER_CAJA = "VER_CAJA";
     public static final String VER_ARTICULOS = "VER_ARTICULOS";
     public static final String VER_CATEGORIAS = "VER_CATEGORIAS";
+    public static final String VER_SUBCATEGORIAS = "VER_SUBCATEGORIAS";
+    public static final String VER_TALLES = "VER_TALLES";
+    public static final String VER_COLORES = "VER_COLORES";
+    public static final String VER_GENEROS = "VER_GENEROS";
     public static final String VER_PROMOCIONES = "VER_PROMOCIONES";
     public static final String VER_CLIENTES = "VER_CLIENTES";
     public static final String VER_PROVEEDORES = "VER_PROVEEDORES";
     public static final String VER_PEDIDOS = "VER_PEDIDOS";
     public static final String VER_CUENTAS = "VER_CUENTAS";
+    public static final String CONFIGURAR_CREDITOS = "CONFIGURAR_CREDITOS";
+    public static final String EDITAR_CREDITOS = "EDITAR_CREDITOS";
+    public static final String CONFIGURAR_TICKETS = "CONFIGURAR_TICKETS";
+    public static final String VER_GASTOS = "VER_GASTOS";
+    public static final String GESTIONAR_GASTOS = "GESTIONAR_GASTOS";
     public static final String VER_ORGANIZACION = "VER_ORGANIZACION";
     public static final String VER_EMPLEADOS = "VER_EMPLEADOS";
     public static final String VER_ARCA = "VER_ARCA";
@@ -49,6 +64,8 @@ public final class PermisoCodigo {
         return List.of(
                 LEER_STOCK,
                 ELIMINAR_STOCK,
+                TRANSFERIR_STOCK,
+                VER_TRANSFERENCIAS_STOCK,
                 LEER_USUARIOS,
                 CREAR_USUARIOS,
                 MODIFICAR_USUARIOS,
@@ -59,12 +76,22 @@ public final class PermisoCodigo {
                 VER_CAJA,
                 VER_ARTICULOS,
                 VER_CATEGORIAS,
+                VER_SUBCATEGORIAS,
+                VER_TALLES,
+                VER_COLORES,
+                VER_GENEROS,
                 VER_PROMOCIONES,
                 VER_CLIENTES,
                 VER_PROVEEDORES,
                 VER_PEDIDOS,
                 VER_CUENTAS,
+                CONFIGURAR_CREDITOS,
+                EDITAR_CREDITOS,
+                CONFIGURAR_TICKETS,
+                VER_GASTOS,
+                GESTIONAR_GASTOS,
                 VER_ORGANIZACION,
+                VER_TRANSFERENCIAS_STOCK,
                 VER_EMPLEADOS,
                 VER_ARCA
         );
@@ -78,12 +105,22 @@ public final class PermisoCodigo {
                 VER_CAJA,
                 VER_ARTICULOS,
                 VER_CATEGORIAS,
+                VER_SUBCATEGORIAS,
+                VER_TALLES,
+                VER_COLORES,
+                VER_GENEROS,
                 VER_PROMOCIONES,
                 VER_CLIENTES,
                 VER_PROVEEDORES,
                 VER_PEDIDOS,
                 VER_CUENTAS,
+                CONFIGURAR_CREDITOS,
+                EDITAR_CREDITOS,
+                CONFIGURAR_TICKETS,
+                VER_GASTOS,
+                GESTIONAR_GASTOS,
                 VER_ORGANIZACION,
+                VER_TRANSFERENCIAS_STOCK,
                 VER_EMPLEADOS,
                 VER_ARCA
         );

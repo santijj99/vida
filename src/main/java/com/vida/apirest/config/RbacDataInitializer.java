@@ -19,6 +19,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Profile;
 import org.springframework.core.annotation.Order;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
@@ -28,6 +29,7 @@ import java.util.Map;
 import java.util.Set;
 
 @Configuration
+@Profile("!prod")
 @RequiredArgsConstructor
 public class RbacDataInitializer {
 
@@ -58,6 +60,8 @@ public class RbacDataInitializer {
             Map<String, PermisoSeed> catalogo = new LinkedHashMap<>();
             catalogo.put(PermisoCodigo.LEER_STOCK, new PermisoSeed("Stock", "Leer stock", "Listar stock (GET /api/stock)"));
             catalogo.put(PermisoCodigo.ELIMINAR_STOCK, new PermisoSeed("Stock", "Eliminar stock", "Eliminar stock (DELETE /api/stock/{id})"));
+            catalogo.put(PermisoCodigo.TRANSFERIR_STOCK, new PermisoSeed("Stock", "Transferir stock", "Transferencias entre depósitos (POST /api/transferencias-stock)"));
+            catalogo.put(PermisoCodigo.VER_TRANSFERENCIAS_STOCK, new PermisoSeed("Navegación", "Ver Transferencias de stock", "Pantalla de transferencias entre depósitos"));
             catalogo.put(PermisoCodigo.LEER_USUARIOS, new PermisoSeed("Usuarios", "Leer usuarios", "Listar usuarios (GET /usuario)"));
             catalogo.put(PermisoCodigo.CREAR_USUARIOS, new PermisoSeed("Usuarios", "Crear usuarios", "Alta de usuarios (POST /usuario/admin/create)"));
             catalogo.put(PermisoCodigo.MODIFICAR_USUARIOS, new PermisoSeed("Usuarios", "Modificar usuarios", "Asignar rol (POST /usuario/{id}/asignar-rol/{rolId})"));
@@ -69,11 +73,20 @@ public class RbacDataInitializer {
             catalogo.put(PermisoCodigo.VER_CAJA, new PermisoSeed("Navegación", "Ver Caja", "Sección Caja del menú lateral"));
             catalogo.put(PermisoCodigo.VER_ARTICULOS, new PermisoSeed("Navegación", "Ver Artículos", "Submenú Artículos en Productos"));
             catalogo.put(PermisoCodigo.VER_CATEGORIAS, new PermisoSeed("Navegación", "Ver Categorías", "Submenú Categorías en Productos"));
+            catalogo.put(PermisoCodigo.VER_SUBCATEGORIAS, new PermisoSeed("Navegación", "Ver Subcategorías", "Submenú Subcategorías en Productos"));
+            catalogo.put(PermisoCodigo.VER_TALLES, new PermisoSeed("Navegación", "Ver Talles", "Submenú Talles en Productos"));
+            catalogo.put(PermisoCodigo.VER_COLORES, new PermisoSeed("Navegación", "Ver Colores", "Submenú Colores en Productos"));
+            catalogo.put(PermisoCodigo.VER_GENEROS, new PermisoSeed("Navegación", "Ver Géneros", "Submenú Géneros en Productos"));
             catalogo.put(PermisoCodigo.VER_PROMOCIONES, new PermisoSeed("Navegación", "Ver Promociones", "Submenú Promociones en Productos"));
             catalogo.put(PermisoCodigo.VER_CLIENTES, new PermisoSeed("Navegación", "Ver Clientes", "Sección Clientes del menú lateral"));
             catalogo.put(PermisoCodigo.VER_PROVEEDORES, new PermisoSeed("Navegación", "Ver Proveedores", "Submenú Proveedores"));
             catalogo.put(PermisoCodigo.VER_PEDIDOS, new PermisoSeed("Navegación", "Ver Pedidos", "Submenú Pedidos en Proveedores"));
             catalogo.put(PermisoCodigo.VER_CUENTAS, new PermisoSeed("Navegación", "Ver Cuentas", "Sección Cuentas del menú lateral"));
+            catalogo.put(PermisoCodigo.CONFIGURAR_CREDITOS, new PermisoSeed("Créditos", "Configurar créditos", "Política de mora, gracia y vencimientos"));
+            catalogo.put(PermisoCodigo.EDITAR_CREDITOS, new PermisoSeed("Créditos", "Editar créditos", "Refinanciar y modificar cuotas"));
+            catalogo.put(PermisoCodigo.CONFIGURAR_TICKETS, new PermisoSeed("Documentos", "Configurar tickets PDF", "Formato térmico 80mm o A4"));
+            catalogo.put(PermisoCodigo.VER_GASTOS, new PermisoSeed("Finanzas", "Ver gastos", "Listar gastos (GET /api/gastos)"));
+            catalogo.put(PermisoCodigo.GESTIONAR_GASTOS, new PermisoSeed("Finanzas", "Gestionar gastos", "Alta, pago y cancelación de gastos"));
             catalogo.put(PermisoCodigo.VER_ORGANIZACION, new PermisoSeed("Navegación", "Ver Organización", "Empresas, sucursales, depósitos, cajas y monedas"));
             catalogo.put(PermisoCodigo.VER_EMPLEADOS, new PermisoSeed("Navegación", "Ver Empleados", "Sección Empleados del menú lateral"));
             catalogo.put(PermisoCodigo.VER_ARCA, new PermisoSeed("Navegación", "Ver ARCA", "Sección ARCA del menú lateral"));
@@ -124,14 +137,20 @@ public class RbacDataInitializer {
                         PermisoCodigo.VER_CAJA,
                         PermisoCodigo.VER_ARTICULOS,
                         PermisoCodigo.VER_CLIENTES,
-                        PermisoCodigo.VER_CUENTAS
+                        PermisoCodigo.VER_CUENTAS,
+                        PermisoCodigo.EDITAR_CREDITOS,
+                        PermisoCodigo.VER_GASTOS,
+                        PermisoCodigo.GESTIONAR_GASTOS
                 ));
             }
             if (deposito != null) {
                 assignPermissions(deposito, List.of(
                         PermisoCodigo.LEER_STOCK,
+                        PermisoCodigo.TRANSFERIR_STOCK,
+                        PermisoCodigo.VER_TRANSFERENCIAS_STOCK,
                         PermisoCodigo.VER_DASHBOARD,
-                        PermisoCodigo.VER_ARTICULOS
+                        PermisoCodigo.VER_ARTICULOS,
+                        PermisoCodigo.VER_ORGANIZACION
                 ));
             }
 

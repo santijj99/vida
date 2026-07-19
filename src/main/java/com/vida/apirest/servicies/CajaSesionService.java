@@ -1,6 +1,7 @@
 package com.vida.apirest.servicies;
 
 import com.vida.apirest.dto.venta.AbrirCajaRequest;
+import com.vida.apirest.dto.venta.CajaMovimientoResponse;
 import com.vida.apirest.dto.venta.CajaSesionResponse;
 import com.vida.apirest.dto.venta.CerrarCajaRequest;
 import com.vida.apirest.model.finanzas.CajaSesion;
@@ -17,6 +18,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 @Service
@@ -40,6 +43,21 @@ public class CajaSesionService {
         return cajaSesionRepository.findByCuentaIdOrderByFechaAperturaDesc(cuentaId).stream()
                 .map(s -> mapResponse(s, s.getEstado() == CajaSesion.EstadoSesion.ABIERTA))
                 .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<CajaMovimientoResponse> listarMovimientosSesion(Long sesionId) {
+        CajaSesion sesion = cajaSesionRepository.findByIdWithCuenta(sesionId)
+                .orElseThrow(() -> new RuntimeException("Sesión de caja no encontrada"));
+        LocalDateTime desde = sesion.getFechaApertura();
+        LocalDateTime hasta = sesion.getFechaCierre() != null
+                ? sesion.getFechaCierre()
+                : LocalDateTime.now();
+        List<MovimientoFinanciero> movimientos = new ArrayList<>(
+                movimientoFinancieroRepository.findByCuentaIdAndCreatedAtBetween(
+                        sesion.getCuenta().getId(), desde, hasta));
+        Collections.reverse(movimientos);
+        return movimientos.stream().map(this::mapMovimiento).toList();
     }
 
     @Transactional
@@ -145,14 +163,41 @@ public class CajaSesionService {
             r.setMontoContado(null);
             r.setDiferencia(null);
         } else {
-            r.setTotalIngresos(sesion.getTotalIngresos());
-            r.setTotalEgresos(sesion.getTotalEgresos());
-            r.setMontoEsperado(sesion.getMontoEsperadoCierre());
+            LocalDateTime hasta = sesion.getFechaCierre() != null
+                    ? sesion.getFechaCierre()
+                    : LocalDateTime.now();
+            ArqueoResumen arqueo = calcularArqueo(
+                    sesion.getCuenta().getId(),
+                    sesion.getFechaApertura(),
+                    hasta,
+                    sesion.getMontoApertura());
+            r.setTotalIngresos(sesion.getTotalIngresos() != null ? sesion.getTotalIngresos() : arqueo.totalIngresos());
+            r.setTotalEgresos(sesion.getTotalEgresos() != null ? sesion.getTotalEgresos() : arqueo.totalEgresos());
+            r.setMontoEsperado(sesion.getMontoEsperadoCierre() != null
+                    ? sesion.getMontoEsperadoCierre()
+                    : arqueo.montoEsperado());
             r.setMontoContado(sesion.getMontoContadoCierre());
             r.setDiferencia(sesion.getDiferencia());
-            r.setCantidadMovimientos(0);
+            r.setCantidadMovimientos(arqueo.cantidadMovimientos());
         }
         return r;
+    }
+
+    private CajaMovimientoResponse mapMovimiento(MovimientoFinanciero movimiento) {
+        CajaMovimientoResponse response = new CajaMovimientoResponse();
+        response.setId(movimiento.getId());
+        response.setCuentaId(movimiento.getCuenta().getId());
+        response.setCuentaNombre(movimiento.getCuenta().getNombre());
+        response.setNumero(movimiento.getNumero());
+        response.setTipo(movimiento.getTipo() != null ? movimiento.getTipo().name() : null);
+        response.setMonto(movimiento.getMonto());
+        response.setSaldoAnterior(movimiento.getSaldoAnterior());
+        response.setSaldoNuevo(movimiento.getSaldoNuevo());
+        response.setDescripcion(movimiento.getDescripcion());
+        response.setReferencia(movimiento.getReferencia());
+        response.setResponsable(movimiento.getResponsable());
+        response.setCreatedAt(movimiento.getCreatedAt());
+        return response;
     }
 
     private ArqueoResumen calcularArqueo(

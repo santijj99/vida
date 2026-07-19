@@ -6,25 +6,25 @@ import com.vida.apirest.dto.cliente.CreateClienteSimpleRequest;
 import com.vida.apirest.dto.cliente.CreateClienteWithGaranteAndContactoRequest;
 import com.vida.apirest.dto.common.PageResponse;
 import com.vida.apirest.servicies.ClienteService;
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
-import java.util.Map;
 
 @RestController
 @RequestMapping("/cliente")
+@RequiredArgsConstructor
+@PreAuthorize("hasAuthority('VER_CLIENTES')")
 public class ClienteController {
 
-    @Autowired
-    private ClienteService clienteService;
+    private final ClienteService clienteService;
 
     @GetMapping
     public ResponseEntity<List<ClienteResponse>> getAll() {
-        List<ClienteResponse> clientes = clienteService.findAll();
-        return ResponseEntity.ok(clientes);
+        return ResponseEntity.ok(clienteService.findAll());
     }
 
     @GetMapping("/pagina")
@@ -36,72 +36,39 @@ public class ClienteController {
     }
 
     @GetMapping("/dni/{dni}")
-    public ResponseEntity<?> getByDni(@PathVariable String dni) {
-        try {
-            return ResponseEntity.ok(clienteService.findByDni(dni));
-        } catch (RuntimeException e) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
-                    "message", e.getMessage(), "statusCode", HttpStatus.NOT_FOUND.value()));
-        }
+    public ResponseEntity<ClienteResponse> getByDni(@PathVariable String dni) {
+        return ResponseEntity.ok(clienteService.findByDni(dni));
     }
 
     @GetMapping("/{id:[0-9]+}")
-    public ResponseEntity<?> getById(@PathVariable Long id) {
-        try {
-            ClienteResponse response = clienteService.findById(id);
-            return ResponseEntity.ok(response);
-        } catch (RuntimeException e) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("message", e.getMessage(), "statusCode", HttpStatus.NOT_FOUND.value()));
-        }
+    public ResponseEntity<ClienteResponse> getById(@PathVariable Long id) {
+        return ResponseEntity.ok(clienteService.findById(id));
     }
 
     @PostMapping
-    public ResponseEntity<?> create(@RequestBody CreateClienteRequest request) {
-        try {
-            ClienteResponse response = clienteService.create(request);
-            return ResponseEntity.status(HttpStatus.CREATED).body(response);
-        } catch (RuntimeException e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", e.getMessage(), "statusCode", HttpStatus.BAD_REQUEST.value()));
-        }
+    public ResponseEntity<ClienteResponse> create(@RequestBody CreateClienteRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(clienteService.create(request));
     }
 
     @PostMapping("/solo")
-    public ResponseEntity<?> createClienteOnly(@RequestBody CreateClienteSimpleRequest request) {
-        try {
-            ClienteResponse response = clienteService.createClienteOnly(request);
-            return ResponseEntity.status(HttpStatus.CREATED).body(response);
-        } catch (RuntimeException e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", e.getMessage(), "statusCode", HttpStatus.BAD_REQUEST.value()));
-        }
+    public ResponseEntity<ClienteResponse> createClienteOnly(@RequestBody CreateClienteSimpleRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(clienteService.createClienteOnly(request));
     }
 
     @PostMapping("/con-garante-contacto")
-    public ResponseEntity<?> createClienteWithGaranteAndContacto(@RequestBody CreateClienteWithGaranteAndContactoRequest request) {
-        try {
-            ClienteResponse response = clienteService.createClienteWithGaranteAndContacto(request);
-            return ResponseEntity.status(HttpStatus.CREATED).body(response);
-        } catch (RuntimeException e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", e.getMessage(), "statusCode", HttpStatus.BAD_REQUEST.value()));
-        }
+    public ResponseEntity<ClienteResponse> createClienteWithGaranteAndContacto(
+            @RequestBody CreateClienteWithGaranteAndContactoRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(clienteService.createClienteWithGaranteAndContacto(request));
     }
 
     @PutMapping("/{id:[0-9]+}")
-    public ResponseEntity<?> update(@PathVariable Long id, @RequestBody CreateClienteRequest request) {
-        try {
-            ClienteResponse response = clienteService.update(id, request);
-            return ResponseEntity.ok(response);
-        } catch (RuntimeException e) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("message", e.getMessage(), "statusCode", HttpStatus.NOT_FOUND.value()));
-        }
+    public ResponseEntity<ClienteResponse> update(@PathVariable Long id, @RequestBody CreateClienteRequest request) {
+        return ResponseEntity.ok(clienteService.update(id, request));
     }
 
     @DeleteMapping("/{id:[0-9]+}")
-    public ResponseEntity<?> delete(@PathVariable Long id) {
-        try {
-            clienteService.delete(id);
-            return ResponseEntity.noContent().build();
-        } catch (RuntimeException e) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("message", e.getMessage(), "statusCode", HttpStatus.NOT_FOUND.value()));
-        }
+    public ResponseEntity<Void> delete(@PathVariable Long id) {
+        clienteService.delete(id);
+        return ResponseEntity.noContent().build();
     }
 }

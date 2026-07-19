@@ -11,5 +11,6 @@ public class EmpresaResponse {
     private String razonSocial;
     private String domicilio;
     private String ciudad;
+    private String provincia;
     private String estado;
 }

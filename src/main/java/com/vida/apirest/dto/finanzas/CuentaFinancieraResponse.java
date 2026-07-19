@@ -16,7 +16,8 @@ public class CuentaFinancieraResponse {
     private String banco;
     private BigDecimal saldoInicial;
     private BigDecimal saldoActual;
-    private String personaResponsable;
+    private Long empleadoId;
+    private String empleadoNombre;
     private Boolean activo;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;

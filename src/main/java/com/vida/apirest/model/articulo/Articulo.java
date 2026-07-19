@@ -19,7 +19,9 @@ import org.hibernate.annotations.UpdateTimestamp;
                 @Index(name = "ix_articulo_marca", columnList = "marca_id"),
                 @Index(name = "ix_articulo_categoria", columnList = "categoria_id"),
                 @Index(name = "ix_articulo_genero", columnList = "genero_id"),
-                @Index(name = "ix_articulo_codigo", columnList = "codigo", unique = true)
+                @Index(name = "ix_articulo_codigo", columnList = "codigo", unique = true),
+                @Index(name = "ix_articulo_modelo", columnList = "modelo"),
+                @Index(name = "ix_articulo_estado", columnList = "estado")
         }
 )
 public class Articulo {
@@ -64,13 +66,10 @@ public class Articulo {
     @Column(nullable = false)
     private EstadoProducto estado = EstadoProducto.ACTIVO;
 
-    // Relaciones bidireccionales
-    @OneToMany(mappedBy = "articulo", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
+    // Relaciones bidireccionales — LAZY: usar JOIN FETCH en consultas que las necesiten
+    @OneToMany(mappedBy = "articulo", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
         @JsonManagedReference
         private List<VarianteArticulo> variantes;
-
-    @OneToMany(mappedBy = "articulo", cascade = CascadeType.ALL, orphanRemoval = true)
-    private List<ImagenArticulo> imagenes;
 
     @OneToMany(mappedBy = "articulo", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<TaxonArticulo> taxones;

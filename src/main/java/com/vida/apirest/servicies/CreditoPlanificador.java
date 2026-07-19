@@ -2,11 +2,14 @@ package com.vida.apirest.servicies;
 
 import com.vida.apirest.dto.venta.CreditoCuotaPreviewResponse;
 import com.vida.apirest.dto.venta.CreditoSimulacionResponse;
+import com.vida.apirest.model.credito.CreditoConfigEmpresa;
 import com.vida.apirest.model.credito.Cuota;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.YearMonth;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -51,6 +54,18 @@ public final class CreditoPlanificador {
             String modoDistribucion,
             LocalDateTime fechaInicio
     ) {
+        return planificar(subtotal, plazoMeses, tasaInteresPct, montoAnticipo, modoDistribucion, fechaInicio, null);
+    }
+
+    public static ResultadoPlan planificar(
+            BigDecimal subtotal,
+            int plazoMeses,
+            BigDecimal tasaInteresPct,
+            BigDecimal montoAnticipo,
+            String modoDistribucion,
+            LocalDateTime fechaInicio,
+            CreditoConfigEmpresa.ModoDiaVencimiento modoDiaVencimiento
+    ) {
         if (plazoMeses <= 0) {
             throw new RuntimeException("El plazo debe ser mayor a cero");
         }
@@ -72,6 +87,9 @@ public final class CreditoPlanificador {
         }
 
         LocalDateTime baseFecha = fechaInicio != null ? fechaInicio : LocalDateTime.now();
+        CreditoConfigEmpresa.ModoDiaVencimiento modoDia = modoDiaVencimiento != null
+                ? modoDiaVencimiento
+                : CreditoConfigEmpresa.ModoDiaVencimiento.DIA_10;
 
         ResultadoPlan resultado = new ResultadoPlan();
         resultado.montoSubtotal = subtotal;
@@ -81,10 +99,10 @@ public final class CreditoPlanificador {
         resultado.modoDistribucion = modo;
 
         switch (modo) {
-            case MODO_PRIMERA_CUOTA_ANTICIPO -> planificarPrimeraCuotaAnticipo(resultado, totalConInteres, anticipo, plazoMeses, baseFecha);
-            case MODO_REDUCE_PRIMERA_CUOTA -> planificarReducePrimeraCuota(resultado, totalConInteres, anticipo, plazoMeses, baseFecha);
-            case MODO_ANTICIPO_SUMA_CUOTAS -> planificarAnticipoSumaCuotas(resultado, totalConInteres, anticipo, plazoMeses, baseFecha);
-            default -> planificarCuotasIguales(resultado, totalConInteres, anticipo, plazoMeses, baseFecha);
+            case MODO_PRIMERA_CUOTA_ANTICIPO -> planificarPrimeraCuotaAnticipo(resultado, totalConInteres, anticipo, plazoMeses, baseFecha, modoDia);
+            case MODO_REDUCE_PRIMERA_CUOTA -> planificarReducePrimeraCuota(resultado, totalConInteres, anticipo, plazoMeses, baseFecha, modoDia);
+            case MODO_ANTICIPO_SUMA_CUOTAS -> planificarAnticipoSumaCuotas(resultado, totalConInteres, anticipo, plazoMeses, baseFecha, modoDia);
+            default -> planificarCuotasIguales(resultado, totalConInteres, anticipo, plazoMeses, baseFecha, modoDia);
         }
 
         resultado.montoFinanciado = resultado.cuotas.stream()
@@ -148,13 +166,14 @@ public final class CreditoPlanificador {
             BigDecimal totalConInteres,
             BigDecimal anticipo,
             int plazoMeses,
-            LocalDateTime baseFecha
+            LocalDateTime baseFecha,
+            CreditoConfigEmpresa.ModoDiaVencimiento modoDia
     ) {
         BigDecimal aFinanciar = totalConInteres.subtract(anticipo);
         if (aFinanciar.compareTo(BigDecimal.ZERO) <= 0) {
             throw new RuntimeException("Con este anticipo no queda saldo para financiar en cuotas");
         }
-        resultado.cuotas.addAll(dividirEnCuotas(aFinanciar, plazoMeses, plazoMeses, 1, baseFecha, false, false));
+        resultado.cuotas.addAll(dividirEnCuotas(aFinanciar, plazoMeses, plazoMeses, 1, baseFecha, false, false, modoDia));
     }
 
     private static void planificarAnticipoSumaCuotas(
@@ -162,9 +181,10 @@ public final class CreditoPlanificador {
             BigDecimal totalConInteres,
             BigDecimal anticipo,
             int plazoMeses,
-            LocalDateTime baseFecha
+            LocalDateTime baseFecha,
+            CreditoConfigEmpresa.ModoDiaVencimiento modoDia
     ) {
-        planificarCuotasIguales(resultado, totalConInteres, anticipo, plazoMeses, baseFecha);
+        planificarCuotasIguales(resultado, totalConInteres, anticipo, plazoMeses, baseFecha, modoDia);
         resultado.modoDistribucion = MODO_ANTICIPO_SUMA_CUOTAS;
     }
 
@@ -173,7 +193,8 @@ public final class CreditoPlanificador {
             BigDecimal totalConInteres,
             BigDecimal anticipo,
             int plazoMeses,
-            LocalDateTime baseFecha
+            LocalDateTime baseFecha,
+            CreditoConfigEmpresa.ModoDiaVencimiento modoDia
     ) {
         if (plazoMeses < 2) {
             throw new RuntimeException("Para marcar la primera cuota como anticipo se requieren al menos 2 cuotas");
@@ -185,7 +206,7 @@ public final class CreditoPlanificador {
         CuotaPlan primera = new CuotaPlan();
         primera.numero = 1;
         primera.etiqueta = "CU-1/" + plazoMeses;
-        primera.fechaVencimiento = baseFecha.plusMonths(1);
+        primera.fechaVencimiento = calcularFechaVencimiento(baseFecha, 1, modoDia);
         primera.monto = anticipo;
         primera.saldo = BigDecimal.ZERO;
         primera.estado = Cuota.EstadoCuota.PAGADA;
@@ -198,7 +219,7 @@ public final class CreditoPlanificador {
         if (resto.compareTo(BigDecimal.ZERO) <= 0) {
             throw new RuntimeException("El anticipo cubre el total; no hay cuotas restantes");
         }
-        resultado.cuotas.addAll(dividirEnCuotas(resto, plazoMeses - 1, plazoMeses, 2, baseFecha, false, false));
+        resultado.cuotas.addAll(dividirEnCuotas(resto, plazoMeses - 1, plazoMeses, 2, baseFecha, false, false, modoDia));
     }
 
     private static void planificarReducePrimeraCuota(
@@ -206,7 +227,8 @@ public final class CreditoPlanificador {
             BigDecimal totalConInteres,
             BigDecimal anticipo,
             int plazoMeses,
-            LocalDateTime baseFecha
+            LocalDateTime baseFecha,
+            CreditoConfigEmpresa.ModoDiaVencimiento modoDia
     ) {
         BigDecimal cuotaBase = totalConInteres.divide(BigDecimal.valueOf(plazoMeses), 2, RoundingMode.HALF_UP);
         BigDecimal montoPrimera = cuotaBase.subtract(anticipo);
@@ -217,7 +239,7 @@ public final class CreditoPlanificador {
         CuotaPlan primera = new CuotaPlan();
         primera.numero = 1;
         primera.etiqueta = "CU-1/" + plazoMeses;
-        primera.fechaVencimiento = baseFecha.plusMonths(1);
+        primera.fechaVencimiento = calcularFechaVencimiento(baseFecha, 1, modoDia);
         primera.monto = cuotaBase;
         primera.saldo = montoPrimera;
         primera.estado = montoPrimera.compareTo(BigDecimal.ZERO) == 0
@@ -235,7 +257,7 @@ public final class CreditoPlanificador {
             if (resto.compareTo(BigDecimal.ZERO) <= 0) {
                 throw new RuntimeException("No hay saldo para las cuotas restantes");
             }
-            resultado.cuotas.addAll(dividirEnCuotas(resto, plazoMeses - 1, plazoMeses, 2, baseFecha, false, false));
+            resultado.cuotas.addAll(dividirEnCuotas(resto, plazoMeses - 1, plazoMeses, 2, baseFecha, false, false, modoDia));
         }
     }
 
@@ -246,7 +268,8 @@ public final class CreditoPlanificador {
             int numeroInicial,
             LocalDateTime baseFecha,
             boolean anticipo,
-            boolean pagadaAlCrear
+            boolean pagadaAlCrear,
+            CreditoConfigEmpresa.ModoDiaVencimiento modoDia
     ) {
         List<CuotaPlan> cuotas = new ArrayList<>();
         BigDecimal cuotaBase = importe.divide(BigDecimal.valueOf(cantidadCuotas), 2, RoundingMode.HALF_UP);
@@ -261,7 +284,7 @@ public final class CreditoPlanificador {
             CuotaPlan cuota = new CuotaPlan();
             cuota.numero = numero;
             cuota.etiqueta = "CU-" + numero + "/" + totalPlazoEtiqueta;
-            cuota.fechaVencimiento = baseFecha.plusMonths(numero);
+            cuota.fechaVencimiento = calcularFechaVencimiento(baseFecha, numero, modoDia);
             cuota.monto = monto;
             cuota.saldo = pagadaAlCrear ? BigDecimal.ZERO : monto;
             cuota.estado = pagadaAlCrear ? Cuota.EstadoCuota.PAGADA : Cuota.EstadoCuota.PENDIENTE;
@@ -271,6 +294,29 @@ public final class CreditoPlanificador {
             cuotas.add(cuota);
         }
         return cuotas;
+    }
+
+    private static LocalDateTime calcularFechaVencimiento(
+            LocalDateTime fechaBase,
+            int numeroCuota,
+            CreditoConfigEmpresa.ModoDiaVencimiento modo
+    ) {
+        LocalDate base = fechaBase != null ? fechaBase.toLocalDate() : LocalDate.now();
+        YearMonth mes = YearMonth.from(base).plusMonths(numeroCuota - 1L);
+        CreditoConfigEmpresa.ModoDiaVencimiento modoDia = modo != null
+                ? modo
+                : CreditoConfigEmpresa.ModoDiaVencimiento.DIA_10;
+        int dia = switch (modoDia) {
+            case DIA_1 -> 1;
+            case DIA_5 -> 5;
+            case DIA_10 -> 10;
+            case DIA_15 -> 15;
+            case DIA_20 -> 20;
+            case RANGO_1_10 -> Math.min(10, Math.max(1, base.getDayOfMonth()));
+            case RANGO_1_15 -> Math.min(15, Math.max(1, base.getDayOfMonth()));
+            case ULTIMO_MES -> mes.lengthOfMonth();
+        };
+        return mes.atDay(Math.min(dia, mes.lengthOfMonth())).atStartOfDay();
     }
 
     private static String normalizarModo(String modo) {

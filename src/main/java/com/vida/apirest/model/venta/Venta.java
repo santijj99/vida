@@ -13,7 +13,9 @@ import org.hibernate.annotations.UpdateTimestamp;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
-import java.util.HashSet;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Set;
 
 @Data
@@ -28,7 +30,8 @@ import java.util.Set;
                 @Index(name = "ix_venta_empleado", columnList = "empleado_id"),
                 @Index(name = "ix_venta_sucursal", columnList = "sucursal_id"),
                 @Index(name = "ix_venta_numero", columnList = "numero_factura", unique = true),
-                @Index(name = "ix_venta_fecha", columnList = "fecha_venta")
+                @Index(name = "ix_venta_fecha", columnList = "fecha_venta"),
+                @Index(name = "ix_venta_estado", columnList = "estado")
         }
 )
 public class Venta {
@@ -100,8 +103,9 @@ public class Venta {
 
     // Relaciones
     @OneToMany(mappedBy = "venta", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
-    private Set<VentaDetalle> detalles = new HashSet<>();
+    @OrderBy("id ASC")
+    private List<VentaDetalle> detalles = new ArrayList<>();
 
     @OneToMany(mappedBy = "venta", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
-    private Set<PagoVenta> pagos = new HashSet<>();
+    private Set<PagoVenta> pagos = new LinkedHashSet<>();
 }

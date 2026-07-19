@@ -20,7 +20,8 @@ import java.time.LocalDateTime;
         name = "pago_venta",
         indexes = {
                 @Index(name = "ix_pago_venta_venta", columnList = "venta_id"),
-                @Index(name = "ix_pago_venta_numero", columnList = "numero", unique = true)
+                @Index(name = "ix_pago_venta_numero", columnList = "numero", unique = true),
+                @Index(name = "ix_pago_venta_estado", columnList = "estado")
         }
 )
 public class PagoVenta {
@@ -41,6 +42,7 @@ public class PagoVenta {
     private CuentaFinanciera cuenta;
 
     @Column(name = "numero", nullable = false, length = 50, unique = true)
+    @EqualsAndHashCode.Include
     private String numero;
 
     @Column(name = "monto", nullable = false, precision = 15, scale = 2)

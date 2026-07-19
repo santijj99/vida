@@ -6,6 +6,7 @@ public record DashboardResponse(
         List<DashboardClienteTopResponse> topClientes,
         List<DashboardArticuloTopResponse> topArticulos,
         List<DashboardVentaMetodoPagoResponse> ventasPorMetodoPago,
-        DashboardValorStockResponse valorStock
+        DashboardValorStockResponse valorStock,
+        DashboardCreditosResumenResponse creditos
 ) {
 }

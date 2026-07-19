@@ -1,6 +1,7 @@
 package com.vida.apirest.repositories;
 
 import com.vida.apirest.model.articulo.Articulo;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
@@ -11,36 +12,43 @@ import java.util.Optional;
 
 public interface ArticuloRepository extends JpaRepository<Articulo, Long>, JpaSpecificationExecutor<Articulo> {
 
-	Optional<Articulo> findByCodigo(String codigo);
+    Optional<Articulo> findByCodigo(String codigo);
 
-	List<Articulo> findAllByMarcaNombreContainingIgnoreCase(String nombre);
+    @Query("""
+            SELECT DISTINCT a FROM Articulo a
+            LEFT JOIN FETCH a.marca
+            LEFT JOIN FETCH a.categoria
+            LEFT JOIN FETCH a.genero
+            LEFT JOIN FETCH a.variantes v
+            LEFT JOIN FETCH v.color
+            LEFT JOIN FETCH v.talle
+            WHERE a.id = :id
+            """)
+    Optional<Articulo> findByIdWithVariantes(@Param("id") Long id);
 
-	@Query("select distinct a from Articulo a join a.variantes v join v.talle t where t.numero = :numero")
-	List<Articulo> findAllByTalleNumero(@Param("numero") String numero);
+    @Query("""
+            SELECT DISTINCT a FROM Articulo a
+            LEFT JOIN FETCH a.taxones ta
+            LEFT JOIN FETCH ta.taxon
+            WHERE a.id = :id
+            """)
+    Optional<Articulo> findByIdWithTaxones(@Param("id") Long id);
 
-	@Query("select distinct a from Articulo a join a.variantes v join v.color c where lower(c.nombre) like lower(concat('%', :nombre, '%'))")
-	List<Articulo> findAllByColorNombreContaining(@Param("nombre") String nombre);
+    @Query("""
+            SELECT DISTINCT a FROM Articulo a
+            LEFT JOIN FETCH a.marca
+            LEFT JOIN FETCH a.categoria
+            WHERE a.estado = com.vida.apirest.model.articulo.Articulo.EstadoProducto.ARCHIVADO
+            """)
+    List<Articulo> findArchivadosWithCatalogo();
 
-	@Query("""
-			SELECT DISTINCT a FROM Articulo a
-			LEFT JOIN FETCH a.marca
-			LEFT JOIN FETCH a.categoria
-			LEFT JOIN FETCH a.genero
-			LEFT JOIN FETCH a.variantes v
-			LEFT JOIN FETCH v.color
-			LEFT JOIN FETCH v.talle
-			LEFT JOIN FETCH v.taxon
-			ORDER BY a.codigo ASC, v.id ASC
-			""")
-	List<Articulo> findAllWithDetalle();
-
-	@Query("""
-			SELECT DISTINCT a FROM Articulo a
-			LEFT JOIN FETCH a.marca
-			LEFT JOIN FETCH a.variantes v
-			LEFT JOIN FETCH v.color
-			LEFT JOIN FETCH v.talle
-			WHERE a.id = :id
-			""")
-	Optional<Articulo> findByIdWithDetalle(@Param("id") Long id);
+    @Query("""
+            SELECT a.id, a.codigo, a.modelo, m.nombre
+            FROM Articulo a
+            JOIN a.marca m
+            WHERE a.estado = com.vida.apirest.model.articulo.Articulo.EstadoProducto.ACTIVO
+              AND LOWER(a.codigo) LIKE LOWER(CONCAT(:q, '%'))
+            ORDER BY a.codigo
+            """)
+    List<Object[]> buscarSugerenciasCodigoActivos(@Param("q") String q, Pageable pageable);
 }

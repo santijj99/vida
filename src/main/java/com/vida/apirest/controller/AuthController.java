@@ -1,12 +1,14 @@
 package com.vida.apirest.controller;
 
 import com.vida.apirest.dto.usuario.CreateUsuarioRequest;
-import com.vida.apirest.dto.usuario.UsuarioResponse;
+import com.vida.apirest.dto.usuario.ForgotPasswordRequest;
 import com.vida.apirest.dto.usuario.LoginRequest;
 import com.vida.apirest.dto.usuario.LoginResponse;
+import com.vida.apirest.dto.usuario.ResetPasswordRequest;
 import com.vida.apirest.dto.usuario.UsuarioResponse;
 import com.vida.apirest.servicies.UsuarioService;
-import org.springframework.beans.factory.annotation.Autowired;
+import com.vida.apirest.security.AppUserDetails;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -16,44 +18,36 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import com.vida.apirest.security.AppUserDetails;
-
 import java.util.Map;
-
 
 @RestController
 @RequestMapping("/auth")
+@RequiredArgsConstructor
 public class AuthController {
 
-    @Autowired
-    private UsuarioService usuarioService;
+    private final UsuarioService usuarioService;
 
     @PostMapping(value = "/register")
-    public ResponseEntity<?> create(@RequestBody CreateUsuarioRequest request) {
-        try {
-            LoginResponse usuario = usuarioService.create(request);
-            return ResponseEntity.status(HttpStatus.CREATED).body(usuario);
-        } catch (RuntimeException e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
-                    "message", e.getMessage(),
-                    "statusCode", HttpStatus.BAD_REQUEST.value()
-            ));
-        }
-
-
+    public ResponseEntity<LoginResponse> create(@RequestBody CreateUsuarioRequest request) {
+        LoginResponse usuario = usuarioService.create(request);
+        return ResponseEntity.status(HttpStatus.CREATED).body(usuario);
     }
 
     @PostMapping(value = "/login")
-    public ResponseEntity<?> login(@RequestBody LoginRequest request) {
-        try {
-            LoginResponse response = usuarioService.login(request);
-            return ResponseEntity.ok(response);
-        } catch (RuntimeException e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
-                    "message", e.getMessage(),
-                    "statusCode", HttpStatus.BAD_REQUEST.value()
-            ));
-        }
+    public ResponseEntity<LoginResponse> login(@RequestBody LoginRequest request) {
+        return ResponseEntity.ok(usuarioService.login(request));
+    }
+
+    @PostMapping("/forgot-password")
+    public ResponseEntity<Map<String, Object>> forgotPassword(@RequestBody ForgotPasswordRequest request) {
+        usuarioService.forgotPassword(request);
+        return ResponseEntity.ok(Map.of("message", "Código enviado al correo", "statusCode", 200));
+    }
+
+    @PostMapping("/reset-password")
+    public ResponseEntity<Map<String, Object>> resetPassword(@RequestBody ResetPasswordRequest request) {
+        usuarioService.resetPassword(request);
+        return ResponseEntity.ok(Map.of("message", "Contraseña actualizada", "statusCode", 200));
     }
 
     @GetMapping("/me")

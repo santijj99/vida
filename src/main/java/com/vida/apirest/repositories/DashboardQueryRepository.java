@@ -2,6 +2,7 @@ package com.vida.apirest.repositories;
 
 import com.vida.apirest.dto.dashboard.DashboardArticuloTopResponse;
 import com.vida.apirest.dto.dashboard.DashboardClienteTopResponse;
+import com.vida.apirest.dto.dashboard.DashboardCuotaPorEstadoResponse;
 import com.vida.apirest.dto.dashboard.DashboardValorStockResponse;
 import com.vida.apirest.dto.dashboard.DashboardVentaMetodoPagoResponse;
 import jakarta.persistence.EntityManager;
@@ -147,13 +148,14 @@ public class DashboardQueryRepository {
                 FROM stock s
                 LEFT JOIN variante_articulo va ON va.id = s.variante_id
                 LEFT JOIN lista_precio lp ON lp.id = va.lista_precio_id
-                LEFT JOIN LATERAL (
-                    SELECT hp2.precio_nuevo, hp2.costo_nuevo
-                    FROM historial_precio hp2
-                    WHERE hp2.variante_articulo_id = s.variante_id
-                    ORDER BY hp2.fecha DESC
-                    LIMIT 1
-                ) hp ON TRUE
+                LEFT JOIN (
+                    SELECT DISTINCT ON (variante_articulo_id)
+                        variante_articulo_id,
+                        precio_nuevo,
+                        costo_nuevo
+                    FROM historial_precio
+                    ORDER BY variante_articulo_id, fecha DESC
+                ) hp ON hp.variante_articulo_id = s.variante_id
                 WHERE s.cantidad_disponible > 0
                 """
                 + sucursalAndClause(sucursalId, "s.sucursal_id");
@@ -167,6 +169,41 @@ public class DashboardQueryRepository {
                 toBigDecimal(row[1]),
                 toBigDecimal(row[2])
         );
+    }
+
+    public List<DashboardCuotaPorEstadoResponse> resumenCuotasPorEstado() {
+        String sql = """
+                SELECT
+                    q.estado,
+                    COUNT(*) AS cantidad,
+                    COALESCE(SUM(
+                        CASE q.estado
+                            WHEN 'PAGADA' THEN COALESCE(q.monto, 0)
+                            WHEN 'CANCELADA' THEN COALESCE(q.monto, 0)
+                            WHEN 'ELIMINADA' THEN COALESCE(q.monto, 0)
+                            WHEN 'VENCIDA' THEN COALESCE(q.saldo, 0)
+                                + ROUND(COALESCE(q.monto, 0) * 0.10, 2)
+                            WHEN 'PENDIENTE' THEN COALESCE(q.saldo, q.monto, 0)
+                            ELSE 0
+                        END
+                    ), 0) AS total
+                FROM cuota q
+                GROUP BY q.estado
+                ORDER BY q.estado
+                """;
+
+        Query query = entityManager.createNativeQuery(sql);
+        @SuppressWarnings("unchecked")
+        List<Object[]> rows = query.getResultList();
+        List<DashboardCuotaPorEstadoResponse> result = new ArrayList<>(rows.size());
+        for (Object[] row : rows) {
+            result.add(new DashboardCuotaPorEstadoResponse(
+                    toString(row[0]),
+                    toLong(row[1]),
+                    toBigDecimal(row[2])
+            ));
+        }
+        return result;
     }
 
     private static String whereVentasValidas(Long sucursalId, String sucursalColumn) {

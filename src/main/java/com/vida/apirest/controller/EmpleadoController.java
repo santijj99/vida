@@ -2,23 +2,23 @@ package com.vida.apirest.controller;
 
 import com.vida.apirest.dto.empleado.CreateEmpleadoRequest;
 import com.vida.apirest.dto.empleado.EmpleadoResponse;
-import com.vida.apirest.model.persona.Empleado;
 import com.vida.apirest.servicies.EmpleadoService;
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.io.IOException;
 import java.util.List;
-import java.util.Map;
 
 @RestController
 @RequestMapping("/empleado")
+@RequiredArgsConstructor
+@PreAuthorize("hasAuthority('VER_EMPLEADOS')")
 public class EmpleadoController {
 
-    @Autowired
-    private EmpleadoService empleadoService;
+    private final EmpleadoService empleadoService;
 
     @GetMapping
     public ResponseEntity<List<EmpleadoResponse>> getAll() {
@@ -26,42 +26,24 @@ public class EmpleadoController {
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<?> getById(@PathVariable Long id) {
-        try {
-            EmpleadoResponse response = empleadoService.findById(id);
-            return ResponseEntity.ok(response);
-        } catch (RuntimeException e) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("message", e.getMessage(), "statusCode", HttpStatus.NOT_FOUND.value()));
-        }
+    public ResponseEntity<EmpleadoResponse> getById(@PathVariable Long id) {
+        return ResponseEntity.ok(empleadoService.findById(id));
     }
 
     @PostMapping
-    public ResponseEntity<?> create(@RequestBody CreateEmpleadoRequest request) {
-        try {
-            EmpleadoResponse response = empleadoService.create(request);
-            return ResponseEntity.status(HttpStatus.CREATED).body(response);
-        } catch (RuntimeException | IOException e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("message", e.getMessage(), "statusCode", HttpStatus.BAD_REQUEST.value()));
-        }
+    public ResponseEntity<EmpleadoResponse> create(@RequestBody CreateEmpleadoRequest request) throws IOException {
+        EmpleadoResponse response = empleadoService.create(request);
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
     @PutMapping(value = "/{id}")
-    public ResponseEntity<?> update(@PathVariable Long id, @RequestBody CreateEmpleadoRequest request) {
-        try {
-            EmpleadoResponse response = empleadoService.update(id, request);
-            return ResponseEntity.ok(response);
-        } catch (RuntimeException | IOException e) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("message", e.getMessage(), "statusCode", HttpStatus.NOT_FOUND.value()));
-        }
+    public ResponseEntity<EmpleadoResponse> update(@PathVariable Long id, @RequestBody CreateEmpleadoRequest request) throws IOException {
+        return ResponseEntity.ok(empleadoService.update(id, request));
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<?> delete(@PathVariable Long id) {
-        try {
-            empleadoService.delete(id);
-            return ResponseEntity.noContent().build();
-        } catch (RuntimeException e) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("message", e.getMessage(), "statusCode", HttpStatus.NOT_FOUND.value()));
-        }
+    public ResponseEntity<Void> delete(@PathVariable Long id) {
+        empleadoService.delete(id);
+        return ResponseEntity.noContent().build();
     }
 }

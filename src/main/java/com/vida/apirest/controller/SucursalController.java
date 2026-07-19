@@ -2,72 +2,59 @@ package com.vida.apirest.controller;
 
 import com.vida.apirest.dto.almacen.SucursalCreateRequest;
 import com.vida.apirest.dto.almacen.SucursalResponse;
-import com.vida.apirest.model.almacen.Sucursal;
-import com.vida.apirest.model.empresa.Empresa;
-import com.vida.apirest.repositories.EmpresaRepository;
-import com.vida.apirest.repositories.SucursalRepository;
+import com.vida.apirest.dto.empleado.EmpleadoResponse;
+import com.vida.apirest.servicies.SucursalService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/sucursales")
 @RequiredArgsConstructor
+@PreAuthorize("hasAuthority('VER_ORGANIZACION')")
 public class SucursalController {
 
-    private final SucursalRepository sucursalRepository;
-    private final EmpresaRepository empresaRepository;
+    private final SucursalService sucursalService;
 
     @PostMapping
-    public ResponseEntity<?> createSucursal(@RequestBody SucursalCreateRequest request) {
-        try {
-            Empresa empresa = empresaRepository.findById(request.getEmpresaId())
-                    .orElseThrow(() -> new RuntimeException("Empresa no encontrada con ID: " + request.getEmpresaId()));
-
-            Sucursal sucursal = new Sucursal();
-            sucursal.setEmpresa(empresa);
-            sucursal.setNombre(request.getNombre());
-            sucursal.setCodigo(request.getCodigo());
-            sucursal.setDomicilio(request.getDomicilio());
-            sucursal.setCiudad(request.getCiudad());
-            sucursal.setProvincia(request.getProvincia());
-            sucursal.setEstado(Sucursal.EstadoSucursal.ACTIVA);
-
-            return ResponseEntity.status(HttpStatus.CREATED).body(toResponse(sucursalRepository.save(sucursal)));
-        } catch (RuntimeException e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
-                    "message", e.getMessage(),
-                    "statusCode", HttpStatus.BAD_REQUEST.value()));
-        }
+    public ResponseEntity<SucursalResponse> createSucursal(@RequestBody SucursalCreateRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(sucursalService.create(request));
     }
 
     @GetMapping
-    @Transactional(readOnly = true)
     public ResponseEntity<List<SucursalResponse>> getAllSucursales() {
-        return ResponseEntity.ok(sucursalRepository.findAll().stream()
-                .map(this::toResponse)
-                .collect(Collectors.toList()));
+        return ResponseEntity.ok(sucursalService.findAll());
     }
 
-    private SucursalResponse toResponse(Sucursal sucursal) {
-        SucursalResponse response = new SucursalResponse();
-        response.setId(sucursal.getId());
-        if (sucursal.getEmpresa() != null) {
-            response.setEmpresaId(sucursal.getEmpresa().getId());
-            response.setEmpresaNombre(sucursal.getEmpresa().getNombre());
+    @GetMapping("/{id}/empleados")
+    public ResponseEntity<List<EmpleadoResponse>> listarEmpleados(@PathVariable Long id) {
+        return ResponseEntity.ok(sucursalService.listarEmpleados(id));
+    }
+
+    @GetMapping("/{id}/empleados/disponibles")
+    public ResponseEntity<List<EmpleadoResponse>> listarEmpleadosDisponibles(@PathVariable Long id) {
+        return ResponseEntity.ok(sucursalService.listarEmpleadosDisponibles(id));
+    }
+
+    @PostMapping("/{id}/empleados")
+    public ResponseEntity<EmpleadoResponse> asignarEmpleado(
+            @PathVariable Long id,
+            @RequestBody Map<String, Long> body) {
+        Long empleadoId = body.get("empleadoId");
+        if (empleadoId == null) {
+            throw new IllegalArgumentException("empleadoId es requerido");
         }
-        response.setNombre(sucursal.getNombre());
-        response.setCodigo(sucursal.getCodigo());
-        response.setDomicilio(sucursal.getDomicilio());
-        response.setCiudad(sucursal.getCiudad());
-        response.setProvincia(sucursal.getProvincia());
-        response.setEstado(sucursal.getEstado() != null ? sucursal.getEstado().name() : null);
-        return response;
+        return ResponseEntity.status(HttpStatus.CREATED).body(sucursalService.asignarEmpleado(id, empleadoId));
+    }
+
+    @DeleteMapping("/{id}/empleados/{empleadoId}")
+    public ResponseEntity<Void> quitarEmpleado(@PathVariable Long id, @PathVariable Long empleadoId) {
+        sucursalService.quitarEmpleado(id, empleadoId);
+        return ResponseEntity.noContent().build();
     }
 }

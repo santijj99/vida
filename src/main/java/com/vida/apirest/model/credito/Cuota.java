@@ -19,12 +19,13 @@ import java.time.LocalDateTime;
         name = "cuota",
         indexes = {
                 @Index(name = "ix_cuota_credito", columnList = "credito_id"),
-                @Index(name = "ix_cuota_numero", columnList = "numero")
+                @Index(name = "ix_cuota_numero", columnList = "numero"),
+                @Index(name = "ix_cuota_estado", columnList = "estado")
         }
 )
 public class Cuota {
 
-    public enum EstadoCuota { PENDIENTE, PAGADA, VENCIDA, CANCELADA }
+    public enum EstadoCuota { PENDIENTE, PAGADA, VENCIDA, CANCELADA, ELIMINADA }
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -53,6 +54,12 @@ public class Cuota {
 
     @Column(name = "descripcion", columnDefinition = "TEXT")
     private String descripcion;
+
+    @Column(name = "recargo", precision = 15, scale = 2)
+    private BigDecimal recargo = BigDecimal.ZERO;
+
+    @Column(name = "recargo_exento")
+    private Boolean recargoExento = false;
 
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)

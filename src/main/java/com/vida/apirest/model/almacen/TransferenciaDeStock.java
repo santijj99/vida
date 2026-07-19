@@ -5,15 +5,17 @@ import com.vida.apirest.model.articulo.VarianteArticulo;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
 import java.time.LocalDateTime;
-import java.util.HashSet;
-import java.util.Set;
+import java.util.ArrayList;
+import java.util.List;
 
 @Data
+@EqualsAndHashCode(onlyExplicitlyIncluded = true)
 @NoArgsConstructor
 @AllArgsConstructor
 @Entity
@@ -37,6 +39,7 @@ public class TransferenciaDeStock {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @EqualsAndHashCode.Include
     private Long id;
 
     @Column(name = "numero", nullable = false, length = 50, unique = true)
@@ -79,5 +82,5 @@ public class TransferenciaDeStock {
 
     // Relaciones
     @OneToMany(mappedBy = "transferencia", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
-    private Set<TransferenciaDetalleStock> detalles = new HashSet<>();
+    private List<TransferenciaDetalleStock> detalles = new ArrayList<>();
 }

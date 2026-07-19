@@ -5,6 +5,8 @@ import com.vida.apirest.dto.finanzas.CuentaFinancieraResponse;
 import com.vida.apirest.model.almacen.Sucursal;
 import com.vida.apirest.model.finanzas.CuentaFinanciera;
 import com.vida.apirest.model.finanzas.Moneda;
+import com.vida.apirest.model.persona.Empleado;
+import com.vida.apirest.repositories.EmpleadoRepository;
 import com.vida.apirest.repositories.FinanzasCuentaFinancieraRepository;
 import com.vida.apirest.repositories.SucursalRepository;
 import lombok.RequiredArgsConstructor;
@@ -22,6 +24,7 @@ public class CuentaFinancieraService {
     private final FinanzasCuentaFinancieraRepository cuentaRepository;
     private final SucursalRepository sucursalRepository;
     private final com.vida.apirest.repositories.MonedaRepository monedaRepository;
+    private final EmpleadoRepository empleadoRepository;
 
     @Transactional
     public CuentaFinancieraResponse createCuentaFinanciera(CreateCuentaFinancieraRequest request) {
@@ -55,7 +58,7 @@ public class CuentaFinancieraService {
         cuenta.setBanco(request.getBanco());
         cuenta.setSaldoInicial(request.getSaldoInicial() != null ? request.getSaldoInicial() : BigDecimal.ZERO);
         cuenta.setSaldoActual(request.getSaldoInicial() != null ? request.getSaldoInicial() : BigDecimal.ZERO);
-        cuenta.setPersonaResponsable(request.getPersonaResponsable());
+        cuenta.setEmpleadoResponsable(resolverEmpleado(request.getEmpleadoId()));
         cuenta.setActivo(request.getActivo() != null ? request.getActivo() : true);
 
         CuentaFinanciera saved = cuentaRepository.save(cuenta);
@@ -99,10 +102,29 @@ public class CuentaFinancieraService {
         response.setBanco(cuenta.getBanco());
         response.setSaldoInicial(cuenta.getSaldoInicial());
         response.setSaldoActual(cuenta.getSaldoActual());
-        response.setPersonaResponsable(cuenta.getPersonaResponsable());
+        Empleado empleado = cuenta.getEmpleadoResponsable();
+        if (empleado != null) {
+            response.setEmpleadoId(empleado.getId());
+            response.setEmpleadoNombre(nombreCompletoEmpleado(empleado));
+        }
         response.setActivo(cuenta.getActivo());
         response.setCreatedAt(cuenta.getCreatedAt());
         response.setUpdatedAt(cuenta.getUpdatedAt());
         return response;
+    }
+
+    private Empleado resolverEmpleado(Long empleadoId) {
+        if (empleadoId == null) {
+            return null;
+        }
+        return empleadoRepository.findById(empleadoId)
+                .orElseThrow(() -> new RuntimeException("Empleado no encontrado con ID: " + empleadoId));
+    }
+
+    private String nombreCompletoEmpleado(Empleado empleado) {
+        String nombre = empleado.getNombre() != null ? empleado.getNombre() : "";
+        String apellido = empleado.getApellido() != null ? empleado.getApellido() : "";
+        String completo = (nombre + " " + apellido).trim();
+        return completo.isEmpty() ? null : completo;
     }
 }

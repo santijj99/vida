@@ -49,4 +49,16 @@ public interface PagoCuotaRepository extends JpaRepository<PagoCuota, Long> {
             WHERE p.id = :id
             """)
     Optional<PagoCuota> findByIdWithDetalle(@Param("id") Long id);
+
+    @Query("""
+            SELECT p FROM PagoCuota p
+            JOIN FETCH p.cuota c
+            JOIN FETCH c.credito cr
+            JOIN FETCH cr.cliente cl
+            LEFT JOIN FETCH cr.sucursal s
+            LEFT JOIN FETCH p.movimientoFinanciero
+            WHERE p.id IN :ids
+            ORDER BY p.createdAt ASC, p.id ASC
+            """)
+    List<PagoCuota> findByIdInWithDetalle(@Param("ids") List<Long> ids);
 }

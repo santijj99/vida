@@ -20,6 +20,7 @@ public class ReceptorAfipConsultaService {
     private final ClienteRepository clienteRepository;
     private final ClienteAFIPRepository clienteAFIPRepository;
     private final PadronA13Service padronA13Service;
+    private final AfipContextService afipContextService;
 
     public ReceptorAfipConsultaResponse consultar(Integer docTipo, String docNro) {
         if (docTipo == null || docNro == null || docNro.isBlank()) {
@@ -48,9 +49,11 @@ public class ReceptorAfipConsultaService {
 
     private ReceptorAfipConsultaResponse consultarPadron(Integer docTipo, String numero) {
         try {
-            PadronA13Service.DatosPadron padron = docTipo == 80
-                    ? padronA13Service.consultarPorCuit(numero)
-                    : padronA13Service.consultarPorDni(numero);
+            AfipContext context = afipContextService.resolveForCurrentUser();
+            PadronA13Service.DatosPadron padron = afipContextService.callWithContext(context, () ->
+                    docTipo == 80
+                            ? padronA13Service.consultarPorCuit(numero)
+                            : padronA13Service.consultarPorDni(numero));
             return ReceptorAfipConsultaResponse.builder()
                     .encontrado(true)
                     .razonSocial(padron.razonSocial())

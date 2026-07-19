@@ -16,6 +16,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -24,6 +25,7 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/facturas-afip")
 @RequiredArgsConstructor
+@PreAuthorize("hasAuthority('VER_ARCA')")
 public class FacturaAFIPController {
 
     private final FacturaAFIPService facturaAFIPService;
@@ -88,18 +90,21 @@ public class FacturaAFIPController {
     }
 
     @GetMapping("/token/estado")
-    public ResponseEntity<TokenValidationResponse> estadoToken() {
-        return ResponseEntity.ok(tokenValidatorService.consultarEstadoToken());
+    public ResponseEntity<TokenValidationResponse> estadoToken(
+            @RequestParam(required = false) Long empresaId) {
+        return ResponseEntity.ok(tokenValidatorService.consultarEstadoToken(empresaId));
     }
 
     @PostMapping("/token/validar")
-    public ResponseEntity<TokenValidationResponse> validarToken() {
-        return ResponseEntity.ok(tokenValidatorService.validarYRegenerarToken());
+    public ResponseEntity<TokenValidationResponse> validarToken(
+            @RequestParam(required = false) Long empresaId) {
+        return ResponseEntity.ok(tokenValidatorService.validarYRegenerarToken(empresaId));
     }
 
     @GetMapping("/config/ambiente")
-    public ResponseEntity<AfipAmbienteResponse> consultarAmbiente() {
-        return ResponseEntity.ok(afipConfigService.consultarAmbiente());
+    public ResponseEntity<AfipAmbienteResponse> consultarAmbiente(
+            @RequestParam(required = false) Long empresaId) {
+        return ResponseEntity.ok(afipConfigService.consultarAmbiente(empresaId));
     }
 
     @PutMapping("/config/ambiente")

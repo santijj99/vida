@@ -25,7 +25,8 @@ import java.util.Set;
                 @Index(name = "ix_stock_deposito", columnList = "deposito_id"),
                 @Index(name = "ix_stock_articulo", columnList = "articulo_id"),
                 @Index(name = "ix_stock_variante", columnList = "variante_id"),
-                @Index(name = "ix_stock_sucursal", columnList = "sucursal_id")
+                @Index(name = "ix_stock_sucursal", columnList = "sucursal_id"),
+                @Index(name = "ix_stock_articulo_variante", columnList = "articulo_id, variante_id")
         },
         uniqueConstraints = @UniqueConstraint(columnNames = {"deposito_id", "articulo_id", "variante_id"})
 )

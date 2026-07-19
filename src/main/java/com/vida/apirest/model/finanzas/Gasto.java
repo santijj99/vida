@@ -4,16 +4,18 @@ import com.vida.apirest.model.almacen.Sucursal;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
-import java.util.HashSet;
-import java.util.Set;
+import java.util.ArrayList;
+import java.util.List;
 
 @Data
+@EqualsAndHashCode(onlyExplicitlyIncluded = true)
 @NoArgsConstructor
 @AllArgsConstructor
 @Entity
@@ -22,7 +24,8 @@ import java.util.Set;
         indexes = {
                 @Index(name = "ix_gasto_sucursal", columnList = "sucursal_id"),
                 @Index(name = "ix_gasto_numero", columnList = "numero", unique = true),
-                @Index(name = "ix_gasto_categoria", columnList = "categoria_id")
+                @Index(name = "ix_gasto_categoria", columnList = "categoria_id"),
+                @Index(name = "ix_gasto_estado", columnList = "estado")
         }
 )
 public class Gasto {
@@ -31,6 +34,7 @@ public class Gasto {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @EqualsAndHashCode.Include
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
@@ -80,7 +84,6 @@ public class Gasto {
     @Column(name = "updated_at", nullable = false)
     private LocalDateTime updatedAt;
 
-    // Relaciones
     @OneToMany(mappedBy = "gasto", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
-    private Set<GastoPago> pagos = new HashSet<>();
+    private List<GastoPago> pagos = new ArrayList<>();
 }

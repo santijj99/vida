@@ -548,10 +548,11 @@ public class WSFEService {
     }
     
     private String obtenerCuit() {
-        if (afipProperties.getCuit() != null && !afipProperties.getCuit().isBlank()) {
-            return afipProperties.getCuit();
+        AfipContext context = AfipContextHolder.get();
+        if (context != null && context.cuitSinGuiones() != null && !context.cuitSinGuiones().isBlank()) {
+            return context.cuitSinGuiones();
         }
-        throw new IllegalStateException("afip.cuit no está configurado en application.yml");
+        throw new IllegalStateException("No hay CUIT AFIP en el contexto de la empresa");
     }
     
     // Clases de request/response
