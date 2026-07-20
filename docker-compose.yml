@@ -25,6 +25,8 @@ services:
       LICENCIA_BLOQUEAR: ${LICENCIA_BLOQUEAR:-true}
 
       AFIP_HOMOLOGACION: ${AFIP_HOMOLOGACION:-true}
+      # Evita que /actuator/health marque DOWN por falta de SMTP
+      MANAGEMENT_HEALTH_MAIL_ENABLED: "false"
       JAVA_OPTS: ${JAVA_OPTS:--Xms256m -Xmx768m -XX:MaxMetaspaceSize=192m -XX:+UseG1GC}
     ports:
       - "${VENTAS_PUBLISH_PORT:-3000}:3000"
