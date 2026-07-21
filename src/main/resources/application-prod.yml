@@ -1,40 +1,54 @@
+# Perfil prod (activado con SPRING_PROFILES_ACTIVE=prod)
 app:
   security:
     allow-public-register: false
+  licencia:
+    enabled: true
+    multi-tenant: true
 
 spring:
   datasource:
     hikari:
-      maximum-pool-size: 5
+      maximum-pool-size: 8
       minimum-idle: 2
       connection-timeout: 20000
       max-lifetime: 300000
 
   jpa:
     hibernate:
-      ddl-auto: none
+      # El schema de cada tenant lo crea TenantBootstrap al primer login.
+      # La DB bootstrap puede quedar mínima.
+      ddl-auto: update
     open-in-view: false
+    show-sql: false
     properties:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
-        boot:
-          allow_jdbc_metadata_access: false
-        hbm2ddl:
-          auto: none
-
-  sql:
-    init:
-      mode: never
 
 server:
   tomcat:
     connection-timeout: 60s
     keep-alive-timeout: 30s
 
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: when_authorized
+  health:
+    mail:
+      enabled: false
+
 logging:
   level:
+    root: WARN
+    com.vida.apirest: INFO
     org.hibernate.orm.deprecation: ERROR
 
 afip:
-  enabled: false
+  enabled: ${AFIP_ENABLED:false}
+  homologacion: ${AFIP_HOMOLOGACION:true}
   validar-token-en-login: false
