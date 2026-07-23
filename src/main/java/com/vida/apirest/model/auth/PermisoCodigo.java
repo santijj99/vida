@@ -59,6 +59,8 @@ public final class PermisoCodigo {
     public static final String VER_ORGANIZACION = "VER_ORGANIZACION";
     public static final String VER_EMPLEADOS = "VER_EMPLEADOS";
     public static final String VER_ARCA = "VER_ARCA";
+    public static final String VER_SUELDOS = "VER_SUELDOS";
+    public static final String GESTIONAR_SUELDOS = "GESTIONAR_SUELDOS";
 
     public static List<String> todos() {
         return List.of(
@@ -93,7 +95,9 @@ public final class PermisoCodigo {
                 VER_ORGANIZACION,
                 VER_TRANSFERENCIAS_STOCK,
                 VER_EMPLEADOS,
-                VER_ARCA
+                VER_ARCA,
+                VER_SUELDOS,
+                GESTIONAR_SUELDOS
         );
     }
 
@@ -122,7 +126,8 @@ public final class PermisoCodigo {
                 VER_ORGANIZACION,
                 VER_TRANSFERENCIAS_STOCK,
                 VER_EMPLEADOS,
-                VER_ARCA
+                VER_ARCA,
+                VER_SUELDOS
         );
     }
 }

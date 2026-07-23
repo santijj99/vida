@@ -149,11 +149,24 @@ public class VentaService {
     }
 
     private Empleado cargarEmpleadoOpcional(Long empleadoId) {
-        if (empleadoId == null) {
-            return null;
+        if (empleadoId != null) {
+            Empleado empleado = empleadoRepository.findById(empleadoId)
+                    .orElseThrow(() -> new RuntimeException("Empleado no encontrado con ID: " + empleadoId));
+            if (!Boolean.TRUE.equals(empleado.getActivo())) {
+                throw new RuntimeException("El vendedor seleccionado no está activo");
+            }
+            return empleado;
         }
-        return empleadoRepository.findById(empleadoId)
-                .orElseThrow(() -> new RuntimeException("Empleado no encontrado con ID: " + empleadoId));
+        // Si el POS no envía empleadoId, asociar la venta al empleado del usuario logueado.
+        try {
+            var auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+            if (auth != null && auth.getPrincipal() instanceof com.vida.apirest.security.AppUserDetails details) {
+                return empleadoRepository.findByUsuario_Id(details.getUsuario().getId()).orElse(null);
+            }
+        } catch (Exception ignored) {
+            // sin usuario autenticado → venta sin vendedor
+        }
+        return null;
     }
 
     private Venta inicializarVentaCabecera(

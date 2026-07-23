@@ -15,7 +15,9 @@ import com.vida.apirest.dto.venta.VentaCreateRequest;
 import com.vida.apirest.dto.venta.VentaCreditoPersonalRequest;
 import com.vida.apirest.dto.venta.VentaHistorialItemResponse;
 import com.vida.apirest.dto.venta.VentaResponse;
+import com.vida.apirest.dto.empleado.EmpleadoResponse;
 import com.vida.apirest.servicies.VentaService;
+import com.vida.apirest.servicies.EmpleadoService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpHeaders;
@@ -36,12 +38,19 @@ public class VentaController {
 
     private final VentaService ventaService;
     private final CajaSesionService cajaSesionService;
+    private final EmpleadoService empleadoService;
 
     @PostMapping
     @PreAuthorize("hasAuthority('VER_VENTAS')")
     public ResponseEntity<VentaResponse> registrarVenta(@RequestBody VentaCreateRequest request) {
         VentaResponse response = ventaService.registrarVenta(request);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    }
+
+    @GetMapping("/vendedores")
+    @PreAuthorize("hasAuthority('VER_VENTAS')")
+    public ResponseEntity<List<EmpleadoResponse>> listarVendedores() {
+        return ResponseEntity.ok(empleadoService.findActivosParaVenta());
     }
 
     @PostMapping("/credito-personal/simular")
@@ -107,7 +116,7 @@ public class VentaController {
     }
 
     @GetMapping("/caja/cuentas")
-    @PreAuthorize("hasAuthority('VER_CAJA')")
+    @PreAuthorize("hasAnyAuthority('VER_CAJA', 'VER_VENTAS')")
     public ResponseEntity<List<CajaCuentaResponse>> listarCajas() {
         return ResponseEntity.ok(ventaService.listarCajas());
     }
@@ -120,7 +129,7 @@ public class VentaController {
     }
 
     @GetMapping("/caja/sesiones/activa")
-    @PreAuthorize("hasAuthority('VER_CAJA')")
+    @PreAuthorize("hasAnyAuthority('VER_CAJA', 'VER_VENTAS')")
     public ResponseEntity<CajaSesionResponse> sesionActiva(@RequestParam Long cuentaId) {
         CajaSesionResponse sesion = cajaSesionService.obtenerSesionActiva(cuentaId);
         if (sesion == null) {
