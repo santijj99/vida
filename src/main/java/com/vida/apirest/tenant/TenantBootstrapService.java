@@ -1,5 +1,7 @@
 package com.vida.apirest.tenant;
 
+import com.vida.apirest.config.RbacPermissionSyncSupport;
+import com.vida.apirest.config.SueldoSchemaSupport;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.EntityManagerFactory;
 import lombok.RequiredArgsConstructor;
@@ -20,6 +22,7 @@ import java.util.Map;
 
 /**
  * Crea schema (hbm2ddl update) y un admin mínimo en DBs de tenant vacías.
+ * En tenants ya poblados, sincroniza permisos faltantes y DDL de módulos nuevos.
  * Usa {@link ObjectProvider} para no crear un ciclo con el DataSource multi-tenant.
  */
 @Slf4j
@@ -41,6 +44,9 @@ public class TenantBootstrapService {
                 log.info("Tenant {}: DB sin usuarios, creando admin de bootstrap...", codigoLicencia);
                 seedMinimalAdmin(dataSource);
             }
+            // Siempre: reparar permisos/módulos nuevos en bases existentes (prod multi-tenant).
+            RbacPermissionSyncSupport.syncCatalogoYAdmin(dataSource);
+            SueldoSchemaSupport.apply(dataSource);
         } catch (Exception ex) {
             log.error("Tenant {}: falló el bootstrap de schema/seed: {}", codigoLicencia, ex.getMessage(), ex);
             throw new IllegalStateException(

@@ -12,6 +12,7 @@ public interface EmpleadoRepository extends JpaRepository<Empleado, Long> {
     Optional<Empleado> findByDni(String dni);
     Optional<Empleado> findFirstByDniOrderByIdAsc(String dni);
     Optional<Empleado> findByUsuario_Id(Long usuarioId);
+    List<Empleado> findByActivoTrueOrderByApellidoAscNombreAsc();
 
     @Query("""
             SELECT e FROM Empleado e

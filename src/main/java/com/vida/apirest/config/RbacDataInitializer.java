@@ -90,6 +90,8 @@ public class RbacDataInitializer {
             catalogo.put(PermisoCodigo.VER_ORGANIZACION, new PermisoSeed("Navegación", "Ver Organización", "Empresas, sucursales, depósitos, cajas y monedas"));
             catalogo.put(PermisoCodigo.VER_EMPLEADOS, new PermisoSeed("Navegación", "Ver Empleados", "Sección Empleados del menú lateral"));
             catalogo.put(PermisoCodigo.VER_ARCA, new PermisoSeed("Navegación", "Ver ARCA", "Sección ARCA del menú lateral"));
+            catalogo.put(PermisoCodigo.VER_SUELDOS, new PermisoSeed("Finanzas", "Ver sueldos", "Liquidaciones y comisiones de empleados"));
+            catalogo.put(PermisoCodigo.GESTIONAR_SUELDOS, new PermisoSeed("Finanzas", "Gestionar sueldos", "Configurar, liquidar y pagar sueldos/comisiones"));
 
             catalogo.forEach((codigo, seed) -> {
                 permisoRepository.findByCodigo(codigo).ifPresentOrElse(
