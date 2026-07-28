@@ -41,6 +41,14 @@ public class EmpleadoService {
         return empleadoRepository.findAll().stream().map(this::toEmpleadoResponse).toList();
     }
 
+    @Transactional(readOnly = true)
+    public List<EmpleadoResponse> findActivosParaVenta() {
+        return empleadoRepository.findByActivoTrueOrderByApellidoAscNombreAsc()
+                .stream()
+                .map(this::toEmpleadoResponse)
+                .toList();
+    }
+
     @Transactional
     public EmpleadoResponse findById(Long id) {
         Empleado empleado = empleadoRepository.findById(id)

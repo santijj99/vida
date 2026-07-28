@@ -147,6 +147,11 @@
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
+                <configuration>
+                    <arguments>
+                        <argument>--server.port=3000</argument>
+                    </arguments>
+                </configuration>
             </plugin>
         </plugins>
     </build>

@@ -1,5 +1,5 @@
-server:
-  port: ${PORT:3000}
+0server:
+  port: ${SERVER_PORT:3000}
   address: 0.0.0.0
   compression:
     enabled: true
@@ -14,11 +14,9 @@ app:
     allow-public-register: true
   licencia:
     enabled: ${LICENCIA_ENABLED:true}
-    # Modelo B: un solo apirest enruta a la DB de cada empresa (X-Licencia-Codigo)
     multi-tenant: ${LICENCIA_MULTI_TENANT:true}
     server-url: ${LICENCIA_SERVER_URL:http://localhost:8080}
     codigo: ${LICENCIA_CODIGO:}
-    # Misma clave que app.encryption.aes-key del servidor licencias
     aes-key: ${LICENCIA_AES_KEY:0123456789abcdef0123456789abcdef}
     device-uuid: ${LICENCIA_DEVICE_UUID:}
     cache-minutos: ${LICENCIA_CACHE_MINUTOS:60}
