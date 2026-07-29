@@ -10,7 +10,7 @@ public class CreateCuentaFinancieraRequest {
     private Long monedaId;
     private String nombre;
     private String numero;
-    private String tipo; // CAJA, BANCO, TARJETA_DEBITO, TARJETA_CREDITO, BILLETERA, VIRTUAL
+    private String tipo; // CAJA, BANCO, AHORRO, TARJETA_DEBITO, TARJETA_CREDITO, BILLETERA, VIRTUAL
     private String banco;
     private BigDecimal saldoInicial;
     private Long empleadoId;

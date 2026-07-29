@@ -41,6 +41,7 @@ import java.io.IOException;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.text.DecimalFormat;
+import java.text.DecimalFormatSymbols;
 import java.text.SimpleDateFormat;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -48,6 +49,7 @@ import java.util.Collection;
 import java.util.Comparator;
 import java.util.Date;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 
 @Slf4j
@@ -63,12 +65,24 @@ public class TicketPDFService {
     private static final float ALTO_POR_ITEM_EXTRA = 20f;
     private static final float ALTO_POR_CUOTA = 18f;
     private static final float ALTO_POR_PAGO = 16f;
+    private static final float ALTO_FIRMA_CREDITO = 120f;
     private static final DateTimeFormatter FECHA_VENTA_FMT = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm");
+    private static final DateTimeFormatter FECHA_CREDITO_FMT = DateTimeFormatter.ofPattern("dd-MM-yyyy");
 
     private static final Font FONT_NORMAL = new Font(Font.FontFamily.COURIER, 10, Font.NORMAL);
     private static final Font FONT_BOLD = new Font(Font.FontFamily.COURIER, 10, Font.BOLD);
     private static final Font FONT_LARGE = new Font(Font.FontFamily.COURIER, 16, Font.BOLD);
     private static final DecimalFormat DECIMAL_FORMAT = new DecimalFormat("#,##0.00");
+    private static final DecimalFormat MONEDA_AR_FMT = crearFormatoMonedaAr();
+
+    private static DecimalFormat crearFormatoMonedaAr() {
+        DecimalFormatSymbols symbols = new DecimalFormatSymbols(Locale.forLanguageTag("es-AR"));
+        symbols.setGroupingSeparator('.');
+        symbols.setDecimalSeparator(',');
+        DecimalFormat fmt = new DecimalFormat("#,##0.00", symbols);
+        fmt.setGroupingUsed(true);
+        return fmt;
+    }
 
     public record DatosEmpresaTicket(
             Long empresaId,
@@ -190,8 +204,11 @@ public class TicketPDFService {
             Credito credito,
             List<Cuota> cuotas
     ) throws Exception {
+        if (credito != null) {
+            return generarComprobanteCreditoBytes(venta, empresa, credito, ordenarCuotas(cuotas));
+        }
         if (esFormatoA4(empresa.empresaId())) {
-            return ticketPdfA4Renderer.generarComprobanteVenta(venta, empresa, credito, cuotas);
+            return ticketPdfA4Renderer.generarComprobanteVenta(venta, empresa, null, cuotas);
         }
         int numItems = venta.getDetalles() != null ? venta.getDetalles().size() : 0;
         int numCuotas = cuotas != null ? cuotas.size() : 0;
@@ -204,23 +221,217 @@ public class TicketPDFService {
 
         try {
             agregarInfoEmpresa(document, empresa);
-            agregarInfoComprobanteVenta(document, venta, credito);
+            agregarInfoComprobanteVenta(document, venta, null);
             agregarClienteVenta(document, venta);
             agregarItemsVenta(document, venta);
             agregarTotalVenta(document, venta);
-            agregarPagosVenta(document, venta.getPagos(), credito);
-            if (credito != null) {
-                agregarResumenCredito(document, credito);
-            }
-            if (cuotas != null && !cuotas.isEmpty()) {
-                agregarPlanCuotas(document, cuotas);
-            }
+            agregarPagosVenta(document, venta.getPagos(), null);
             agregarPiePagina(document, false);
         } finally {
             document.close();
         }
 
         return baos.toByteArray();
+    }
+
+    /**
+     * Comprobante de crédito estilo comercio: resumen, firma del cliente, ítems y plan de cuotas.
+     * En A4 se imprimen dos copias (original / duplicado) para dejar una firmada en el local.
+     */
+    private byte[] generarComprobanteCreditoBytes(
+            Venta venta,
+            DatosEmpresaTicket empresa,
+            Credito credito,
+            List<Cuota> cuotas
+    ) throws Exception {
+        if (esFormatoA4(empresa.empresaId())) {
+            return ticketPdfA4Renderer.generarComprobanteCredito(venta, empresa, credito, cuotas);
+        }
+
+        int numItems = venta.getDetalles() != null ? venta.getDetalles().size() : 0;
+        int numCuotas = cuotas != null ? cuotas.size() : 0;
+        float alto = ALTO_BASE + ALTO_FIRMA_CREDITO
+                + Math.max(0, numItems - 3) * ALTO_POR_ITEM_EXTRA
+                + numCuotas * ALTO_POR_CUOTA;
+        Document document = new Document(new Rectangle(ANCHO_TICKET, alto));
+        document.setMargins(12, 12, 12, 12);
+
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        PdfWriter.getInstance(document, baos);
+        document.open();
+        try {
+            renderizarCuerpoComprobanteCredito(document, venta, empresa, credito, cuotas, true);
+        } finally {
+            document.close();
+        }
+        return baos.toByteArray();
+    }
+
+    void renderizarCuerpoComprobanteCredito(
+            Document document,
+            Venta venta,
+            DatosEmpresaTicket empresa,
+            Credito credito,
+            List<Cuota> cuotas,
+            boolean incluirFirma
+    ) throws DocumentException {
+        Paragraph empresaP = new Paragraph(nvl(empresa.razonSocial(), "EMPRESA"), FONT_LARGE);
+        empresaP.setAlignment(Element.ALIGN_CENTER);
+        document.add(empresaP);
+
+        Paragraph aviso = new Paragraph("Comprobante no válido como Factura", FONT_NORMAL);
+        aviso.setAlignment(Element.ALIGN_CENTER);
+        document.add(aviso);
+        document.add(new Paragraph(" "));
+
+        Paragraph datos = new Paragraph();
+        datos.setFont(FONT_NORMAL);
+        String fecha = venta.getFechaVenta() != null
+                ? venta.getFechaVenta().format(FECHA_CREDITO_FMT)
+                : LocalDateTime.now().format(FECHA_CREDITO_FMT);
+        datos.add(new Chunk("Fecha: " + fecha + "\n", FONT_NORMAL));
+        datos.add(new Chunk("CREDITO: " + nvl(credito.getNumero(), "-") + "\n", FONT_BOLD));
+
+        Cliente cliente = venta.getCliente() != null ? venta.getCliente() : credito.getCliente();
+        String nombreCliente = nombreCliente(cliente);
+        String dniCliente = cliente != null && cliente.getDni() != null ? cliente.getDni() : "-";
+        datos.add(new Chunk("Nombre: " + nombreCliente + "\n", FONT_NORMAL));
+        datos.add(new Chunk("DNI: " + dniCliente + "\n", FONT_NORMAL));
+        document.add(datos);
+        document.add(new Paragraph(" "));
+
+        BigDecimal total = venta.getTotal() != null ? venta.getTotal() : valorSeguro(credito.getImporte());
+        BigDecimal deuda = credito.getSaldo() != null ? credito.getSaldo() : valorSeguro(credito.getImporte());
+        BigDecimal pago = calcularPagoCredito(venta, total, deuda);
+
+        Paragraph montos = new Paragraph();
+        montos.add(new Chunk("Total a pagar: " + formatoMonedaAr(total) + "\n", FONT_BOLD));
+        montos.add(new Chunk("Pago: " + formatoMonedaAr(pago) + "\n", FONT_NORMAL));
+        montos.add(new Chunk("Deuda: " + formatoMonedaAr(deuda) + "\n", FONT_BOLD));
+        document.add(montos);
+
+        if (incluirFirma) {
+            agregarBloqueFirmaCliente(document);
+        }
+
+        document.add(new Paragraph(" "));
+        document.add(new LineSeparator());
+        document.add(new Paragraph(" "));
+
+        PdfPTable items = new PdfPTable(4);
+        items.setWidthPercentage(100);
+        items.setWidths(new float[]{2.2f, 3.2f, 2.2f, 1.2f});
+        agregarCelda(items, "Marca", FONT_BOLD, Element.ALIGN_LEFT);
+        agregarCelda(items, "Modelo", FONT_BOLD, Element.ALIGN_LEFT);
+        agregarCelda(items, "Precio", FONT_BOLD, Element.ALIGN_RIGHT);
+        agregarCelda(items, "N°", FONT_BOLD, Element.ALIGN_CENTER);
+
+        if (venta.getDetalles() != null) {
+            for (VentaDetalle detalle : venta.getDetalles()) {
+                agregarCelda(items, marcaDetalle(detalle), FONT_NORMAL, Element.ALIGN_LEFT);
+                agregarCelda(items, modeloDetalle(detalle), FONT_NORMAL, Element.ALIGN_LEFT);
+                BigDecimal precio = detalle.getTotal() != null ? detalle.getTotal() : detalle.getSubtotal();
+                agregarCelda(items, MONEDA_AR_FMT.format(precio != null ? precio : BigDecimal.ZERO), FONT_NORMAL, Element.ALIGN_RIGHT);
+                agregarCelda(items, String.valueOf(detalle.getCantidad() != null ? detalle.getCantidad() : 0), FONT_NORMAL, Element.ALIGN_CENTER);
+            }
+        }
+        document.add(items);
+        document.add(new Paragraph(" "));
+
+        if (cuotas != null && !cuotas.isEmpty()) {
+            PdfPTable plan = new PdfPTable(3);
+            plan.setWidthPercentage(100);
+            plan.setWidths(new float[]{1.2f, 2.5f, 2.5f});
+            agregarCelda(plan, "Cuota", FONT_BOLD, Element.ALIGN_LEFT);
+            agregarCelda(plan, "Saldo", FONT_BOLD, Element.ALIGN_RIGHT);
+            agregarCelda(plan, "Vencimiento", FONT_BOLD, Element.ALIGN_CENTER);
+
+            for (Cuota cuota : cuotas) {
+                BigDecimal saldoCuota = cuota.getSaldo() != null ? cuota.getSaldo() : cuota.getMonto();
+                agregarCelda(plan, cuota.getNumero() != null ? cuota.getNumero() : "-", FONT_NORMAL, Element.ALIGN_LEFT);
+                agregarCelda(plan, MONEDA_AR_FMT.format(valorSeguro(saldoCuota)), FONT_NORMAL, Element.ALIGN_RIGHT);
+                agregarCelda(plan, formatearFechaCuota(cuota.getFechaVencimiento()), FONT_NORMAL, Element.ALIGN_CENTER);
+            }
+            document.add(plan);
+            document.add(new Paragraph(" "));
+        }
+    }
+
+    private void agregarBloqueFirmaCliente(Document document) throws DocumentException {
+        document.add(new Paragraph(" "));
+        Paragraph firma = new Paragraph();
+        firma.add(new Chunk("Firma\n", FONT_NORMAL));
+        firma.add(new Chunk("_______________________\n\n", FONT_NORMAL));
+        firma.add(new Chunk("Aclaración\n", FONT_NORMAL));
+        firma.add(new Chunk("_______________________\n\n", FONT_NORMAL));
+        firma.add(new Chunk("DNI\n", FONT_NORMAL));
+        firma.add(new Chunk("_______________________\n", FONT_NORMAL));
+        document.add(firma);
+    }
+
+    static BigDecimal calcularPagoCredito(Venta venta, BigDecimal total, BigDecimal deuda) {
+        if (venta.getPagos() != null && !venta.getPagos().isEmpty()) {
+            BigDecimal anticipo = venta.getPagos().stream()
+                    .filter(p -> p.getMonto() != null && p.getMonto().compareTo(BigDecimal.ZERO) > 0)
+                    .filter(p -> {
+                        String metodo = p.getMetodoPago() == null ? "" : p.getMetodoPago().trim().toUpperCase(Locale.ROOT);
+                        return !metodo.equals("CREDITO");
+                    })
+                    .map(PagoVenta::getMonto)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+            if (anticipo.compareTo(BigDecimal.ZERO) > 0) {
+                return anticipo;
+            }
+        }
+        BigDecimal t = valorSeguroStatic(total);
+        BigDecimal d = valorSeguroStatic(deuda);
+        BigDecimal diff = t.subtract(d);
+        return diff.compareTo(BigDecimal.ZERO) > 0 ? diff : BigDecimal.ZERO;
+    }
+
+    static String nombreCliente(Cliente cliente) {
+        if (cliente == null) {
+            return "CONSUMIDOR FINAL";
+        }
+        String nombre = ((cliente.getNombre() != null ? cliente.getNombre() : "")
+                + " " + (cliente.getApellido() != null ? cliente.getApellido() : "")).trim();
+        return nombre.isBlank() ? "CONSUMIDOR FINAL" : nombre;
+    }
+
+    static String marcaDetalle(VentaDetalle detalle) {
+        if (detalle == null || detalle.getArticulo() == null) {
+            return "-";
+        }
+        if (detalle.getArticulo().getMarca() != null
+                && detalle.getArticulo().getMarca().getNombre() != null
+                && !detalle.getArticulo().getMarca().getNombre().isBlank()) {
+            return detalle.getArticulo().getMarca().getNombre();
+        }
+        return "-";
+    }
+
+    static String modeloDetalle(VentaDetalle detalle) {
+        if (detalle == null) {
+            return "-";
+        }
+        String desc = VentaDetalleSupport.descripcionLinea(detalle);
+        return desc == null || desc.isBlank() ? "-" : desc;
+    }
+
+    static String formatoMonedaArStatic(BigDecimal valor) {
+        return "$ " + MONEDA_AR_FMT.format(valorSeguroStatic(valor));
+    }
+
+    private String formatoMonedaAr(BigDecimal valor) {
+        return formatoMonedaArStatic(valor);
+    }
+
+    private String nvl(String value, String fallback) {
+        return value == null || value.isBlank() ? fallback : value;
+    }
+
+    private static BigDecimal valorSeguroStatic(BigDecimal valor) {
+        return valor != null ? valor : BigDecimal.ZERO;
     }
 
     private int contarPagosTicket(Collection<PagoVenta> pagos) {

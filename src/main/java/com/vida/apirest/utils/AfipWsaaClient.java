@@ -29,12 +29,10 @@ import java.nio.file.Path;
 import java.security.PrivateKey;
 import java.security.Security;
 import java.security.cert.X509Certificate;
-import java.time.ZoneOffset;
+import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Base64;
-import java.util.Date;
-import java.util.GregorianCalendar;
 import java.util.List;
 
 /**
@@ -81,19 +79,20 @@ public final class AfipWsaaClient {
     }
 
     /**
-     * TRA según afip_wsaa_client.java (wsaa_client): source/destination y ventana de 1 hora.
+     * TRA según afip_wsaa_client.java (wsaa_client) y manual WSAA.
+     * generationTime se atrasa unos minutos (recomendación AFIP) y se emite en GMT-3.
      */
     private static String buildLoginTicketRequest(String service, String signerDn, String destinationDn) {
-        Date now = new Date();
-        long ticketTimeMs = 3_600_000L;
-        GregorianCalendar generation = new GregorianCalendar();
-        generation.setTime(now);
-        GregorianCalendar expiration = new GregorianCalendar();
-        expiration.setTime(new Date(now.getTime() + ticketTimeMs));
+        // Margen contra desfasaje de reloj (manual WSAA §10.9).
+        // Si el PC está adelantado unos minutos, AFIP rechaza generationTime "en el futuro".
+        ZonedDateTime generation = ZonedDateTime.now(ZoneId.of("America/Argentina/Buenos_Aires"))
+                .minusMinutes(20);
+        ZonedDateTime expiration = generation.plusHours(12);
 
         String generationTime = formatAfipDateTime(generation);
         String expirationTime = formatAfipDateTime(expiration);
-        long uniqueId = now.getTime() / 1000L;
+        // uniqueId: entero 32-bit; usamos segundos del reloj local.
+        long uniqueId = generation.toEpochSecond() & 0xFFFFFFFFL;
 
         return "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>"
                 + "<loginTicketRequest version=\"1.0\">"
@@ -109,11 +108,11 @@ public final class AfipWsaaClient {
     }
 
     /**
-     * Formato compatible con XMLGregorianCalendar del cliente oficial AFIP.
+     * Formato ISO 8601 con offset Argentina, ej: 2026-07-28T14:51:28.000-03:00
+     * (manual WSAA / ARCA).
      */
-    private static String formatAfipDateTime(GregorianCalendar calendar) {
-        ZonedDateTime zdt = calendar.toZonedDateTime().withZoneSameInstant(ZoneOffset.UTC);
-        return zdt.format(DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ssXXX"));
+    private static String formatAfipDateTime(ZonedDateTime zdt) {
+        return zdt.format(DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSSXXX"));
     }
 
     private static String firmarTra(String tra, AfipCertificateLoader.AfipCredentials credentials) throws Exception {

@@ -24,6 +24,8 @@ public class SistemaInfoResponse {
     private LocalDate fechaVencimiento;
     private Integer cantidadMaximaDispositivos;
     private Integer cantidadMaximaSucursales;
+    /** Código usado en la validación (enmascarado). */
+    private String codigoLicencia;
     private String deviceUuid;
     private Instant ultimaValidacion;
     private Instant ultimoExito;

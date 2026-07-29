@@ -14,7 +14,18 @@ import java.util.Optional;
 
 public interface VentaRepository extends JpaRepository<Venta, Long> {
 
-    @EntityGraph(attributePaths = {"cliente", "sucursal", "empleado", "detalles", "detalles.articulo", "detalles.variante", "detalles.variante.talle", "detalles.variante.color", "pagos"})
+    @EntityGraph(attributePaths = {
+            "cliente",
+            "sucursal",
+            "empleado",
+            "detalles",
+            "detalles.articulo",
+            "detalles.articulo.marca",
+            "detalles.variante",
+            "detalles.variante.talle",
+            "detalles.variante.color",
+            "pagos"
+    })
     @Query("SELECT v FROM Venta v WHERE v.id = :id")
     Optional<Venta> findByIdWithDetalles(@Param("id") Long id);
 
