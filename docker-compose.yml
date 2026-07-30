@@ -24,7 +24,10 @@ services:
       LICENCIA_AES_KEY: ${LICENCIA_AES_KEY:?Definí LICENCIA_AES_KEY (= AES_KEY de licencias)}
       LICENCIA_BLOQUEAR: ${LICENCIA_BLOQUEAR:-true}
 
+      AFIP_ENABLED: ${AFIP_ENABLED:-true}
       AFIP_HOMOLOGACION: ${AFIP_HOMOLOGACION:-true}
+      AFIP_AUTO_FACTURAR: ${AFIP_AUTO_FACTURAR:-true}
+      AFIP_CERT_BASE_DIR: ${AFIP_CERT_BASE_DIR:-/app/data/afip}
       # Evita que /actuator/health marque DOWN por falta de SMTP
       MANAGEMENT_HEALTH_MAIL_ENABLED: "false"
       JAVA_OPTS: ${JAVA_OPTS:--Xms256m -Xmx768m -XX:MaxMetaspaceSize=192m -XX:+UseG1GC}
