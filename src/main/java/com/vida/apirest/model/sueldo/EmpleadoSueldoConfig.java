@@ -45,6 +45,13 @@ public class EmpleadoSueldoConfig {
     @Column(name = "porcentaje_comision", nullable = false, precision = 9, scale = 4)
     private BigDecimal porcentajeComision = BigDecimal.ZERO;
 
+    /**
+     * Días de la semana que trabaja (ISO 1=lun … 7=dom), CSV ej. {@code 1,2,3,4,5}.
+     * Solo aplica al prorrateo con {@code periodoBase = DIA}.
+     */
+    @Column(name = "dias_laborables", length = 32)
+    private String diasLaborables;
+
     @Column(name = "activo", nullable = false)
     private Boolean activo = true;
 

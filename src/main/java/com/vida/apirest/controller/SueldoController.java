@@ -2,7 +2,9 @@ package com.vida.apirest.controller;
 
 import com.vida.apirest.dto.sueldo.EmpleadoSueldoConfigRequest;
 import com.vida.apirest.dto.sueldo.EmpleadoSueldoConfigResponse;
+import com.vida.apirest.dto.sueldo.LiquidacionSueldoAnularPagoRequest;
 import com.vida.apirest.dto.sueldo.LiquidacionSueldoCreateRequest;
+import com.vida.apirest.dto.sueldo.LiquidacionSueldoItemDiasDescontadosRequest;
 import com.vida.apirest.dto.sueldo.LiquidacionSueldoPagoRequest;
 import com.vida.apirest.dto.sueldo.LiquidacionSueldoResponse;
 import com.vida.apirest.servicies.SueldoService;
@@ -60,9 +62,32 @@ public class SueldoController {
         return ResponseEntity.ok(sueldoService.pagar(id, request));
     }
 
+    @PostMapping("/liquidaciones/{id}/anular-pago")
+    @PreAuthorize("hasAuthority('GESTIONAR_SUELDOS')")
+    public ResponseEntity<LiquidacionSueldoResponse> anularPago(
+            @PathVariable Long id,
+            @RequestBody(required = false) LiquidacionSueldoAnularPagoRequest request) {
+        return ResponseEntity.ok(sueldoService.anularPago(id, request != null ? request : new LiquidacionSueldoAnularPagoRequest()));
+    }
+
+    @PostMapping("/liquidaciones/{id}/recalcular")
+    @PreAuthorize("hasAuthority('GESTIONAR_SUELDOS')")
+    public ResponseEntity<LiquidacionSueldoResponse> recalcular(@PathVariable Long id) {
+        return ResponseEntity.ok(sueldoService.recalcular(id));
+    }
+
     @PostMapping("/liquidaciones/{id}/cancelar")
     @PreAuthorize("hasAuthority('GESTIONAR_SUELDOS')")
     public ResponseEntity<LiquidacionSueldoResponse> cancelar(@PathVariable Long id) {
         return ResponseEntity.ok(sueldoService.cancelar(id));
+    }
+
+    @PutMapping("/liquidaciones/{id}/items/{itemId}/dias-descontados")
+    @PreAuthorize("hasAuthority('GESTIONAR_SUELDOS')")
+    public ResponseEntity<LiquidacionSueldoResponse> actualizarDiasDescontados(
+            @PathVariable Long id,
+            @PathVariable Long itemId,
+            @RequestBody LiquidacionSueldoItemDiasDescontadosRequest request) {
+        return ResponseEntity.ok(sueldoService.actualizarDiasDescontados(id, itemId, request));
     }
 }

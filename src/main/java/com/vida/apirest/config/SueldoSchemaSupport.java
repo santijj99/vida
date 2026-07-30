@@ -25,11 +25,16 @@ public final class SueldoSchemaSupport {
                         sueldo_fijo NUMERIC(15,2) NOT NULL DEFAULT 0,
                         periodo_base VARCHAR(20) NOT NULL DEFAULT 'MES',
                         porcentaje_comision NUMERIC(9,4) NOT NULL DEFAULT 0,
+                        dias_laborables VARCHAR(32),
                         activo BOOLEAN NOT NULL DEFAULT TRUE,
                         observaciones TEXT,
                         created_at TIMESTAMP NOT NULL DEFAULT NOW(),
                         updated_at TIMESTAMP NOT NULL DEFAULT NOW()
                     )
+                    """);
+            st.execute("""
+                    ALTER TABLE empleado_sueldo_config
+                        ADD COLUMN IF NOT EXISTS dias_laborables VARCHAR(32)
                     """);
             st.execute("""
                     CREATE TABLE IF NOT EXISTS liquidacion_sueldo (
@@ -40,7 +45,7 @@ public final class SueldoSchemaSupport {
                         fecha_desde DATE NOT NULL,
                         fecha_hasta DATE NOT NULL,
                         porcentaje_comision_override NUMERIC(9,4),
-                        estado VARCHAR(20) NOT NULL DEFAULT 'BORRADOR',
+                        estado VARCHAR(20) NOT NULL DEFAULT 'CALCULADA',
                         total_sueldos NUMERIC(15,2) NOT NULL DEFAULT 0,
                         total_comisiones NUMERIC(15,2) NOT NULL DEFAULT 0,
                         total_general NUMERIC(15,2) NOT NULL DEFAULT 0,
@@ -76,6 +81,10 @@ public final class SueldoSchemaSupport {
             st.execute("""
                     ALTER TABLE liquidacion_sueldo_item
                         ADD COLUMN IF NOT EXISTS cantidad_articulos INTEGER NOT NULL DEFAULT 0
+                    """);
+            st.execute("""
+                    ALTER TABLE liquidacion_sueldo_item
+                        ADD COLUMN IF NOT EXISTS dias_descontados INTEGER NOT NULL DEFAULT 0
                     """);
         } catch (Exception e) {
             log.warn("DDL sueldos (idempotente): {}", e.getMessage());

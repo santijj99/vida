@@ -38,6 +38,10 @@ public class LiquidacionSueldoResponse {
         private Long empleadoId;
         private String empleadoNombre;
         private BigDecimal sueldoBase;
+        /** Días no trabajados descontados del fijo. */
+        private Integer diasDescontados;
+        /** Días laborables del período (antes de descontar), si aplica. */
+        private Integer diasLaborablesPeriodo;
         private BigDecimal ventasTotal;
         private Integer cantidadVentas;
         private Integer cantidadArticulos;
@@ -47,6 +51,7 @@ public class LiquidacionSueldoResponse {
         private LiquidacionSueldoItem.EstadoItem estado;
         private Long cuentaPagoId;
         private String cuentaPagoNombre;
+        private Long movimientoId;
         private LocalDateTime fechaPago;
     }
 }

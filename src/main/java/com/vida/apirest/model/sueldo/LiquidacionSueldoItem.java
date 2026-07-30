@@ -47,6 +47,13 @@ public class LiquidacionSueldoItem {
     @Column(name = "sueldo_base", nullable = false, precision = 15, scale = 2)
     private BigDecimal sueldoBase = BigDecimal.ZERO;
 
+    /**
+     * Días no trabajados a descontar del sueldo fijo en esta liquidación
+     * (faltas, francos, etc.). Default 0.
+     */
+    @Column(name = "dias_descontados", nullable = false)
+    private Integer diasDescontados = 0;
+
     @Column(name = "ventas_total", nullable = false, precision = 15, scale = 2)
     private BigDecimal ventasTotal = BigDecimal.ZERO;
 

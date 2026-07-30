@@ -40,6 +40,7 @@ public class SistemaLicenciaService {
                     .servidorInalcanzable(false)
                     .estado("DESHABILITADA")
                     .mensaje("El control de licencias está deshabilitado en este servidor")
+                    .codigoLicencia(maskCodigo(resolveCodigoLicencia()))
                     .deviceUuid(resolveDeviceUuid())
                     .build();
         }
@@ -56,7 +57,7 @@ public class SistemaLicenciaService {
             aplicarGraciaSiCorresponde(cache);
         }
 
-        return toResponse(cache);
+        return toResponse(cache, resolveCodigoLicencia());
     }
 
     @Transactional
@@ -69,7 +70,8 @@ public class SistemaLicenciaService {
     }
 
     private void refrescarContraServidor(LicenciaEstadoCache cache) {
-        String codigo = properties.getCodigo() == null ? "" : properties.getCodigo().trim();
+        // Mismo código que en login: header/JWT (multi-tenant) o app.licencia.codigo.
+        String codigo = resolveCodigoLicencia();
         String deviceUuid = resolveDeviceUuid();
         cache.setDeviceUuid(deviceUuid);
 
@@ -77,7 +79,9 @@ public class SistemaLicenciaService {
             cache.setValida(false);
             cache.setEstado("SIN_CONFIGURAR");
             cache.setCodigoError("LICENCIA_SIN_CODIGO");
-            cache.setMensaje("Falta configurar app.licencia.codigo");
+            cache.setMensaje(properties.isMultiTenant()
+                    ? "Falta el código de licencia del request (X-Licencia-Codigo / login)"
+                    : "Falta configurar app.licencia.codigo");
             cache.setServidorInalcanzable(false);
             cache.setModoGracia(false);
             cache.setUltimaValidacion(Instant.now());
@@ -120,6 +124,29 @@ public class SistemaLicenciaService {
         cacheRepository.save(cache);
     }
 
+    /**
+     * Prioridad: código del tenant del request (igual que al ingresar) → config local.
+     */
+    private String resolveCodigoLicencia() {
+        String fromTenant = com.vida.apirest.tenant.TenantContext.getCodigoLicencia();
+        if (fromTenant != null && !fromTenant.isBlank()) {
+            return fromTenant.trim();
+        }
+        String configured = properties.getCodigo();
+        return configured == null ? "" : configured.trim();
+    }
+
+    private static String maskCodigo(String codigo) {
+        if (codigo == null || codigo.isBlank()) {
+            return null;
+        }
+        String c = codigo.trim();
+        if (c.length() <= 4) {
+            return c;
+        }
+        return "••••" + c.substring(c.length() - 4);
+    }
+
     private void aplicarGraciaSiCorresponde(LicenciaEstadoCache cache) {
         if (!cache.isServidorInalcanzable() || cache.getUltimoExito() == null) {
             cache.setModoGracia(false);
@@ -151,7 +178,7 @@ public class SistemaLicenciaService {
         });
     }
 
-    private SistemaInfoResponse toResponse(LicenciaEstadoCache cache) {
+    private SistemaInfoResponse toResponse(LicenciaEstadoCache cache, String codigoLicencia) {
         return SistemaInfoResponse.builder()
                 .aplicacion("ATHLAND")
                 .version(resolveVersion())
@@ -167,6 +194,7 @@ public class SistemaLicenciaService {
                 .fechaVencimiento(cache.getFechaVencimiento())
                 .cantidadMaximaDispositivos(cache.getCantidadMaximaDispositivos())
                 .cantidadMaximaSucursales(cache.getCantidadMaximaSucursales())
+                .codigoLicencia(maskCodigo(codigoLicencia))
                 .deviceUuid(cache.getDeviceUuid() != null ? cache.getDeviceUuid() : resolveDeviceUuid())
                 .ultimaValidacion(cache.getUltimaValidacion())
                 .ultimoExito(cache.getUltimoExito())

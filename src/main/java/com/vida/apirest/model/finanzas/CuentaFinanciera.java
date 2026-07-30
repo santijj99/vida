@@ -28,7 +28,7 @@ import java.time.LocalDateTime;
 )
 public class CuentaFinanciera {
 
-    public enum TipoCuenta { CAJA, BANCO, TARJETA_DEBITO, TARJETA_CREDITO, BILLETERA, VIRTUAL }
+    public enum TipoCuenta { CAJA, BANCO, AHORRO, TARJETA_DEBITO, TARJETA_CREDITO, BILLETERA, VIRTUAL }
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

@@ -1,5 +1,6 @@
 package com.vida.apirest.servicies;
 
+import com.vida.apirest.exception.BadRequestException;
 import com.vida.apirest.exception.ResourceNotFoundException;
 import com.vida.apirest.model.finanzas.CuentaFinanciera;
 import com.vida.apirest.model.tesoreria.MovimientoFinanciero;
@@ -40,24 +41,24 @@ public class CajaMovimientoService {
     }
 
     @Transactional
-    public void registrarEgreso(
+    public MovimientoFinanciero registrarEgreso(
             CuentaFinanciera cuenta,
             BigDecimal monto,
             String descripcion,
             String referencia
     ) {
-        persistir(cuenta, MovimientoFinanciero.TipoMovimiento.EGRESO, monto, descripcion, referencia);
+        return persistir(cuenta, MovimientoFinanciero.TipoMovimiento.EGRESO, monto, descripcion, referencia);
     }
 
     @Transactional
-    public void registrarEgreso(Long cuentaFinancieraId, BigDecimal monto, String descripcion) {
+    public MovimientoFinanciero registrarEgreso(Long cuentaFinancieraId, BigDecimal monto, String descripcion) {
         if (cuentaFinancieraId == null || monto == null || monto.compareTo(BigDecimal.ZERO) <= 0) {
-            return;
+            return null;
         }
         CuentaFinanciera cuenta = EntityLookup.require(
                 cuentaRepository.findById(cuentaFinancieraId),
                 "Cuenta financiera no encontrada");
-        persistir(cuenta, MovimientoFinanciero.TipoMovimiento.EGRESO, monto, descripcion, null);
+        return persistir(cuenta, MovimientoFinanciero.TipoMovimiento.EGRESO, monto, descripcion, null);
     }
 
     private CuentaFinanciera resolverCuentaIngreso(Long cuentaFinancieraId) {
@@ -76,19 +77,50 @@ public class CajaMovimientoService {
             String descripcion,
             String referencia
     ) {
-        if (cuenta == null) {
+        return persistir(cuenta, tipo, monto, descripcion, referencia, "sistema");
+    }
+
+    private MovimientoFinanciero persistir(
+            CuentaFinanciera cuenta,
+            MovimientoFinanciero.TipoMovimiento tipo,
+            BigDecimal monto,
+            String descripcion,
+            String referencia,
+            String responsable
+    ) {
+        if (cuenta == null || cuenta.getId() == null) {
             throw new ResourceNotFoundException("Cuenta financiera no encontrada");
         }
-        BigDecimal saldoAnterior = saldoActual(cuenta);
-        BigDecimal saldoNuevo = tipo == MovimientoFinanciero.TipoMovimiento.INGRESO
-                ? saldoAnterior.add(monto)
-                : saldoAnterior.subtract(monto).max(BigDecimal.ZERO);
+        if (monto == null || monto.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new BadRequestException("El monto del movimiento debe ser mayor a cero");
+        }
+        // Releer con lock: no confiar en el saldo en memoria (puede estar stale entre TX).
+        CuentaFinanciera locked = cuentaRepository.findByIdForUpdate(cuenta.getId())
+                .orElseThrow(() -> new ResourceNotFoundException("Cuenta financiera no encontrada"));
 
-        cuenta.setSaldoActual(saldoNuevo);
-        cuentaRepository.save(cuenta);
+        BigDecimal saldoAnterior = saldoActual(locked);
+        BigDecimal saldoNuevo;
+        if (tipo == MovimientoFinanciero.TipoMovimiento.INGRESO
+                || tipo == MovimientoFinanciero.TipoMovimiento.TRANSFERENCIA_RECIBIDA) {
+            saldoNuevo = saldoAnterior.add(monto);
+        } else if (tipo == MovimientoFinanciero.TipoMovimiento.EGRESO
+                || tipo == MovimientoFinanciero.TipoMovimiento.TRANSFERENCIA_ENVIADA) {
+            if (saldoAnterior.compareTo(monto) < 0) {
+                throw new BadRequestException(
+                        "Saldo insuficiente en la cuenta \"" + locked.getNombre() + "\". "
+                                + "Disponible: " + saldoAnterior + ", requerido: " + monto);
+            }
+            saldoNuevo = saldoAnterior.subtract(monto);
+        } else {
+            // AJUSTE: se trata como set absoluto vía monto positivo/negativo no soportado aquí
+            throw new BadRequestException("Tipo de movimiento no soportado: " + tipo);
+        }
+
+        locked.setSaldoActual(saldoNuevo);
+        cuentaRepository.save(locked);
 
         MovimientoFinanciero movimiento = new MovimientoFinanciero();
-        movimiento.setCuenta(cuenta);
+        movimiento.setCuenta(locked);
         movimiento.setNumero(generarNumero());
         movimiento.setTipo(tipo);
         movimiento.setMonto(monto);
@@ -96,8 +128,120 @@ public class CajaMovimientoService {
         movimiento.setSaldoNuevo(saldoNuevo);
         movimiento.setDescripcion(descripcion);
         movimiento.setReferencia(referencia);
-        movimiento.setResponsable("sistema");
+        movimiento.setResponsable(responsable == null || responsable.isBlank() ? "sistema" : responsable);
         return movimientoFinancieroRepository.save(movimiento);
+    }
+
+    /**
+     * Transfiere fondos entre dos cuentas (caja↔caja, caja↔banco, banco↔banco).
+     * Genera TRANSFERENCIA_ENVIADA en origen y TRANSFERENCIA_RECIBIDA en destino.
+     */
+    @Transactional
+    public TransferenciaResult transferir(
+            Long cuentaOrigenId,
+            Long cuentaDestinoId,
+            BigDecimal monto,
+            String descripcion,
+            String responsable
+    ) {
+        if (cuentaOrigenId == null || cuentaDestinoId == null) {
+            throw new BadRequestException("Indicá cuenta origen y destino");
+        }
+        if (cuentaOrigenId.equals(cuentaDestinoId)) {
+            throw new BadRequestException("La cuenta origen y destino deben ser distintas");
+        }
+        if (monto == null || monto.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new BadRequestException("El monto a transferir debe ser mayor a cero");
+        }
+
+        // Orden de locks por id para evitar deadlocks.
+        Long firstId = Math.min(cuentaOrigenId, cuentaDestinoId);
+        Long secondId = Math.max(cuentaOrigenId, cuentaDestinoId);
+        CuentaFinanciera first = cuentaRepository.findByIdForUpdate(firstId)
+                .orElseThrow(() -> new ResourceNotFoundException("Cuenta financiera no encontrada: " + firstId));
+        CuentaFinanciera second = cuentaRepository.findByIdForUpdate(secondId)
+                .orElseThrow(() -> new ResourceNotFoundException("Cuenta financiera no encontrada: " + secondId));
+
+        CuentaFinanciera origen = first.getId().equals(cuentaOrigenId) ? first : second;
+        CuentaFinanciera destino = first.getId().equals(cuentaDestinoId) ? first : second;
+
+        if (!Boolean.TRUE.equals(origen.getActivo()) || !Boolean.TRUE.equals(destino.getActivo())) {
+            throw new BadRequestException("Ambas cuentas deben estar activas para transferir");
+        }
+
+        String ref = "TR-" + UUID.randomUUID().toString().replace("-", "").substring(0, 12).toUpperCase();
+        String desc = (descripcion == null || descripcion.isBlank())
+                ? "Transferencia " + origen.getNombre() + " → " + destino.getNombre()
+                : descripcion.trim();
+        String user = (responsable == null || responsable.isBlank()) ? "sistema" : responsable.trim();
+
+        MovimientoFinanciero enviado = persistirLocked(
+                origen,
+                MovimientoFinanciero.TipoMovimiento.TRANSFERENCIA_ENVIADA,
+                monto,
+                desc + " (enviada a " + destino.getNombre() + ")",
+                ref,
+                user
+        );
+        MovimientoFinanciero recibido = persistirLocked(
+                destino,
+                MovimientoFinanciero.TipoMovimiento.TRANSFERENCIA_RECIBIDA,
+                monto,
+                desc + " (recibida de " + origen.getNombre() + ")",
+                ref,
+                user
+        );
+
+        return new TransferenciaResult(enviado, recibido, origen, destino, ref, desc);
+    }
+
+    /** Variante cuando la cuenta ya está bloqueada en la TX actual. */
+    private MovimientoFinanciero persistirLocked(
+            CuentaFinanciera locked,
+            MovimientoFinanciero.TipoMovimiento tipo,
+            BigDecimal monto,
+            String descripcion,
+            String referencia,
+            String responsable
+    ) {
+        BigDecimal saldoAnterior = saldoActual(locked);
+        BigDecimal saldoNuevo;
+        if (tipo == MovimientoFinanciero.TipoMovimiento.INGRESO
+                || tipo == MovimientoFinanciero.TipoMovimiento.TRANSFERENCIA_RECIBIDA) {
+            saldoNuevo = saldoAnterior.add(monto);
+        } else {
+            if (saldoAnterior.compareTo(monto) < 0) {
+                throw new BadRequestException(
+                        "Saldo insuficiente en la cuenta \"" + locked.getNombre() + "\". "
+                                + "Disponible: " + saldoAnterior + ", requerido: " + monto);
+            }
+            saldoNuevo = saldoAnterior.subtract(monto);
+        }
+
+        locked.setSaldoActual(saldoNuevo);
+        cuentaRepository.save(locked);
+
+        MovimientoFinanciero movimiento = new MovimientoFinanciero();
+        movimiento.setCuenta(locked);
+        movimiento.setNumero(generarNumero());
+        movimiento.setTipo(tipo);
+        movimiento.setMonto(monto);
+        movimiento.setSaldoAnterior(saldoAnterior);
+        movimiento.setSaldoNuevo(saldoNuevo);
+        movimiento.setDescripcion(descripcion);
+        movimiento.setReferencia(referencia);
+        movimiento.setResponsable(responsable);
+        return movimientoFinancieroRepository.save(movimiento);
+    }
+
+    public record TransferenciaResult(
+            MovimientoFinanciero enviado,
+            MovimientoFinanciero recibido,
+            CuentaFinanciera origen,
+            CuentaFinanciera destino,
+            String referencia,
+            String descripcion
+    ) {
     }
 
     private BigDecimal saldoActual(CuentaFinanciera cuenta) {

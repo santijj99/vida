@@ -7,4 +7,5 @@ public class TicketConfigRequest {
     private Long empresaId;
     /** TERMICO_80MM | A4 */
     private String formato;
+    private Boolean abrirAutomaticamente;
 }

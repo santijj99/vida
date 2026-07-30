@@ -31,7 +31,12 @@ import java.util.List;
 public class LiquidacionSueldo {
 
     public enum EstadoLiquidacion {
-        BORRADOR, CALCULADA, PAGADA_PARCIAL, PAGADA, CANCELADA
+        /** Reservado / legado; las liquidaciones nacen en CALCULADA. */
+        BORRADOR,
+        CALCULADA,
+        PAGADA_PARCIAL,
+        PAGADA,
+        CANCELADA
     }
 
     @Id
@@ -62,7 +67,7 @@ public class LiquidacionSueldo {
 
     @Enumerated(EnumType.STRING)
     @Column(name = "estado", nullable = false, length = 20)
-    private EstadoLiquidacion estado = EstadoLiquidacion.BORRADOR;
+    private EstadoLiquidacion estado = EstadoLiquidacion.CALCULADA;
 
     @Column(name = "total_sueldos", nullable = false, precision = 15, scale = 2)
     private BigDecimal totalSueldos = BigDecimal.ZERO;
