@@ -49,6 +49,7 @@ logging:
     org.hibernate.orm.deprecation: ERROR
 
 afip:
-  enabled: ${AFIP_ENABLED:false}
+  enabled: ${AFIP_ENABLED:true}
   homologacion: ${AFIP_HOMOLOGACION:true}
+  auto-facturar-en-venta: ${AFIP_AUTO_FACTURAR:true}
   validar-token-en-login: false
