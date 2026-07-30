@@ -8,4 +8,5 @@ public class TicketConfigResponse {
     private Long empresaId;
     private String empresaNombre;
     private String formato;
+    private Boolean abrirAutomaticamente;
 }

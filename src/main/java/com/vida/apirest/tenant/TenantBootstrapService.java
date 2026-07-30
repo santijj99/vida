@@ -1,7 +1,9 @@
 package com.vida.apirest.tenant;
 
+import com.vida.apirest.config.CreditoSchemaSupport;
 import com.vida.apirest.config.RbacPermissionSyncSupport;
 import com.vida.apirest.config.SueldoSchemaSupport;
+import com.vida.apirest.config.TicketSchemaSupport;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.EntityManagerFactory;
 import lombok.RequiredArgsConstructor;
@@ -47,6 +49,8 @@ public class TenantBootstrapService {
             // Siempre: reparar permisos/módulos nuevos en bases existentes (prod multi-tenant).
             RbacPermissionSyncSupport.syncCatalogoYAdmin(dataSource);
             SueldoSchemaSupport.apply(dataSource);
+            TicketSchemaSupport.apply(dataSource);
+            CreditoSchemaSupport.apply(dataSource);
         } catch (Exception ex) {
             log.error("Tenant {}: falló el bootstrap de schema/seed: {}", codigoLicencia, ex.getMessage(), ex);
             throw new IllegalStateException(

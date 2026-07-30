@@ -95,7 +95,9 @@ public class CreditoRecargoService {
         if (!estadoService.debeGenerarRecargo(cuota, config)) {
             return BigDecimal.ZERO;
         }
-        BigDecimal capital = cuota.getMonto() != null ? cuota.getMonto() : BigDecimal.ZERO;
+        BigDecimal capital = estadoService.saldoCapital(cuota).signum() > 0
+                ? estadoService.saldoCapital(cuota)
+                : (cuota.getMonto() != null ? cuota.getMonto() : BigDecimal.ZERO);
         BigDecimal pct = config.getPorcentajeMora() != null ? config.getPorcentajeMora() : BigDecimal.ZERO;
         if (config.getTipoInteres() == CreditoConfigEmpresa.TipoInteresMora.ACUMULATIVO) {
             // Reservado para futuro: por ahora igual que fijo

@@ -7,6 +7,8 @@ import org.springframework.boot.ApplicationRunner;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
+import javax.sql.DataSource;
+
 /**
  * Esquema del módulo de créditos ampliado: config por empresa, recargo en cuota, historial.
  */
@@ -16,6 +18,7 @@ import org.springframework.stereotype.Component;
 public class CreditoModuloMigration implements ApplicationRunner {
 
     private final JdbcTemplate jdbcTemplate;
+    private final DataSource dataSource;
 
     @Override
     public void run(ApplicationArguments args) {
@@ -47,18 +50,7 @@ public class CreditoModuloMigration implements ApplicationRunner {
                 CREATE INDEX IF NOT EXISTS ix_credito_historial_credito
                     ON credito_historial (credito_id, created_at DESC)
                 """);
-        ejecutar("""
-                ALTER TABLE cuota ADD COLUMN IF NOT EXISTS recargo NUMERIC(15,2) DEFAULT 0
-                """);
-        ejecutar("""
-                ALTER TABLE cuota ADD COLUMN IF NOT EXISTS recargo_exento BOOLEAN DEFAULT FALSE
-                """);
-        ejecutar("""
-                UPDATE cuota SET recargo_exento = FALSE WHERE recargo_exento IS NULL
-                """);
-        ejecutar("""
-                UPDATE cuota SET recargo = 0 WHERE recargo IS NULL
-                """);
+        CreditoSchemaSupport.apply(dataSource);
         log.info("Migración módulo créditos aplicada");
     }
 

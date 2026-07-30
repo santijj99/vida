@@ -31,6 +31,9 @@ public class EmpresaTicketConfig {
     @Column(name = "formato", nullable = false, length = 20)
     private FormatoTicketPdf formato = FormatoTicketPdf.TERMICO_80MM;
 
+    @Column(name = "abrir_automaticamente", nullable = false)
+    private Boolean abrirAutomaticamente = true;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
