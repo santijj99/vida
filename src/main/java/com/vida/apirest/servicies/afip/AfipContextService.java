@@ -140,12 +140,40 @@ public class AfipContextService {
     }
 
     public Path resolveCertificadosDir(EmpresaAfipConfig config) {
-        if (config.getCertificadosDirectorio() != null && !config.getCertificadosDirectorio().isBlank()) {
-            return Paths.get(config.getCertificadosDirectorio().trim()).toAbsolutePath().normalize();
+        String custom = config.getCertificadosDirectorio();
+        if (custom != null && !custom.isBlank() && esRutaCertificadosUsable(custom.trim())) {
+            return Paths.get(custom.trim()).toAbsolutePath().normalize();
         }
-        return Paths.get(afipProperties.getCertificadosBaseDir(), String.valueOf(config.getEmpresa().getId()))
+        return defaultCertificadosDir(config.getEmpresa().getId());
+    }
+
+    /** Carpeta canónica en el volumen del servidor: {base}/{empresaId}/ */
+    public Path defaultCertificadosDir(Long empresaId) {
+        return Paths.get(afipProperties.getCertificadosBaseDir(), String.valueOf(empresaId))
                 .toAbsolutePath()
                 .normalize();
+    }
+
+    /**
+     * Detecta rutas de otro SO (p. ej. C:/Users/... guardadas desde Windows
+     * y resueltas en Linux Docker como /app/C:/Users/...).
+     */
+    public boolean esRutaCertificadosUsable(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return false;
+        }
+        String path = raw.trim();
+        boolean windowsOs = System.getProperty("os.name", "").toLowerCase(java.util.Locale.ROOT).contains("win");
+        // Letra de unidad Windows fuera de Windows, o path ya "mezclado" /app/C:/...
+        if (path.matches("(?i)^[a-z]:[\\\\/].*") || path.matches("(?i).*[/\\\\][a-z]:[/\\\\].*")) {
+            return windowsOs && path.matches("(?i)^[a-z]:[\\\\/].*");
+        }
+        try {
+            Paths.get(path);
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     public void validarCertificados(AfipContext context) {
