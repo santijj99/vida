@@ -61,6 +61,10 @@ public class Cuota {
     @Column(name = "recargo_exento")
     private Boolean recargoExento = false;
 
+    /** Recargo por mora ya cobrado: evita volver a generarlo sobre la misma cuota. */
+    @Column(name = "recargo_cobrado", precision = 15, scale = 2)
+    private BigDecimal recargoCobrado = BigDecimal.ZERO;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;

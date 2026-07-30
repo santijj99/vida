@@ -48,6 +48,7 @@ public class TicketPdfA4Renderer {
     private static final float MARGEN = 36f;
     private static final String[] COPIAS_FISCALES = {"ORIGINAL", "DUPLICADO", "TRIPLICADO"};
     private static final DateTimeFormatter FECHA_HORA_FMT = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm");
+    private static final DateTimeFormatter FECHA_CREDITO_FMT = DateTimeFormatter.ofPattern("dd-MM-yyyy");
 
     private static final Font F_NORMAL = new Font(Font.FontFamily.HELVETICA, 8, Font.NORMAL);
     private static final Font F_BOLD = new Font(Font.FontFamily.HELVETICA, 8, Font.BOLD);
@@ -87,19 +88,162 @@ public class TicketPdfA4Renderer {
             Credito credito,
             List<Cuota> cuotas
     ) throws Exception {
+        if (credito != null) {
+            return generarComprobanteCredito(venta, empresa, credito, cuotas);
+        }
         Document document = nuevoDocumentoA4();
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         PdfWriter.getInstance(document, baos);
         document.open();
         try {
-            renderizarComprobanteVenta(document, venta, empresa, credito, TicketPDFService.ordenarCuotas(cuotas));
+            renderizarComprobanteVenta(document, venta, empresa, null, TicketPDFService.ordenarCuotas(cuotas));
         } finally {
             document.close();
         }
         return baos.toByteArray();
     }
 
-    public byte[] generarCobroCuotas(List<PagoCuota> pagos, TicketPDFService.DatosEmpresaTicket empresa) throws Exception {
+    /**
+     * Comprobante de crédito con dos copias (ORIGINAL / DUPLICADO) y líneas para firma, aclaración y DNI.
+     */
+    public byte[] generarComprobanteCredito(
+            Venta venta,
+            TicketPDFService.DatosEmpresaTicket empresa,
+            Credito credito,
+            List<Cuota> cuotas
+    ) throws Exception {
+        Document document = nuevoDocumentoA4();
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        PdfWriter.getInstance(document, baos);
+        document.open();
+        try {
+            List<Cuota> ordenadas = TicketPDFService.ordenarCuotas(cuotas);
+            PdfPTable copiaCliente = new PdfPTable(1);
+            copiaCliente.setWidthPercentage(100);
+            copiaCliente.addCell(celdaCopiaCredito(
+                    venta, empresa, credito, ordenadas, "COPIA CLIENTE", true));
+            document.add(copiaCliente);
+
+            document.newPage();
+
+            PdfPTable copiaEmpresa = new PdfPTable(1);
+            copiaEmpresa.setWidthPercentage(100);
+            copiaEmpresa.addCell(celdaCopiaCredito(
+                    venta, empresa, credito, ordenadas, "COPIA EMPRESA", false));
+            document.add(copiaEmpresa);
+        } finally {
+            document.close();
+        }
+        return baos.toByteArray();
+    }
+
+    private PdfPCell celdaCopiaCredito(
+            Venta venta,
+            TicketPDFService.DatosEmpresaTicket empresa,
+            Credito credito,
+            List<Cuota> cuotas,
+            String etiquetaCopia,
+            boolean incluirFirma
+    ) throws DocumentException {
+        PdfPCell cell = new PdfPCell();
+        cell.setBorder(Rectangle.BOX);
+        cell.setBorderColor(BaseColor.LIGHT_GRAY);
+        cell.setPadding(10);
+        cell.setVerticalAlignment(Element.ALIGN_TOP);
+
+        Paragraph copia = new Paragraph(etiquetaCopia, F_SMALL);
+        copia.setAlignment(Element.ALIGN_RIGHT);
+        cell.addElement(copia);
+
+        Paragraph empresaP = new Paragraph(nvl(empresa.razonSocial(), "EMPRESA"), F_EMPRESA);
+        empresaP.setAlignment(Element.ALIGN_CENTER);
+        cell.addElement(empresaP);
+
+        Paragraph aviso = new Paragraph("Comprobante no válido como Factura", F_SMALL_ITALIC);
+        aviso.setAlignment(Element.ALIGN_CENTER);
+        cell.addElement(aviso);
+        cell.addElement(Chunk.NEWLINE);
+
+        String fecha = venta.getFechaVenta() != null
+                ? venta.getFechaVenta().format(FECHA_CREDITO_FMT)
+                : LocalDateTime.now().format(FECHA_CREDITO_FMT);
+        Cliente cliente = venta.getCliente() != null ? venta.getCliente() : credito.getCliente();
+        String nombre = TicketPDFService.nombreCliente(cliente);
+        String dni = cliente != null && cliente.getDni() != null ? cliente.getDni() : "-";
+
+        Paragraph datos = new Paragraph();
+        datos.add(new Chunk("Fecha: " + fecha + "\n", F_NORMAL));
+        datos.add(new Chunk("CREDITO: " + nvl(credito.getNumero(), "-") + "\n", F_BOLD));
+        datos.add(new Chunk("Nombre: " + nombre + "\n", F_NORMAL));
+        datos.add(new Chunk("DNI: " + dni + "\n", F_NORMAL));
+        cell.addElement(datos);
+        cell.addElement(Chunk.NEWLINE);
+
+        BigDecimal total = venta.getTotal() != null ? venta.getTotal() : (credito.getImporte() != null ? credito.getImporte() : BigDecimal.ZERO);
+        BigDecimal deuda = credito.getSaldo() != null ? credito.getSaldo() : (credito.getImporte() != null ? credito.getImporte() : BigDecimal.ZERO);
+        BigDecimal pago = TicketPDFService.calcularPagoCredito(venta, total, deuda);
+
+        Paragraph montos = new Paragraph();
+        montos.add(new Chunk("Total a pagar: " + TicketPDFService.formatoMonedaArStatic(total) + "\n", F_BOLD));
+        montos.add(new Chunk("Pago: " + TicketPDFService.formatoMonedaArStatic(pago) + "\n", F_NORMAL));
+        montos.add(new Chunk("Deuda: " + TicketPDFService.formatoMonedaArStatic(deuda) + "\n", F_BOLD));
+        cell.addElement(montos);
+        cell.addElement(Chunk.NEWLINE);
+
+        PdfPTable items = new PdfPTable(3);
+        items.setWidthPercentage(100);
+        items.setWidths(new float[]{28f, 47f, 25f});
+        agregarHeader(items, "Marca");
+        agregarHeader(items, "Modelo");
+        agregarHeader(items, "Precio");
+        if (venta.getDetalles() != null) {
+            for (VentaDetalle detalle : venta.getDetalles()) {
+                BigDecimal precio = detalle.getTotal() != null ? detalle.getTotal() : detalle.getSubtotal();
+                agregarCeldaDato(items, TicketPDFService.marcaDetalle(detalle), Element.ALIGN_LEFT);
+                agregarCeldaDato(items, TicketPDFService.modeloDetalle(detalle), Element.ALIGN_LEFT);
+                agregarCeldaDato(items, TicketPDFService.formatoCreditoSinDecimales(precio), Element.ALIGN_RIGHT);
+            }
+        }
+        cell.addElement(items);
+        cell.addElement(Chunk.NEWLINE);
+
+        if (cuotas != null && !cuotas.isEmpty()) {
+            PdfPTable plan = new PdfPTable(3);
+            plan.setWidthPercentage(100);
+            plan.setWidths(new float[]{20f, 40f, 40f});
+            agregarHeader(plan, "Cuota");
+            agregarHeader(plan, "Saldo");
+            agregarHeader(plan, "Vencimiento");
+            for (Cuota cuota : cuotas) {
+                BigDecimal saldoCuota = cuota.getSaldo() != null ? cuota.getSaldo() : cuota.getMonto();
+                agregarCeldaDato(plan, TicketPDFService.numeroCuotaSimple(cuota.getNumero()), Element.ALIGN_LEFT);
+                agregarCeldaDato(plan, TicketPDFService.formatoMonedaArStatic(saldoCuota), Element.ALIGN_CENTER);
+                agregarCeldaDato(plan, TicketPDFService.formatearFechaCuotaCorta(cuota.getFechaVencimiento()), Element.ALIGN_CENTER);
+            }
+            cell.addElement(plan);
+            cell.addElement(Chunk.NEWLINE);
+        }
+
+        if (incluirFirma) {
+            Paragraph firma = new Paragraph();
+            firma.setAlignment(Element.ALIGN_CENTER);
+            firma.add(new Chunk("Firma\n", F_NORMAL));
+            firma.add(new Chunk("_______________________\n\n", F_NORMAL));
+            firma.add(new Chunk("Aclaración\n", F_NORMAL));
+            firma.add(new Chunk("_______________________\n\n", F_NORMAL));
+            firma.add(new Chunk("DNI\n", F_NORMAL));
+            firma.add(new Chunk("_______________________\n", F_NORMAL));
+            cell.addElement(firma);
+        }
+
+        return cell;
+    }
+
+    public byte[] generarCobroCuotas(
+            List<PagoCuota> pagos,
+            TicketPDFService.DatosEmpresaTicket empresa,
+            TicketPDFService.DatosCobroCuotas datosCobro
+    ) throws Exception {
         PagoCuota primerPago = pagos.get(0);
         Credito credito = primerPago.getCuota().getCredito();
         Cliente cliente = credito.getCliente();
@@ -112,7 +256,9 @@ public class TicketPdfA4Renderer {
             agregarCabeceraComprobanteInterno(document, empresa, "COMPROBANTE", "Cobro de cuotas",
                     primerPago.getCreatedAt() != null ? primerPago.getCreatedAt().format(FECHA_HORA_FMT) : null);
             agregarBloqueClienteSimple(document, cliente);
+            agregarResumenCobroCuotas(document, datosCobro);
             agregarTablaCobroCuotas(document, pagos);
+            agregarProximoVencimientoCobro(document, datosCobro);
             agregarTotalesCobro(document, pagos);
             agregarPieInterno(document);
         } finally {
@@ -642,22 +788,57 @@ public class TicketPdfA4Renderer {
         document.add(Chunk.NEWLINE);
     }
 
-    private void agregarTablaCobroCuotas(Document document, List<PagoCuota> pagos) throws DocumentException {
-        PdfPTable table = new PdfPTable(4);
+    private void agregarResumenCobroCuotas(
+            Document document,
+            TicketPDFService.DatosCobroCuotas datos
+    ) throws DocumentException {
+        PdfPTable table = new PdfPTable(2);
+        table.setWidthPercentage(60);
+        table.setHorizontalAlignment(Element.ALIGN_RIGHT);
+        agregarFilaTotal(table, "Total del crédito:", formatoMoneda(datos.totalCredito()));
+        agregarFilaTotal(table, "Saldo del crédito:", formatoMoneda(datos.saldoCredito()));
+        agregarFilaTotal(table, "Saldo de todos los créditos:", formatoMoneda(datos.saldoTodosCreditos()), true);
+        document.add(table);
+        document.add(Chunk.NEWLINE);
+    }
+
+    private void agregarTablaCobroCuotas(
+            Document document,
+            List<PagoCuota> pagos
+    ) throws DocumentException {
+        Paragraph titulo = new Paragraph("DETALLE DEL COBRO", F_BOLD);
+        titulo.setAlignment(Element.ALIGN_CENTER);
+        document.add(titulo);
+        document.add(Chunk.NEWLINE);
+
+        PdfPTable table = new PdfPTable(2);
         table.setWidthPercentage(100);
-        table.setWidths(new float[]{25f, 15f, 30f, 30f});
-        agregarHeader(table, "Crédito");
-        agregarHeader(table, "Cuota");
-        agregarHeader(table, "Pagado");
-        agregarHeader(table, "Saldo");
+        table.setWidths(new float[]{50f, 50f});
         for (PagoCuota pago : pagos) {
             Cuota cuota = pago.getCuota();
-            Credito credito = cuota.getCredito();
-            agregarCeldaDato(table, nvl(credito.getNumero(), "-"), Element.ALIGN_LEFT);
-            agregarCeldaDato(table, nvl(cuota.getNumero(), "-"), Element.ALIGN_LEFT);
-            agregarCeldaDato(table, formatoMoneda(pago.getMonto()), Element.ALIGN_RIGHT);
-            agregarCeldaDato(table, formatoMoneda(cuota.getSaldo()), Element.ALIGN_RIGHT);
+            BigDecimal saldo = cuota.getSaldo() != null ? cuota.getSaldo() : BigDecimal.ZERO;
+            BigDecimal recargo = cuota.getRecargo() != null ? cuota.getRecargo() : BigDecimal.ZERO;
+            // Fila 1: cuota + total
+            agregarCeldaSinBorde(table, "Cuota " + TicketPDFService.numeroCuotaFraccion(cuota.getNumero()), Element.ALIGN_LEFT);
+            agregarCeldaSinBorde(table, "Total " + formatoMoneda(cuota.getMonto()), Element.ALIGN_RIGHT);
+            // Fila 2: recargo + saldo
+            agregarCeldaSinBorde(table, "Recargo " + formatoMoneda(recargo), Element.ALIGN_LEFT);
+            agregarCeldaSinBorde(table, "Saldo " + formatoMoneda(saldo.add(recargo)), Element.ALIGN_RIGHT);
         }
+        document.add(table);
+        document.add(Chunk.NEWLINE);
+    }
+
+    private void agregarProximoVencimientoCobro(
+            Document document,
+            TicketPDFService.DatosCobroCuotas datos
+    ) throws DocumentException {
+        PdfPTable table = new PdfPTable(2);
+        table.setWidthPercentage(100);
+        table.setWidths(new float[]{50f, 50f});
+        agregarCeldaSinBorde(table, "Próx. cuota " + nvl(datos.proximaCuotaNumero(), "-")
+                + " · " + nvl(datos.proximoVencimiento(), "-"), Element.ALIGN_LEFT);
+        agregarCeldaSinBorde(table, "Saldo " + formatoMoneda(datos.saldoProximoVencimiento()), Element.ALIGN_RIGHT);
         document.add(table);
         document.add(Chunk.NEWLINE);
     }
@@ -985,6 +1166,22 @@ public class TicketPdfA4Renderer {
     private void agregarCeldaDato(PdfPTable table, String texto, int align) {
         PdfPCell cell = new PdfPCell(new Phrase(nvl(texto), F_NORMAL));
         cell.setHorizontalAlignment(align);
+        cell.setPadding(4);
+        table.addCell(cell);
+    }
+
+    private void agregarHeaderSinBorde(PdfPTable table, String texto) {
+        PdfPCell cell = new PdfPCell(new Phrase(texto, F_BOLD));
+        cell.setHorizontalAlignment(Element.ALIGN_LEFT);
+        cell.setBorder(Rectangle.NO_BORDER);
+        cell.setPadding(4);
+        table.addCell(cell);
+    }
+
+    private void agregarCeldaSinBorde(PdfPTable table, String texto, int align) {
+        PdfPCell cell = new PdfPCell(new Phrase(nvl(texto), F_NORMAL));
+        cell.setHorizontalAlignment(align);
+        cell.setBorder(Rectangle.NO_BORDER);
         cell.setPadding(4);
         table.addCell(cell);
     }

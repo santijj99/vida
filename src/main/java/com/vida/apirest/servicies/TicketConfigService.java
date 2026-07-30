@@ -36,11 +36,15 @@ public class TicketConfigService {
                 .orElseGet(() -> {
                     EmpresaTicketConfig nuevo = new EmpresaTicketConfig();
                     nuevo.setEmpresa(empresa);
+                    nuevo.setAbrirAutomaticamente(true);
                     return nuevo;
                 });
 
         if (request.getFormato() != null && !request.getFormato().isBlank()) {
             config.setFormato(parseFormato(request.getFormato()));
+        }
+        if (request.getAbrirAutomaticamente() != null) {
+            config.setAbrirAutomaticamente(request.getAbrirAutomaticamente());
         }
 
         return toResponse(configRepository.save(config));
@@ -56,10 +60,21 @@ public class TicketConfigService {
                 .orElse(FormatoTicketPdf.TERMICO_80MM);
     }
 
+    @Transactional(readOnly = true)
+    public boolean resolverAbrirAutomaticamente(Long empresaId) {
+        if (empresaId == null) {
+            return true;
+        }
+        return configRepository.findByEmpresaId(empresaId)
+                .map(c -> Boolean.TRUE.equals(c.getAbrirAutomaticamente()))
+                .orElse(true);
+    }
+
     private EmpresaTicketConfig obtenerODefault(Long empresaId) {
         return configRepository.findByEmpresaId(empresaId).orElseGet(() -> {
             EmpresaTicketConfig def = new EmpresaTicketConfig();
             def.setFormato(FormatoTicketPdf.TERMICO_80MM);
+            def.setAbrirAutomaticamente(true);
             if (empresaRepository.existsById(empresaId)) {
                 def.setEmpresa(empresaRepository.findById(empresaId).orElse(null));
             }
@@ -93,6 +108,8 @@ public class TicketConfigService {
         dto.setFormato(config.getFormato() != null
                 ? config.getFormato().name()
                 : FormatoTicketPdf.TERMICO_80MM.name());
+        dto.setAbrirAutomaticamente(config.getAbrirAutomaticamente() == null
+                || Boolean.TRUE.equals(config.getAbrirAutomaticamente()));
         return dto;
     }
 }

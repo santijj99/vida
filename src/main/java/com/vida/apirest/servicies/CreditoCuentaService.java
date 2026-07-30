@@ -294,6 +294,12 @@ public class CreditoCuentaService {
             BigDecimal nuevoSaldoCapital = saldoCapital.subtract(aplicarCapital);
 
             cuota.setRecargo(nuevoRecargo.max(BigDecimal.ZERO));
+            if (aplicarRecargo.compareTo(BigDecimal.ZERO) > 0) {
+                BigDecimal cobradoPrevio = cuota.getRecargoCobrado() != null
+                        ? cuota.getRecargoCobrado()
+                        : BigDecimal.ZERO;
+                cuota.setRecargoCobrado(cobradoPrevio.add(aplicarRecargo));
+            }
             if (nuevoSaldoCapital.compareTo(BigDecimal.ZERO) <= 0 && nuevoRecargo.compareTo(BigDecimal.ZERO) <= 0) {
                 cuota.setSaldo(BigDecimal.ZERO);
                 cuota.setRecargo(BigDecimal.ZERO);
@@ -303,16 +309,22 @@ public class CreditoCuentaService {
             }
             cuotaRepository.save(cuota);
             pagadoPorCreditoId.merge(cuota.getCredito().getId(), aAplicar, BigDecimal::add);
-            pagosRegistrados.add(registrarPagoCuota(cuota, aAplicar, request));
+            pagosRegistrados.add(registrarPagoCuota(cuota, aAplicar, aplicarRecargo, request));
             montoRestante = montoRestante.subtract(aAplicar);
         }
         return pagosRegistrados;
     }
 
-    private PagoCuota registrarPagoCuota(Cuota cuota, BigDecimal monto, PagoCuotasRequest request) {
+    private PagoCuota registrarPagoCuota(
+            Cuota cuota,
+            BigDecimal monto,
+            BigDecimal montoRecargo,
+            PagoCuotasRequest request
+    ) {
         PagoCuota pagoCuota = new PagoCuota();
         pagoCuota.setCuota(cuota);
         pagoCuota.setMonto(monto);
+        pagoCuota.setMontoRecargo(montoRecargo != null ? montoRecargo : BigDecimal.ZERO);
         pagoCuota.setMetodoPago(request.getMetodoPago() != null ? request.getMetodoPago() : "EFECTIVO");
         pagoCuota.setEstado(PagoCuota.EstadoPagoCuota.ACTIVO);
         if (request.getMetodoPago() != null && request.getMetodoPago().equalsIgnoreCase("EFECTIVO")) {
@@ -472,8 +484,19 @@ public class CreditoCuentaService {
             throw new RuntimeException("El pago no tiene monto válido");
         }
 
+        // El monto se revierte separado: lo que se aplicó a mora vuelve al recargo, el resto al capital.
+        BigDecimal montoRecargo = pago.getMontoRecargo() != null
+                ? pago.getMontoRecargo().min(monto)
+                : BigDecimal.ZERO;
+        BigDecimal montoCapital = monto.subtract(montoRecargo);
+
         BigDecimal saldoActual = cuota.getSaldo() != null ? cuota.getSaldo() : BigDecimal.ZERO;
-        cuota.setSaldo(saldoActual.add(monto));
+        BigDecimal recargoActual = cuota.getRecargo() != null ? cuota.getRecargo() : BigDecimal.ZERO;
+        BigDecimal recargoCobrado = cuota.getRecargoCobrado() != null ? cuota.getRecargoCobrado() : BigDecimal.ZERO;
+
+        cuota.setSaldo(saldoActual.add(montoCapital));
+        cuota.setRecargo(recargoActual.add(montoRecargo));
+        cuota.setRecargoCobrado(recargoCobrado.subtract(montoRecargo).max(BigDecimal.ZERO));
         cuota.setEstado(Cuota.EstadoCuota.PENDIENTE);
         cuotaRepository.save(cuota);
 
@@ -636,6 +659,7 @@ public class CreditoCuentaService {
         BigDecimal saldoCapital = ref.getSaldo() != null ? ref.getSaldo() : BigDecimal.ZERO;
         BigDecimal saldoTotal = saldoCapital.add(recargo);
         BigDecimal pagoCapital = monto.subtract(saldoCapital).max(BigDecimal.ZERO);
+        BigDecimal pagoTotal = pagoCapital.add(creditoEstadoService.recargoCobrado(ref));
 
         CuotaCreditoResponse dto = new CuotaCreditoResponse();
         dto.setId(ref.getId());
@@ -643,7 +667,7 @@ public class CreditoCuentaService {
         dto.setNumero(ref.getNumero());
         dto.setFechaVencimiento(ref.getFechaVencimiento());
         dto.setMonto(monto);
-        dto.setPagoRealizado(pagoCapital);
+        dto.setPagoRealizado(pagoTotal);
         dto.setSaldo(saldoTotal);
         dto.setEstado(estadoCuotaEfectivo(ref));
         dto.setDescripcion(ref.getDescripcion());

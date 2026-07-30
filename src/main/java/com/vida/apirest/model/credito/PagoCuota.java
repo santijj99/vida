@@ -39,6 +39,10 @@ public class PagoCuota {
     @Column(name = "monto", nullable = false, precision = 15, scale = 2)
     private BigDecimal monto = BigDecimal.ZERO;
 
+    /** Parte del monto aplicada al recargo por mora; el resto va a capital. */
+    @Column(name = "monto_recargo", precision = 15, scale = 2)
+    private BigDecimal montoRecargo = BigDecimal.ZERO;
+
     @Column(name = "metodo_pago", nullable = false, length = 50)
     private String metodoPago;
 

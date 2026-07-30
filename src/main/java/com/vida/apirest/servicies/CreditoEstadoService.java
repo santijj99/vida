@@ -44,6 +44,10 @@ public class CreditoEstadoService {
         return q.getRecargo() != null ? q.getRecargo() : java.math.BigDecimal.ZERO;
     }
 
+    public java.math.BigDecimal recargoCobrado(Cuota q) {
+        return q.getRecargoCobrado() != null ? q.getRecargoCobrado() : java.math.BigDecimal.ZERO;
+    }
+
     /** Días desde el vencimiento de la cuota (sin considerar gracia). */
     public int diasDesdeVencimiento(Cuota q) {
         if (q.getFechaVencimiento() == null) {
@@ -69,6 +73,9 @@ public class CreditoEstadoService {
 
     public boolean debeGenerarRecargo(Cuota q, CreditoConfigEmpresa config) {
         if (!cuotaImpaga(q) || Boolean.TRUE.equals(q.getRecargoExento())) {
+            return false;
+        }
+        if (recargoCobrado(q).signum() > 0) {
             return false;
         }
         if (q.getFechaVencimiento() == null) {
