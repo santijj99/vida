@@ -2,10 +2,13 @@ package com.vida.apirest.servicies.afip;
 
 import com.vida.apirest.config.AfipProperties;
 import com.vida.apirest.dto.afip.AfipAmbienteResponse;
+import com.vida.apirest.model.empresa.EmpresaAfipConfig;
+import com.vida.apirest.repositories.EmpresaAfipConfigRepository;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @RequiredArgsConstructor
@@ -21,42 +24,93 @@ public class AfipConfigService {
     private final AfipProperties afipProperties;
     private final WSAAService wsaaService;
     private final AfipContextService afipContextService;
+    private final EmpresaAfipConfigRepository empresaAfipConfigRepository;
 
     public AfipAmbienteResponse consultarAmbiente() {
-        return construirRespuesta(null, null);
+        return consultarAmbiente(null);
     }
 
+    @Transactional
     public AfipAmbienteResponse consultarAmbiente(Long empresaId) {
-        AfipContext context = empresaId != null
-                ? afipContextService.resolveOptionalForEmpresaId(empresaId).orElse(null)
-                : afipContextService.resolveEmpresaIdForCurrentUser()
-                        .flatMap(afipContextService::resolveOptionalForEmpresaId)
-                        .orElse(null);
-        return construirRespuesta(null, context);
+        AfipContext context = null;
+        Boolean homologacionEmpresa = null;
+
+        if (empresaId != null) {
+            EmpresaAfipConfig config = empresaAfipConfigRepository.findByEmpresaIdWithEmpresa(empresaId).orElse(null);
+            if (config != null) {
+                homologacionEmpresa = config.isHomologacion();
+                afipProperties.setHomologacion(config.isHomologacion());
+                if (config.isAfipHabilitado()) {
+                    context = afipContextService.resolveOptionalForEmpresaId(empresaId).orElse(null);
+                }
+            }
+        } else {
+            context = afipContextService.resolveEmpresaIdForCurrentUser()
+                    .flatMap(afipContextService::resolveOptionalForEmpresaId)
+                    .orElse(null);
+            if (context != null) {
+                homologacionEmpresa = context.homologacion();
+                afipProperties.setHomologacion(context.homologacion());
+            }
+        }
+
+        return construirRespuesta(null, context, homologacionEmpresa);
     }
 
+    @Transactional
     public AfipAmbienteResponse cambiarAmbiente(boolean homologacion) {
+        return cambiarAmbiente(homologacion, null);
+    }
+
+    @Transactional
+    public AfipAmbienteResponse cambiarAmbiente(boolean homologacion, Long empresaId) {
         boolean anterior = afipProperties.isHomologacion();
         afipProperties.setHomologacion(homologacion);
         wsaaService.limpiarCache();
 
-        String mensaje = homologacion
-                ? "Ambiente cambiado a Homologaci?n. Regener? el token con el certificado de testing."
-                : "Ambiente cambiado a Producci?n. Regener? el token con el certificado de producci?n.";
-
-        if (anterior != homologacion) {
-            log.info("AFIP ambiente: {} -> {}", anterior ? "Homologaci?n" : "Producci?n",
-                    homologacion ? "Homologaci?n" : "Producci?n");
+        Long targetEmpresaId = empresaId;
+        if (targetEmpresaId == null) {
+            targetEmpresaId = afipContextService.resolveEmpresaIdForCurrentUser().orElse(null);
         }
 
-        return construirRespuesta(mensaje, null);
+        AfipContext context = null;
+        if (targetEmpresaId != null) {
+            EmpresaAfipConfig config = empresaAfipConfigRepository.findByEmpresaIdWithEmpresa(targetEmpresaId)
+                    .orElse(null);
+            if (config != null) {
+                config.setHomologacion(homologacion);
+                empresaAfipConfigRepository.save(config);
+                if (config.isAfipHabilitado()) {
+                    context = afipContextService.resolveOptionalForEmpresaId(targetEmpresaId).orElse(null);
+                }
+            }
+        }
+
+        String mensaje = homologacion
+                ? "Ambiente cambiado a Homologación. Regenerá el token con el certificado de testing."
+                : "Ambiente cambiado a Producción. Regenerá el token con el certificado de producción.";
+
+        if (anterior != homologacion) {
+            log.info("AFIP ambiente empresa {}: {} -> {}",
+                    targetEmpresaId,
+                    anterior ? "Homologación" : "Producción",
+                    homologacion ? "Homologación" : "Producción");
+        }
+
+        return construirRespuesta(mensaje, context, homologacion);
     }
 
-    private AfipAmbienteResponse construirRespuesta(String mensaje, AfipContext context) {
-        boolean homo = afipProperties.isHomologacion();
+    private AfipAmbienteResponse construirRespuesta(
+            String mensaje,
+            AfipContext context,
+            Boolean homologacionOverride
+    ) {
+        boolean homo = homologacionOverride != null
+                ? homologacionOverride
+                : (context != null ? context.homologacion() : afipProperties.isHomologacion());
         return AfipAmbienteResponse.builder()
                 .homologacion(homo)
-                .ambiente(homo ? "Homologaci?n" : "Producci?n")
+                .ambiente(homo ? "Homologación" : "Producción")
                 .wsaaUrl(homo ? WSAA_HOMO : WSAA_PROD)
                 .wsfeUrl(homo ? WSFE_HOMO : WSFE_PROD)
                 .certificadosDir(context != null ? context.certificadosDir().toString() : null)

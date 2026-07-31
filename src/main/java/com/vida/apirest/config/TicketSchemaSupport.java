@@ -32,6 +32,46 @@ public final class TicketSchemaSupport {
                     ALTER TABLE empresa_ticket_config
                     ADD COLUMN IF NOT EXISTS abrir_automaticamente BOOLEAN NOT NULL DEFAULT TRUE
                     """);
+            st.execute("""
+                    ALTER TABLE empresa_ticket_config
+                    ADD COLUMN IF NOT EXISTS cabecera_razon_social VARCHAR(255)
+                    """);
+            st.execute("""
+                    ALTER TABLE empresa_ticket_config
+                    ADD COLUMN IF NOT EXISTS cabecera_direccion VARCHAR(500)
+                    """);
+            st.execute("""
+                    ALTER TABLE empresa_ticket_config
+                    ADD COLUMN IF NOT EXISTS cabecera_cuit VARCHAR(20)
+                    """);
+            st.execute("""
+                    ALTER TABLE empresa_ticket_config
+                    ADD COLUMN IF NOT EXISTS cabecera_condicion_iva VARCHAR(120)
+                    """);
+            st.execute("""
+                    ALTER TABLE empresa_ticket_config
+                    ADD COLUMN IF NOT EXISTS cabecera_iibb VARCHAR(80)
+                    """);
+            st.execute("""
+                    ALTER TABLE empresa_ticket_config
+                    ADD COLUMN IF NOT EXISTS cabecera_inicio_actividad VARCHAR(40)
+                    """);
+            st.execute("""
+                    ALTER TABLE empresa_ticket_config
+                    ADD COLUMN IF NOT EXISTS cabecera_mostrar_etiqueta_razon_social BOOLEAN NOT NULL DEFAULT TRUE
+                    """);
+            st.execute("""
+                    ALTER TABLE empresa_ticket_config
+                    ADD COLUMN IF NOT EXISTS cabecera_mostrar_direccion BOOLEAN NOT NULL DEFAULT TRUE
+                    """);
+            st.execute("""
+                    ALTER TABLE empresa_ticket_config
+                    ADD COLUMN IF NOT EXISTS cabecera_mostrar_cuit BOOLEAN NOT NULL DEFAULT TRUE
+                    """);
+            st.execute("""
+                    ALTER TABLE empresa_ticket_config
+                    ADD COLUMN IF NOT EXISTS cabecera_mostrar_condicion_iva BOOLEAN NOT NULL DEFAULT TRUE
+                    """);
             log.info("DDL tickets aplicado");
         } catch (Exception e) {
             log.warn("DDL tickets (idempotente): {}", e.getMessage());

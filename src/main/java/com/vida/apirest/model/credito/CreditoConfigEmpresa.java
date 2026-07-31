@@ -23,11 +23,16 @@ public class CreditoConfigEmpresa {
 
     public enum TipoInteresMora { FIJO, ACUMULATIVO }
 
-    /** Día fijo del mes (1, 5, 10, 15, 20) o último día. */
+    /**
+     * Día fijo del mes (1, 5, 10, 15, 20), rangos, último día,
+     * o personalizado (día elegido en el alta del crédito).
+     */
     public enum ModoDiaVencimiento {
         DIA_1, DIA_5, DIA_10, DIA_15, DIA_20,
         RANGO_1_10, RANGO_1_15,
-        ULTIMO_MES
+        ULTIMO_MES,
+        /** Usa el día del 1er vencimiento cargado en el popup de crédito. */
+        DIA_PERSONALIZADO
     }
 
     @Id

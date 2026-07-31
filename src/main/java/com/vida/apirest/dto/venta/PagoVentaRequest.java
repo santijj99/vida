@@ -3,6 +3,7 @@ package com.vida.apirest.dto.venta;
 import lombok.Data;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 
 @Data
 public class PagoVentaRequest {
@@ -17,4 +18,6 @@ public class PagoVentaRequest {
     private String creditoDescripcion;
     private BigDecimal creditoMontoAnticipo;
     private String creditoModoDistribucion;
+    /** Fecha del 1er vencimiento elegida en el popup de crédito. */
+    private LocalDate fechaPrimerVencimiento;
 }

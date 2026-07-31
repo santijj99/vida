@@ -29,5 +29,24 @@ public final class CreditoSchemaSupport {
         } catch (Exception e) {
             log.warn("DDL recargos de cuota (idempotente): {}", e.getMessage());
         }
+
+        try (Connection c = dataSource.getConnection(); Statement st = c.createStatement()) {
+            // Hibernate crea un CHECK sobre el enum; hay que ampliarlo al agregar modos nuevos.
+            st.execute("""
+                    ALTER TABLE credito_config_empresa
+                    DROP CONSTRAINT IF EXISTS credito_config_empresa_modo_dia_vencimiento_check
+                    """);
+            st.execute("""
+                    ALTER TABLE credito_config_empresa
+                    ADD CONSTRAINT credito_config_empresa_modo_dia_vencimiento_check
+                    CHECK (modo_dia_vencimiento IN (
+                        'DIA_1','DIA_5','DIA_10','DIA_15','DIA_20',
+                        'RANGO_1_10','RANGO_1_15','ULTIMO_MES','DIA_PERSONALIZADO'
+                    ))
+                    """);
+            log.info("CHECK modo_dia_vencimiento actualizado");
+        } catch (Exception e) {
+            log.warn("CHECK modo_dia_vencimiento (idempotente): {}", e.getMessage());
+        }
     }
 }

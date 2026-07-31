@@ -14,4 +14,6 @@ public class CuotaEdicionRequest {
     private LocalDateTime fechaVencimiento;
     private String estado;
     private Boolean quitarRecargo;
+    /** Motivo al marcar quitarRecargo=true. */
+    private String motivoQuitarRecargo;
 }

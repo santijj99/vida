@@ -6,6 +6,7 @@ import com.vida.apirest.dto.credito.EditarCreditoRequest;
 import com.vida.apirest.model.credito.Credito;
 import com.vida.apirest.model.credito.Cuota;
 import com.vida.apirest.repositories.CreditoRepository;
+import com.vida.apirest.repositories.CuentaRepository;
 import com.vida.apirest.repositories.CuotaRepository;
 import com.vida.apirest.security.SucursalScopeService;
 import lombok.RequiredArgsConstructor;
@@ -22,6 +23,7 @@ public class CreditoRefinanciacionService {
 
     private final CreditoRepository creditoRepository;
     private final CuotaRepository cuotaRepository;
+    private final CuentaRepository cuentaRepository;
     private final CreditoHistorialService historialService;
     private final CreditoRecargoService recargoService;
     private final CreditoEstadoService estadoService;
@@ -79,7 +81,8 @@ public class CreditoRefinanciacionService {
     }
 
     @Transactional
-    public void quitarRecargoCuota(Long cuotaId) {
+    public void quitarRecargoCuota(Long cuotaId, String motivo) {
+        String motivoLimpio = validarMotivo(motivo);
         Cuota cuota = cuotaRepository.findById(cuotaId)
                 .orElseThrow(() -> new RuntimeException("Cuota no encontrada"));
         sucursalScopeService.assertCanAccess(cuota.getCredito().getSucursal().getId());
@@ -91,17 +94,78 @@ public class CreditoRefinanciacionService {
             throw new RuntimeException("La cuota no tiene recargo aplicado");
         }
         recargoService.quitarRecargo(cuota);
-        historialService.registrar(cuota.getCredito(), "Recargo eliminado",
-                "$" + anterior, "Cuota " + cuota.getNumero());
+        historialService.registrar(
+                cuota.getCredito(),
+                "Recargo eliminado",
+                "$" + anterior,
+                "Cuota " + cuota.getNumero() + " — " + motivoLimpio);
+    }
+
+    @Transactional
+    public CreditoClienteResponse cancelarCredito(Long creditoId, String motivo) {
+        String motivoLimpio = validarMotivoCancelacion(motivo);
+        Credito credito = creditoRepository.findById(creditoId)
+                .orElseThrow(() -> new RuntimeException("Crédito no encontrado"));
+        sucursalScopeService.assertCanAccess(credito.getSucursal().getId());
+
+        if (credito.getEstado() == Credito.EstadoCredito.CANCELADO) {
+            throw new RuntimeException("El crédito ya está cancelado");
+        }
+        if (credito.getEstado() == Credito.EstadoCredito.PAGADO) {
+            throw new RuntimeException("No se puede cancelar un crédito ya pagado");
+        }
+
+        BigDecimal saldoCredito = credito.getSaldo() != null ? credito.getSaldo() : BigDecimal.ZERO;
+        String estadoAnterior = credito.getEstado() != null ? credito.getEstado().name() : "-";
+
+        if (credito.getCliente() != null && credito.getSucursal() != null && saldoCredito.signum() > 0) {
+            cuentaRepository
+                    .findByClienteIdAndSucursalIdAndActivoTrue(
+                            credito.getCliente().getId(),
+                            credito.getSucursal().getId())
+                    .ifPresent(cuenta -> {
+                        BigDecimal saldoCuenta = cuenta.getSaldoActual() != null
+                                ? cuenta.getSaldoActual()
+                                : BigDecimal.ZERO;
+                        cuenta.setSaldoActual(saldoCuenta.subtract(saldoCredito).max(BigDecimal.ZERO));
+                        cuentaRepository.save(cuenta);
+                    });
+        }
+
+        List<Cuota> cuotas = cuotaRepository.findByCreditoIdIn(List.of(creditoId));
+        for (Cuota cuota : cuotas) {
+            if (cuota.getEstado() != Cuota.EstadoCuota.PAGADA) {
+                cuota.setEstado(Cuota.EstadoCuota.CANCELADA);
+                cuota.setSaldo(BigDecimal.ZERO);
+                cuota.setRecargo(BigDecimal.ZERO);
+            }
+        }
+        cuotaRepository.saveAll(cuotas);
+
+        credito.setEstado(Credito.EstadoCredito.CANCELADO);
+        credito.setSaldo(BigDecimal.ZERO);
+        creditoRepository.save(credito);
+
+        historialService.registrar(
+                credito,
+                "Crédito cancelado",
+                estadoAnterior + " · saldo $" + saldoCredito,
+                motivoLimpio);
+
+        return mapCreditoBasico(credito, cuotas);
     }
 
     private void aplicarEdicionCuota(Credito credito, Cuota cuota, CuotaEdicionRequest ed) {
         if (Boolean.TRUE.equals(ed.getQuitarRecargo())) {
+            String motivoLimpio = validarMotivo(ed.getMotivoQuitarRecargo());
             BigDecimal anterior = estadoService.recargoPersistido(cuota);
             if (anterior.compareTo(BigDecimal.ZERO) > 0) {
                 recargoService.quitarRecargo(cuota);
-                historialService.registrar(credito, "Recargo eliminado",
-                        "$" + anterior, "Cuota " + cuota.getNumero());
+                historialService.registrar(
+                        credito,
+                        "Recargo eliminado",
+                        "$" + anterior,
+                        "Cuota " + cuota.getNumero() + " — " + motivoLimpio);
             }
             return;
         }
@@ -217,5 +281,33 @@ public class CreditoRefinanciacionService {
     private String fmtFecha(java.time.LocalDateTime d) {
         if (d == null) return "-";
         return String.format("%02d/%02d/%04d", d.getDayOfMonth(), d.getMonthValue(), d.getYear());
+    }
+
+    private String validarMotivo(String motivo) {
+        if (motivo == null || motivo.isBlank()) {
+            throw new RuntimeException("Indicá el motivo para quitar el recargo");
+        }
+        String limpio = motivo.trim();
+        if (limpio.length() < 3) {
+            throw new RuntimeException("El motivo debe tener al menos 3 caracteres");
+        }
+        if (limpio.length() > 500) {
+            return limpio.substring(0, 500);
+        }
+        return limpio;
+    }
+
+    private String validarMotivoCancelacion(String motivo) {
+        if (motivo == null || motivo.isBlank()) {
+            throw new RuntimeException("Indicá el motivo para cancelar el crédito");
+        }
+        String limpio = motivo.trim();
+        if (limpio.length() < 3) {
+            throw new RuntimeException("El motivo debe tener al menos 3 caracteres");
+        }
+        if (limpio.length() > 500) {
+            return limpio.substring(0, 500);
+        }
+        return limpio;
     }
 }

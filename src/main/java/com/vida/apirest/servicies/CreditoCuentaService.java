@@ -55,6 +55,7 @@ public class CreditoCuentaService {
     private final SucursalScopeService sucursalScopeService;
     private final AfipContextService afipContextService;
     private final TicketPDFService ticketPDFService;
+    private final TicketConfigService ticketConfigService;
     private final SucursalRepository sucursalRepository;
     private final CreditoEstadoService creditoEstadoService;
     private final CreditoRecargoService creditoRecargoService;
@@ -425,9 +426,7 @@ public class CreditoCuentaService {
     }
 
     private TicketPDFService.DatosEmpresaTicket resolverDatosEmpresaTicket(Empresa empresa) {
-        return afipContextService.resolveOptionalForEmpresaId(empresa.getId())
-                .map(TicketPDFService.DatosEmpresaTicket::from)
-                .orElseGet(() -> TicketPDFService.DatosEmpresaTicket.fromEmpresa(empresa));
+        return ticketConfigService.resolverDatosCabecera(empresa);
     }
 
     @Transactional(readOnly = true)

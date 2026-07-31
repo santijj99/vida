@@ -133,7 +133,7 @@ public class AfipContextService {
                 config.getInicioActividad(),
                 config.getPtoVta() != null ? config.getPtoVta() : 1,
                 config.getCbteTipoDefault() != null ? config.getCbteTipoDefault() : 6,
-                afipProperties.isHomologacion(),
+                config.isHomologacion(),
                 certDir,
                 config.getClavePrivadaPassword()
         );

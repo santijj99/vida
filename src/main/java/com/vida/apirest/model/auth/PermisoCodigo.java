@@ -53,6 +53,8 @@ public final class PermisoCodigo {
     public static final String VER_CUENTAS = "VER_CUENTAS";
     public static final String CONFIGURAR_CREDITOS = "CONFIGURAR_CREDITOS";
     public static final String EDITAR_CREDITOS = "EDITAR_CREDITOS";
+    /** Cancelar un crédito activo (solo ADMINISTRADOR por defecto). */
+    public static final String CANCELAR_CREDITOS = "CANCELAR_CREDITOS";
     public static final String CONFIGURAR_TICKETS = "CONFIGURAR_TICKETS";
     public static final String VER_GASTOS = "VER_GASTOS";
     public static final String GESTIONAR_GASTOS = "GESTIONAR_GASTOS";
@@ -89,6 +91,7 @@ public final class PermisoCodigo {
                 VER_CUENTAS,
                 CONFIGURAR_CREDITOS,
                 EDITAR_CREDITOS,
+                CANCELAR_CREDITOS,
                 CONFIGURAR_TICKETS,
                 VER_GASTOS,
                 GESTIONAR_GASTOS,

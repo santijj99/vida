@@ -36,6 +36,38 @@ public class DepositoService {
         return toResponse(depositoRepository.save(deposito));
     }
 
+    @Transactional
+    public DepositoResponse update(Long id, DepositoCreateRequest request) {
+        Deposito deposito = EntityLookup.require(
+                depositoRepository.findById(id),
+                "Depósito no encontrado con ID: " + id);
+
+        if (request.getSucursalId() != null
+                && (deposito.getSucursal() == null
+                || !request.getSucursalId().equals(deposito.getSucursal().getId()))) {
+            Sucursal sucursal = EntityLookup.require(
+                    sucursalRepository.findById(request.getSucursalId()),
+                    "Sucursal no encontrada con ID: " + request.getSucursalId());
+            deposito.setSucursal(sucursal);
+        }
+        if (request.getNombre() != null && !request.getNombre().isBlank()) {
+            deposito.setNombre(request.getNombre().trim());
+        }
+        if (request.getCodigo() != null && !request.getCodigo().isBlank()) {
+            deposito.setCodigo(request.getCodigo().trim());
+        }
+        if (request.getUbicacion() != null) {
+            deposito.setUbicacion(request.getUbicacion().trim());
+        }
+        if (request.getDescripcion() != null) {
+            deposito.setDescripcion(request.getDescripcion().trim());
+        }
+        if (request.getTipo() != null && !request.getTipo().isBlank()) {
+            deposito.setTipo(parseTipo(request.getTipo()));
+        }
+        return toResponse(depositoRepository.save(deposito));
+    }
+
     @Transactional(readOnly = true)
     public List<DepositoResponse> findAll(Long sucursalId) {
         List<Deposito> depositos = sucursalId != null
