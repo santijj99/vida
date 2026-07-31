@@ -112,7 +112,9 @@ public class FacturaAFIPController {
         if (request.getHomologacion() == null) {
             return ResponseEntity.badRequest().build();
         }
-        return ResponseEntity.ok(afipConfigService.cambiarAmbiente(request.getHomologacion()));
+        return ResponseEntity.ok(afipConfigService.cambiarAmbiente(
+                request.getHomologacion(),
+                request.getEmpresaId()));
     }
 
     @GetMapping("/receptor/consulta")

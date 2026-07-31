@@ -208,6 +208,9 @@ public class FacturaAFIPService {
             List<PagoVentaRequest> pagosRequest
     ) {
         if (!afipProperties.isEnabled() || !afipProperties.isAutoFacturarEnVenta()) {
+            log.warn("Facturación ARCA omitida para venta {}: módulo deshabilitado "
+                            + "(afip.enabled={}, afip.auto-facturar-en-venta={})",
+                    ventaId, afipProperties.isEnabled(), afipProperties.isAutoFacturarEnVenta());
             return null;
         }
 
@@ -233,7 +236,7 @@ public class FacturaAFIPService {
             AfipContext context = afipContextService.resolveForVenta(venta);
             return afipContextService.callWithContext(context, () -> emitirFacturaConContexto(venta, ventaId, request, context));
         } catch (Exception e) {
-            log.error("Error al facturar automáticamente venta {}: {}", ventaId, e.getMessage());
+            log.error("Error al facturar automáticamente venta {}: {}", ventaId, e.getMessage(), e);
             return null;
         }
     }

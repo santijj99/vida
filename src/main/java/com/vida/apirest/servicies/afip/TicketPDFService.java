@@ -98,7 +98,11 @@ public class TicketPDFService {
             String cuit,
             String condicionIva,
             String iibb,
-            String inicioActividad
+            String inicioActividad,
+            boolean mostrarEtiquetaRazonSocial,
+            boolean mostrarDireccion,
+            boolean mostrarCuit,
+            boolean mostrarCondicionIva
     ) {
         public static DatosEmpresaTicket from(AfipContext ctx) {
             return new DatosEmpresaTicket(
@@ -108,7 +112,8 @@ public class TicketPDFService {
                     ctx.cuit(),
                     ctx.condicionIva(),
                     ctx.iibb(),
-                    ctx.inicioActividad()
+                    ctx.inicioActividad(),
+                    true, true, true, true
             );
         }
 
@@ -123,7 +128,8 @@ public class TicketPDFService {
                     empresa.getCuit() != null ? empresa.getCuit() : "",
                     "",
                     "",
-                    ""
+                    "",
+                    true, true, true, true
             );
         }
     }
@@ -278,18 +284,12 @@ public class TicketPDFService {
         PdfWriter.getInstance(document, baos);
         document.open();
         try {
-            Paragraph copiaCliente = new Paragraph("COPIA CLIENTE", FONT_BOLD);
-            copiaCliente.setAlignment(Element.ALIGN_CENTER);
-            document.add(copiaCliente);
             renderizarCuerpoComprobanteCredito(document, venta, empresa, credito, cuotas, true);
 
             document.add(new Paragraph(" "));
             document.add(new LineSeparator());
             document.add(new Paragraph(" "));
 
-            Paragraph copiaEmpresa = new Paragraph("COPIA EMPRESA", FONT_BOLD);
-            copiaEmpresa.setAlignment(Element.ALIGN_CENTER);
-            document.add(copiaEmpresa);
             renderizarCuerpoComprobanteCredito(document, venta, empresa, credito, cuotas, false);
         } finally {
             document.close();
@@ -305,9 +305,8 @@ public class TicketPDFService {
             List<Cuota> cuotas,
             boolean incluirFirma
     ) throws DocumentException {
-        Paragraph empresaP = new Paragraph(nvl(empresa.razonSocial(), "EMPRESA"), FONT_LARGE);
-        empresaP.setAlignment(Element.ALIGN_CENTER);
-        document.add(empresaP);
+        // Misma cabecera fiscal/comercial que el cobro de cuotas.
+        agregarInfoEmpresa(document, empresa);
 
         Paragraph aviso = new Paragraph("Comprobante no válido como Factura", FONT_NORMAL);
         aviso.setAlignment(Element.ALIGN_CENTER);
@@ -556,10 +555,24 @@ public class TicketPDFService {
     private void agregarInfoEmpresa(Document document, DatosEmpresaTicket empresa) throws DocumentException {
         Paragraph p = new Paragraph();
         p.setFont(FONT_NORMAL);
-        p.add(new Chunk("Razón social: " + empresa.razonSocial() + "\n", FONT_NORMAL));
-        p.add(new Chunk("Direccion: " + empresa.direccion() + "\n", FONT_NORMAL));
-        p.add(new Chunk("C.U.I.T.: " + empresa.cuit() + "\n", FONT_NORMAL));
-        if (empresa.condicionIva() != null && !empresa.condicionIva().isBlank()) {
+        String razon = empresa.razonSocial() != null ? empresa.razonSocial() : "";
+        if (empresa.mostrarEtiquetaRazonSocial()) {
+            p.add(new Chunk("Razón social: " + razon + "\n", FONT_NORMAL));
+        } else if (!razon.isBlank()) {
+            Paragraph nombre = new Paragraph(razon, FONT_LARGE);
+            nombre.setAlignment(Element.ALIGN_CENTER);
+            document.add(nombre);
+        }
+        if (empresa.mostrarDireccion()
+                && empresa.direccion() != null && !empresa.direccion().isBlank()) {
+            p.add(new Chunk("Direccion: " + empresa.direccion() + "\n", FONT_NORMAL));
+        }
+        if (empresa.mostrarCuit()
+                && empresa.cuit() != null && !empresa.cuit().isBlank()) {
+            p.add(new Chunk("C.U.I.T.: " + empresa.cuit() + "\n", FONT_NORMAL));
+        }
+        if (empresa.mostrarCondicionIva()
+                && empresa.condicionIva() != null && !empresa.condicionIva().isBlank()) {
             p.add(new Chunk(empresa.condicionIva() + "\n", FONT_NORMAL));
         }
         if (empresa.iibb() != null && !empresa.iibb().isBlank()) {
@@ -568,7 +581,9 @@ public class TicketPDFService {
         if (empresa.inicioActividad() != null && !empresa.inicioActividad().isBlank()) {
             p.add(new Chunk("Inicio de actividad: " + empresa.inicioActividad() + "\n", FONT_NORMAL));
         }
-        document.add(p);
+        if (p.size() > 0) {
+            document.add(p);
+        }
         document.add(new Paragraph(" "));
     }
 
