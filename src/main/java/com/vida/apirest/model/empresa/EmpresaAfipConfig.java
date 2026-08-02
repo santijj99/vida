@@ -56,6 +56,13 @@ public class EmpresaAfipConfig {
     private String clavePrivadaPassword;
 
     /**
+     * true = homologación (testing); false = producción.
+     * Se recuerda por empresa al cambiar el ambiente en ARCA.
+     */
+    @Column(name = "homologacion", nullable = false)
+    private boolean homologacion = true;
+
+    /**
      * Copia del último TA.xml (wsfe) generado por Java, por si se pierde el archivo en disco.
      */
     @Column(name = "ta_xml_wsfe", columnDefinition = "TEXT")

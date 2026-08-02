@@ -121,7 +121,7 @@ public class TicketPdfA4Renderer {
             PdfPTable copiaCliente = new PdfPTable(1);
             copiaCliente.setWidthPercentage(100);
             copiaCliente.addCell(celdaCopiaCredito(
-                    venta, empresa, credito, ordenadas, "COPIA CLIENTE", true));
+                    venta, empresa, credito, ordenadas, true));
             document.add(copiaCliente);
 
             document.newPage();
@@ -129,7 +129,7 @@ public class TicketPdfA4Renderer {
             PdfPTable copiaEmpresa = new PdfPTable(1);
             copiaEmpresa.setWidthPercentage(100);
             copiaEmpresa.addCell(celdaCopiaCredito(
-                    venta, empresa, credito, ordenadas, "COPIA EMPRESA", false));
+                    venta, empresa, credito, ordenadas, false));
             document.add(copiaEmpresa);
         } finally {
             document.close();
@@ -142,7 +142,6 @@ public class TicketPdfA4Renderer {
             TicketPDFService.DatosEmpresaTicket empresa,
             Credito credito,
             List<Cuota> cuotas,
-            String etiquetaCopia,
             boolean incluirFirma
     ) throws DocumentException {
         PdfPCell cell = new PdfPCell();
@@ -151,13 +150,27 @@ public class TicketPdfA4Renderer {
         cell.setPadding(10);
         cell.setVerticalAlignment(Element.ALIGN_TOP);
 
-        Paragraph copia = new Paragraph(etiquetaCopia, F_SMALL);
-        copia.setAlignment(Element.ALIGN_RIGHT);
-        cell.addElement(copia);
-
-        Paragraph empresaP = new Paragraph(nvl(empresa.razonSocial(), "EMPRESA"), F_EMPRESA);
-        empresaP.setAlignment(Element.ALIGN_CENTER);
-        cell.addElement(empresaP);
+        Paragraph empresaInfo = new Paragraph();
+        empresaInfo.add(new Chunk(nvl(empresa.razonSocial(), "EMPRESA") + "\n", F_EMPRESA));
+        if (empresa.mostrarDireccion()
+                && empresa.direccion() != null && !empresa.direccion().isBlank()) {
+            empresaInfo.add(new Chunk("Direccion: " + empresa.direccion() + "\n", F_NORMAL));
+        }
+        if (empresa.mostrarCuit()
+                && empresa.cuit() != null && !empresa.cuit().isBlank()) {
+            empresaInfo.add(new Chunk("C.U.I.T.: " + empresa.cuit() + "\n", F_NORMAL));
+        }
+        if (empresa.mostrarCondicionIva()
+                && empresa.condicionIva() != null && !empresa.condicionIva().isBlank()) {
+            empresaInfo.add(new Chunk(empresa.condicionIva() + "\n", F_NORMAL));
+        }
+        if (empresa.iibb() != null && !empresa.iibb().isBlank()) {
+            empresaInfo.add(new Chunk("IIBB: " + empresa.iibb() + "\n", F_NORMAL));
+        }
+        if (empresa.inicioActividad() != null && !empresa.inicioActividad().isBlank()) {
+            empresaInfo.add(new Chunk("Inicio de actividad: " + empresa.inicioActividad() + "\n", F_NORMAL));
+        }
+        cell.addElement(empresaInfo);
 
         Paragraph aviso = new Paragraph("Comprobante no válido como Factura", F_SMALL_ITALIC);
         aviso.setAlignment(Element.ALIGN_CENTER);
@@ -604,9 +617,15 @@ public class TicketPdfA4Renderer {
 
         Paragraph izq = new Paragraph();
         izq.add(new Chunk(empresa.razonSocial() + "\n", F_BOLD));
-        izq.add(new Chunk("Domicilio: " + nvl(empresa.direccion()) + "\n", F_NORMAL));
-        if (empresa.cuit() != null && !empresa.cuit().isBlank()) {
+        if (empresa.mostrarDireccion()) {
+            izq.add(new Chunk("Domicilio: " + nvl(empresa.direccion()) + "\n", F_NORMAL));
+        }
+        if (empresa.mostrarCuit() && empresa.cuit() != null && !empresa.cuit().isBlank()) {
             izq.add(new Chunk("CUIT: " + formatearCuit(empresa.cuit()) + "\n", F_NORMAL));
+        }
+        if (empresa.mostrarCondicionIva()
+                && empresa.condicionIva() != null && !empresa.condicionIva().isBlank()) {
+            izq.add(new Chunk(empresa.condicionIva() + "\n", F_NORMAL));
         }
         header.addCell(celdaContenido(izq));
 

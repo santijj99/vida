@@ -1,5 +1,6 @@
 package com.vida.apirest.tenant;
 
+import com.vida.apirest.config.AfipSchemaSupport;
 import com.vida.apirest.config.CreditoSchemaSupport;
 import com.vida.apirest.config.RbacPermissionSyncSupport;
 import com.vida.apirest.config.SueldoSchemaSupport;
@@ -51,6 +52,7 @@ public class TenantBootstrapService {
             SueldoSchemaSupport.apply(dataSource);
             TicketSchemaSupport.apply(dataSource);
             CreditoSchemaSupport.apply(dataSource);
+            AfipSchemaSupport.apply(dataSource);
         } catch (Exception ex) {
             log.error("Tenant {}: falló el bootstrap de schema/seed: {}", codigoLicencia, ex.getMessage(), ex);
             throw new IllegalStateException(

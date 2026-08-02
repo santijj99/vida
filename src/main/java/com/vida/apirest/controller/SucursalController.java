@@ -26,6 +26,13 @@ public class SucursalController {
         return ResponseEntity.status(HttpStatus.CREATED).body(sucursalService.create(request));
     }
 
+    @PutMapping("/{id}")
+    public ResponseEntity<SucursalResponse> updateSucursal(
+            @PathVariable Long id,
+            @RequestBody SucursalCreateRequest request) {
+        return ResponseEntity.ok(sucursalService.update(id, request));
+    }
+
     @GetMapping
     public ResponseEntity<List<SucursalResponse>> getAllSucursales() {
         return ResponseEntity.ok(sucursalService.findAll());

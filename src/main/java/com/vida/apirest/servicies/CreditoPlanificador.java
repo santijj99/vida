@@ -302,7 +302,8 @@ public final class CreditoPlanificador {
             CreditoConfigEmpresa.ModoDiaVencimiento modo
     ) {
         LocalDate base = fechaBase != null ? fechaBase.toLocalDate() : LocalDate.now();
-        YearMonth mes = YearMonth.from(base).plusMonths(numeroCuota - 1L);
+        // base = 1er vencimiento − 1 mes → cuota N = base + N meses (alineado al preview Flutter)
+        YearMonth mes = YearMonth.from(base).plusMonths(numeroCuota);
         CreditoConfigEmpresa.ModoDiaVencimiento modoDia = modo != null
                 ? modo
                 : CreditoConfigEmpresa.ModoDiaVencimiento.DIA_10;
@@ -315,6 +316,7 @@ public final class CreditoPlanificador {
             case RANGO_1_10 -> Math.min(10, Math.max(1, base.getDayOfMonth()));
             case RANGO_1_15 -> Math.min(15, Math.max(1, base.getDayOfMonth()));
             case ULTIMO_MES -> mes.lengthOfMonth();
+            case DIA_PERSONALIZADO -> base.getDayOfMonth();
         };
         return mes.atDay(Math.min(dia, mes.lengthOfMonth())).atStartOfDay();
     }

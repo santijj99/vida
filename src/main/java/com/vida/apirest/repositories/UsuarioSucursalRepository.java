@@ -16,6 +16,13 @@ public interface UsuarioSucursalRepository extends JpaRepository<UsuarioSucursal
     @Query("SELECT us.sucursal.nombre FROM UsuarioSucursal us WHERE us.usuario.id = :usuarioId ORDER BY us.sucursal.nombre ASC")
     List<String> findSucursalNombresByUsuarioId(@Param("usuarioId") Long usuarioId);
 
+    @Query("""
+            SELECT us.sucursal FROM UsuarioSucursal us
+            WHERE us.usuario.id = :usuarioId
+            ORDER BY us.sucursal.nombre ASC
+            """)
+    List<com.vida.apirest.model.almacen.Sucursal> findSucursalesByUsuarioId(@Param("usuarioId") Long usuarioId);
+
     boolean existsByUsuario_IdAndSucursal_Id(Long usuarioId, Long sucursalId);
 
     @Query("""

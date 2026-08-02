@@ -24,6 +24,13 @@ public class DepositoController {
         return ResponseEntity.status(HttpStatus.CREATED).body(depositoService.create(request));
     }
 
+    @PutMapping("/{id}")
+    public ResponseEntity<DepositoResponse> updateDeposito(
+            @PathVariable Long id,
+            @RequestBody DepositoCreateRequest request) {
+        return ResponseEntity.ok(depositoService.update(id, request));
+    }
+
     @GetMapping
     public ResponseEntity<List<DepositoResponse>> getAllDepositos(
             @RequestParam(required = false) Long sucursalId) {

@@ -23,7 +23,8 @@ public class CreditoVencimientoCalculoService {
             CreditoConfigEmpresa config
     ) {
         LocalDate base = fechaBase != null ? fechaBase.toLocalDate() : LocalDate.now();
-        YearMonth mes = YearMonth.from(base).plusMonths(numeroCuota - 1L);
+        // base = 1er vencimiento − 1 mes → cuota N = base + N meses
+        YearMonth mes = YearMonth.from(base).plusMonths(numeroCuota);
         CreditoConfigEmpresa.ModoDiaVencimiento modo = config != null && config.getModoDiaVencimiento() != null
                 ? config.getModoDiaVencimiento()
                 : CreditoConfigEmpresa.ModoDiaVencimiento.DIA_10;
@@ -37,6 +38,7 @@ public class CreditoVencimientoCalculoService {
             case RANGO_1_10 -> Math.min(10, Math.max(1, base.getDayOfMonth()));
             case RANGO_1_15 -> Math.min(15, Math.max(1, base.getDayOfMonth()));
             case ULTIMO_MES -> mes.lengthOfMonth();
+            case DIA_PERSONALIZADO -> base.getDayOfMonth();
         };
 
         int maxDia = mes.lengthOfMonth();

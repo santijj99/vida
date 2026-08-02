@@ -48,6 +48,35 @@ public class SucursalService {
         return toResponse(sucursalRepository.save(sucursal));
     }
 
+    @Transactional
+    public SucursalResponse update(Long id, SucursalCreateRequest request) {
+        Sucursal sucursal = requireSucursal(id);
+        if (request.getEmpresaId() != null
+                && (sucursal.getEmpresa() == null
+                || !request.getEmpresaId().equals(sucursal.getEmpresa().getId()))) {
+            Empresa empresa = EntityLookup.require(
+                    empresaRepository.findById(request.getEmpresaId()),
+                    "Empresa no encontrada con ID: " + request.getEmpresaId());
+            sucursal.setEmpresa(empresa);
+        }
+        if (request.getNombre() != null && !request.getNombre().isBlank()) {
+            sucursal.setNombre(request.getNombre().trim());
+        }
+        if (request.getCodigo() != null && !request.getCodigo().isBlank()) {
+            sucursal.setCodigo(request.getCodigo().trim());
+        }
+        if (request.getDomicilio() != null) {
+            sucursal.setDomicilio(request.getDomicilio().trim());
+        }
+        if (request.getCiudad() != null) {
+            sucursal.setCiudad(request.getCiudad().trim());
+        }
+        if (request.getProvincia() != null) {
+            sucursal.setProvincia(request.getProvincia().trim());
+        }
+        return toResponse(sucursalRepository.save(sucursal));
+    }
+
     @Transactional(readOnly = true)
     public List<SucursalResponse> findAll() {
         return sucursalRepository.findAll().stream().map(this::toResponse).toList();

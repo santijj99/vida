@@ -33,13 +33,17 @@ import com.vida.apirest.dto.usuario.LoginResponse;
 import com.vida.apirest.dto.usuario.ResetPasswordRequest;
 import com.vida.apirest.dto.usuario.UpdateUsuarioRequest;
 import com.vida.apirest.dto.usuario.UsuarioResponse;
+import com.vida.apirest.dto.usuario.UsuarioSucursalDTO;
 import com.vida.apirest.dto.usuario.mapper.UsuarioMapper;
+import com.vida.apirest.model.almacen.Sucursal;
 import com.vida.apirest.model.auth.Role;
 import com.vida.apirest.model.auth.Usuario;
 import com.vida.apirest.model.auth.UsuarioHasRoles;
 import com.vida.apirest.repositories.RoleRepository;
+import com.vida.apirest.repositories.SucursalRepository;
 import com.vida.apirest.repositories.UsuarioHasRoleRepository;
 import com.vida.apirest.repositories.UsuarioRepository;
+import com.vida.apirest.repositories.UsuarioSucursalRepository;
 import com.vida.apirest.servicies.afip.AFIPTokenValidatorService;
 import com.vida.apirest.servicies.afip.AfipContextService;
 import com.vida.apirest.utils.FileUploadUtils;
@@ -68,6 +72,12 @@ public class UsuarioService {
 
     @Autowired
     private UsuarioMapper usuarioMapper;
+
+    @Autowired
+    private UsuarioSucursalRepository usuarioSucursalRepository;
+
+    @Autowired
+    private SucursalRepository sucursalRepository;
 
     @Autowired
     private PermissionResolverService permissionResolverService;
@@ -253,7 +263,33 @@ public class UsuarioService {
     public UsuarioResponse buildProfileResponse(Usuario usuario) {
         List<Role> roles = rolesFromUsuario(usuario);
         EffectivePermissions permissions = permissionResolverService.resolve(usuario);
-        return usuarioMapper.toUsuarioResponse(usuario, roles, permissions);
+        UsuarioResponse response = usuarioMapper.toUsuarioResponse(usuario, roles, permissions);
+        response.setSucursales(resolveSucursalesPerfil(usuario, roles));
+        return response;
+    }
+
+    private List<UsuarioSucursalDTO> resolveSucursalesPerfil(Usuario usuario, List<Role> roles) {
+        boolean isAdmin = roles.stream().anyMatch(r -> "ADMINISTRADOR".equals(r.getNombre()));
+        List<Sucursal> sucursales;
+        if (isAdmin) {
+            sucursales = sucursalRepository.findAll().stream()
+                    .filter(s -> s.getEstado() == null || s.getEstado() == Sucursal.EstadoSucursal.ACTIVA)
+                    .sorted((a, b) -> String.CASE_INSENSITIVE_ORDER.compare(
+                            a.getNombre() != null ? a.getNombre() : "",
+                            b.getNombre() != null ? b.getNombre() : ""))
+                    .toList();
+        } else {
+            sucursales = usuarioSucursalRepository.findSucursalesByUsuarioId(usuario.getId()).stream()
+                    .filter(s -> s.getEstado() == null || s.getEstado() == Sucursal.EstadoSucursal.ACTIVA)
+                    .toList();
+        }
+        return sucursales.stream()
+                .map(s -> new UsuarioSucursalDTO(
+                        s.getId(),
+                        s.getNombre(),
+                        s.getCodigo(),
+                        s.getEstado() != null ? s.getEstado().name() : null))
+                .toList();
     }
 
     @Transactional
@@ -316,7 +352,9 @@ public class UsuarioService {
 
         LoginResponse response = new LoginResponse();
         response.setToken("Bearer " + token);
-        response.setUsuario(usuarioMapper.toUsuarioResponse(usuario, roles, permissions));
+        UsuarioResponse usuarioResponse = usuarioMapper.toUsuarioResponse(usuario, roles, permissions);
+        usuarioResponse.setSucursales(resolveSucursalesPerfil(usuario, roles));
+        response.setUsuario(usuarioResponse);
         response.setAfipToken(validarTokenAfipEnLogin());
         return response;
     }

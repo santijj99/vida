@@ -94,6 +94,7 @@ public class VentaService {
     private final FacturaAFIPService facturaAFIPService;
     private final AfipContextService afipContextService;
     private final TicketPDFService ticketPDFService;
+    private final TicketConfigService ticketConfigService;
     private final CajaMovimientoService cajaMovimientoService;
     private final VentaDetalleSupport ventaDetalleSupport;
     private final SucursalScopeService sucursalScopeService;
@@ -259,13 +260,22 @@ public class VentaService {
 
         Cuenta cuentaCredito = crearOEncontrarCuentaCredito(cliente, sucursal);
         Credito credito = construirCreditoDesdePago(ventaGuardada, pagoReq, cliente, sucursal);
+        LocalDateTime baseFecha;
+        if (pagoReq.getFechaPrimerVencimiento() != null) {
+            baseFecha = resolverBaseFechaCredito(pagoReq.getFechaPrimerVencimiento());
+        } else {
+            LocalDateTime ventaFecha = ventaGuardada.getFechaVenta() != null
+                    ? ventaGuardada.getFechaVenta()
+                    : LocalDateTime.now();
+            baseFecha = ventaFecha.minusMonths(1);
+        }
         CreditoPlanificador.ResultadoPlan plan = CreditoPlanificador.planificar(
                 ventaGuardada.getTotal(),
                 pagoReq.getCreditoPlazoMeses(),
                 pagoReq.getCreditoTasaInteres(),
                 pagoReq.getCreditoMontoAnticipo() != null ? pagoReq.getCreditoMontoAnticipo() : BigDecimal.ZERO,
                 pagoReq.getCreditoModoDistribucion(),
-                ventaGuardada.getFechaVenta(),
+                baseFecha,
                 resolverModoVencimiento(sucursal)
         );
         credito.setImporte(plan.montoFinanciado);
@@ -471,6 +481,7 @@ public class VentaService {
         pagoCredito.setCreditoDescripcion(request.getCreditoDescripcion());
         pagoCredito.setCreditoMontoAnticipo(anticipo);
         pagoCredito.setCreditoModoDistribucion(plan.modoDistribucion);
+        pagoCredito.setFechaPrimerVencimiento(request.getFechaPrimerVencimiento());
         pagos.add(pagoCredito);
 
         internalRequest.setPagos(pagos);
@@ -579,9 +590,7 @@ public class VentaService {
     }
 
     private TicketPDFService.DatosEmpresaTicket resolverDatosEmpresaTicket(Empresa empresa) {
-        return afipContextService.resolveOptionalForEmpresaId(empresa.getId())
-                .map(TicketPDFService.DatosEmpresaTicket::from)
-                .orElseGet(() -> TicketPDFService.DatosEmpresaTicket.fromEmpresa(empresa));
+        return ticketConfigService.resolverDatosCabecera(empresa);
     }
 
     @Transactional
