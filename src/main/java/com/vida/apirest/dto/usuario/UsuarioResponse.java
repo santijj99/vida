@@ -27,4 +27,7 @@ public class UsuarioResponse {
     Set<String> permisosAdicionales;
     Set<String> permisosDenegados;
     Set<String> permisosEfectivos;
+
+    /** Sucursales operables: asignadas en usuario_sucursal; ADMINISTRADOR recibe todas las activas. */
+    List<UsuarioSucursalDTO> sucursales;
 }
