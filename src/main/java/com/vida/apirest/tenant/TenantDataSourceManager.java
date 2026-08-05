@@ -2,6 +2,7 @@ package com.vida.apirest.tenant;
 
 import com.vida.apirest.config.LicenciaProperties;
 import com.vida.apirest.exception.ForbiddenException;
+import com.vida.apirest.servicies.licencia.DeviceUuidResolver;
 import com.vida.apirest.servicies.licencia.LicenciaServerClient;
 import com.vida.apirest.servicies.licencia.LicenciaServerClient.ValidacionRemotaResult;
 import com.zaxxer.hikari.HikariConfig;
@@ -13,10 +14,9 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 
 import javax.sql.DataSource;
-import java.nio.file.Files;
-import java.nio.file.Path;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.Map;
-import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 @Slf4j
@@ -24,15 +24,19 @@ import java.util.concurrent.ConcurrentHashMap;
 @RequiredArgsConstructor
 public class TenantDataSourceManager {
 
-    private static final Path DEVICE_UUID_PATH = Path.of("data", "device-uuid.txt");
+    /** Si el servidor de licencias no responde, se reintenta el registro pronto. */
+    private static final Duration REINTENTO_OFFLINE = Duration.ofMinutes(1);
 
     private final LicenciaProperties properties;
     private final LicenciaServerClient licenciaServerClient;
     private final TenantAesDecryptor aesDecryptor;
+    private final DeviceUuidResolver deviceUuidResolver;
     /** Lazy: evita ciclo Manager → Bootstrap → JPA → DataSource → Manager */
     private final ObjectProvider<TenantBootstrapService> tenantBootstrapService;
 
     private final Map<String, HikariDataSource> pools = new ConcurrentHashMap<>();
+    /** licencia|uuid → momento a partir del cual hay que revalidar el dispositivo. */
+    private final Map<String, Instant> proximaValidacionDispositivo = new ConcurrentHashMap<>();
 
     @PostConstruct
     void logMode() {
@@ -66,11 +70,44 @@ public class TenantDataSourceManager {
             throw new ForbiddenException("Debés indicar el código de licencia de la empresa");
         }
         resolve(codigo);
+        registrarDispositivo(codigo);
+    }
+
+    /**
+     * El pool se cachea por licencia, así que la validación de {@code createPool}
+     * solo corre para el primer equipo que entra. Sin esto los demás equipos
+     * nunca llegan a aparecer en el servidor de licencias.
+     */
+    private void registrarDispositivo(String codigo) {
+        String deviceUuid = deviceUuidResolver.resolve();
+        String key = codigo + "|" + deviceUuid;
+        Instant proxima = proximaValidacionDispositivo.get(key);
+        if (proxima != null && Instant.now().isBefore(proxima)) {
+            return;
+        }
+
+        ValidacionRemotaResult result = licenciaServerClient.validar(
+                codigo, deviceUuid, deviceUuidResolver.resolveNombre());
+        if (!result.isAlcanzable()) {
+            proximaValidacionDispositivo.put(key, Instant.now().plus(REINTENTO_OFFLINE));
+            return;
+        }
+        if (!result.isValida()) {
+            proximaValidacionDispositivo.remove(key);
+            throw new ForbiddenException(
+                    result.getMensaje() != null ? result.getMensaje() : "Licencia inválida");
+        }
+        if (proxima == null) {
+            log.info("Dispositivo registrado en licencias: licencia={} uuid={}", codigo, deviceUuid);
+        }
+        proximaValidacionDispositivo.put(key, Instant.now()
+                .plus(Duration.ofMinutes(Math.max(1, properties.getCacheMinutos()))));
     }
 
     private HikariDataSource createPool(String codigo) {
-        String deviceUuid = resolveDeviceUuid();
-        ValidacionRemotaResult result = licenciaServerClient.validar(codigo, deviceUuid);
+        String deviceUuid = deviceUuidResolver.resolve();
+        ValidacionRemotaResult result = licenciaServerClient.validar(
+                codigo, deviceUuid, deviceUuidResolver.resolveNombre());
 
         if (!result.isAlcanzable()) {
             throw new ForbiddenException(
@@ -125,27 +162,8 @@ public class TenantDataSourceManager {
                 codigo, result.getDatabaseName(), result.getHost(), result.getPuerto());
 
         tenantBootstrapService.getObject().bootstrapIfNeeded(ds, codigo);
+        proximaValidacionDispositivo.put(codigo + "|" + deviceUuid, Instant.now()
+                .plus(Duration.ofMinutes(Math.max(1, properties.getCacheMinutos()))));
         return ds;
-    }
-
-    private String resolveDeviceUuid() {
-        String configured = properties.getDeviceUuid();
-        if (configured != null && !configured.isBlank()) {
-            return configured.trim();
-        }
-        try {
-            if (Files.exists(DEVICE_UUID_PATH)) {
-                String existing = Files.readString(DEVICE_UUID_PATH).trim();
-                if (!existing.isBlank()) {
-                    return existing;
-                }
-            }
-            Files.createDirectories(DEVICE_UUID_PATH.getParent());
-            String generated = UUID.randomUUID().toString();
-            Files.writeString(DEVICE_UUID_PATH, generated);
-            return generated;
-        } catch (Exception e) {
-            return UUID.randomUUID().toString();
-        }
     }
 }

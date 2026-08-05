@@ -10,23 +10,18 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
-import java.util.UUID;
 
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class SistemaLicenciaService {
 
-    private static final Path DEVICE_UUID_PATH = Path.of("data", "device-uuid.txt");
-
     private final LicenciaProperties properties;
     private final LicenciaServerClient client;
     private final LicenciaEstadoCacheRepository cacheRepository;
+    private final DeviceUuidResolver deviceUuidResolver;
 
     @Transactional
     public SistemaInfoResponse obtenerInfo(boolean forzarRefresh) {
@@ -89,7 +84,8 @@ public class SistemaLicenciaService {
             return;
         }
 
-        ValidacionRemotaResult result = client.validar(codigo, deviceUuid);
+        ValidacionRemotaResult result = client.validar(
+                codigo, deviceUuid, deviceUuidResolver.resolveNombre());
         Instant now = Instant.now();
         cache.setUltimaValidacion(now);
         cache.setServidorInalcanzable(!result.isAlcanzable());
@@ -195,32 +191,14 @@ public class SistemaLicenciaService {
                 .cantidadMaximaDispositivos(cache.getCantidadMaximaDispositivos())
                 .cantidadMaximaSucursales(cache.getCantidadMaximaSucursales())
                 .codigoLicencia(maskCodigo(codigoLicencia))
-                .deviceUuid(cache.getDeviceUuid() != null ? cache.getDeviceUuid() : resolveDeviceUuid())
+                .deviceUuid(resolveDeviceUuid())
                 .ultimaValidacion(cache.getUltimaValidacion())
                 .ultimoExito(cache.getUltimoExito())
                 .build();
     }
 
     private String resolveDeviceUuid() {
-        String configured = properties.getDeviceUuid();
-        if (configured != null && !configured.isBlank()) {
-            return configured.trim();
-        }
-        try {
-            if (Files.exists(DEVICE_UUID_PATH)) {
-                String existing = Files.readString(DEVICE_UUID_PATH).trim();
-                if (!existing.isBlank()) {
-                    return existing;
-                }
-            }
-            Files.createDirectories(DEVICE_UUID_PATH.getParent());
-            String generated = UUID.randomUUID().toString();
-            Files.writeString(DEVICE_UUID_PATH, generated);
-            return generated;
-        } catch (IOException e) {
-            log.warn("No se pudo persistir device UUID, usando efímero: {}", e.getMessage());
-            return UUID.randomUUID().toString();
-        }
+        return deviceUuidResolver.resolve();
     }
 
     private String resolveVersion() {
