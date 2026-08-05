@@ -12,6 +12,7 @@ import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
 
 import java.time.LocalDate;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 @Slf4j
@@ -23,17 +24,29 @@ public class LicenciaServerClient {
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     public ValidacionRemotaResult validar(String codigoLicencia, String uuidDispositivo) {
+        return validar(codigoLicencia, uuidDispositivo, null);
+    }
+
+    public ValidacionRemotaResult validar(
+            String codigoLicencia,
+            String uuidDispositivo,
+            String nombreDispositivo
+    ) {
         String base = trimSlash(properties.getServerUrl());
         RestClient client = RestClient.builder().baseUrl(base).build();
+
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("codigoLicencia", codigoLicencia);
+        payload.put("uuidDispositivo", uuidDispositivo);
+        if (nombreDispositivo != null && !nombreDispositivo.isBlank()) {
+            payload.put("nombreDispositivo", nombreDispositivo);
+        }
 
         try {
             String body = client.post()
                     .uri("/api/v1/licencias/validar")
                     .contentType(MediaType.APPLICATION_JSON)
-                    .body(Map.of(
-                            "codigoLicencia", codigoLicencia,
-                            "uuidDispositivo", uuidDispositivo
-                    ))
+                    .body(payload)
                     .retrieve()
                     .body(String.class);
 
