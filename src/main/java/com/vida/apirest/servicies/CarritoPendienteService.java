@@ -150,6 +150,7 @@ public class CarritoPendienteService {
         ventaReq.setMetodoPago(request.getMetodoPago());
         ventaReq.setDetalles(request.getDetalles());
         ventaReq.setPagos(request.getPagos());
+        ventaReq.setFacturaAfip(request.getFacturaAfip());
 
         VentaResponse ventaResp = ventaService.registrarVenta(ventaReq, false);
         vincularVenta(carrito, ventaResp.getId());
