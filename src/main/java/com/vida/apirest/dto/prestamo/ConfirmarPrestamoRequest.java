@@ -1,5 +1,6 @@
 package com.vida.apirest.dto.prestamo;
 
+import com.vida.apirest.dto.afip.EmitirFacturaAFIPRequest;
 import com.vida.apirest.dto.venta.PagoVentaRequest;
 import com.vida.apirest.dto.venta.VentaDetalleRequest;
 import lombok.Data;
@@ -14,4 +15,6 @@ public class ConfirmarPrestamoRequest {
     private String observaciones;
     private List<VentaDetalleRequest> detalles;
     private List<PagoVentaRequest> pagos;
+    /** Facturación ARCA cuando el pago es tarjeta/QR. */
+    private EmitirFacturaAFIPRequest facturaAfip;
 }
