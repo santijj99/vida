@@ -19,8 +19,8 @@ app:
     codigo: ${LICENCIA_CODIGO:}
     aes-key: ${LICENCIA_AES_KEY:0123456789abcdef0123456789abcdef}
     device-uuid: ${LICENCIA_DEVICE_UUID:}
-    cache-minutos: ${LICENCIA_CACHE_MINUTOS:60}
-    gracia-dias: ${LICENCIA_GRACIA_DIAS:7}
+    cache-minutos: ${LICENCIA_CACHE_MINUTOS:28800}
+    gracia-dias: ${LICENCIA_GRACIA_DIAS:20}
     bloquear-si-invalida: ${LICENCIA_BLOQUEAR:false}
 
 spring:

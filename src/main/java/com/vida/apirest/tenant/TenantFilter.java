@@ -22,6 +22,8 @@ import java.nio.charset.StandardCharsets;
 public class TenantFilter extends OncePerRequestFilter {
 
     public static final String HEADER = "X-Licencia-Codigo";
+    public static final String HEADER_DEVICE_UUID = "X-Device-Uuid";
+    public static final String HEADER_DEVICE_NOMBRE = "X-Device-Nombre";
 
     private final TenantDataSourceManager tenantDataSourceManager;
     private final JwtUtil jwtUtil;
@@ -33,6 +35,8 @@ public class TenantFilter extends OncePerRequestFilter {
             FilterChain filterChain
     ) throws ServletException, IOException {
         try {
+            TenantContext.setDeviceUuid(request.getHeader(HEADER_DEVICE_UUID));
+            TenantContext.setDeviceNombre(request.getHeader(HEADER_DEVICE_NOMBRE));
             if (tenantDataSourceManager.isMultiTenantEnabled()) {
                 String codigo = request.getHeader(HEADER);
                 if (codigo == null || codigo.isBlank()) {
