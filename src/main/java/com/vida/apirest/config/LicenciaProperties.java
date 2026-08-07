@@ -36,11 +36,11 @@ public class LicenciaProperties {
      */
     private String deviceUuid = "";
 
-    /** Minutos que se reutiliza el último resultado sin reconsultar el servidor. */
-    private int cacheMinutos = 60;
+    /** Minutos que se reutiliza el último resultado sin reconsultar el servidor (info/sistema). */
+    private int cacheMinutos = 28800; // 20 días
 
-    /** Días de gracia si el servidor de licencias no responde pero había un OK reciente. */
-    private int graciaDias = 7;
+    /** Días entre revalidaciones obligatorias / gracia offline tras el último OK. */
+    private int graciaDias = 20;
 
     /** Si true, bloquea login y operaciones cuando la licencia no es válida. */
     private boolean bloquearSiInvalida = false;
