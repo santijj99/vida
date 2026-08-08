@@ -39,6 +39,7 @@ public interface CuentaRepository extends JpaRepository<Cuenta, Long> {
                           LOWER(cl.apellido) LIKE LOWER(CONCAT('%', :q, '%')) OR
                           LOWER(cl.dni) LIKE LOWER(CONCAT('%', :q, '%')) OR
                           LOWER(CONCAT(COALESCE(cl.nombre, ''), ' ', COALESCE(cl.apellido, ''))) LIKE LOWER(CONCAT('%', :q, '%')) OR
+                          LOWER(CONCAT(COALESCE(cl.apellido, ''), ' ', COALESCE(cl.nombre, ''))) LIKE LOWER(CONCAT('%', :q, '%')) OR
                           LOWER(c.numero) LIKE LOWER(CONCAT('%', :q, '%')) OR
                           LOWER(s.nombre) LIKE LOWER(CONCAT('%', :q, '%')))
                     AND (
@@ -66,6 +67,7 @@ public interface CuentaRepository extends JpaRepository<Cuenta, Long> {
                           LOWER(cl.apellido) LIKE LOWER(CONCAT('%', :q, '%')) OR
                           LOWER(cl.dni) LIKE LOWER(CONCAT('%', :q, '%')) OR
                           LOWER(CONCAT(COALESCE(cl.nombre, ''), ' ', COALESCE(cl.apellido, ''))) LIKE LOWER(CONCAT('%', :q, '%')) OR
+                          LOWER(CONCAT(COALESCE(cl.apellido, ''), ' ', COALESCE(cl.nombre, ''))) LIKE LOWER(CONCAT('%', :q, '%')) OR
                           LOWER(c.numero) LIKE LOWER(CONCAT('%', :q, '%')) OR
                           LOWER(s.nombre) LIKE LOWER(CONCAT('%', :q, '%')))
                     AND (

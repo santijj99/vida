@@ -1,0 +1,13 @@
+{
+  "codigoLicencia" : "002",
+  "deviceUuid" : "fff093c9-00ae-475f-8293-8f8acd4e505d",
+  "ultimoExitoEpochMs" : 1786140076545,
+  "host" : "localhost",
+  "puerto" : 5432,
+  "databaseName" : "db_punto",
+  "username" : "postgres",
+  "passwordEncriptada" : "bSVdyMAFlNhp3UThrbzfJPq6ulnqQgao1lKbSrbMFis=",
+  "ssl" : false,
+  "empresaNombre" : "DELIA",
+  "planNombre" : "Enterprise"
+}
