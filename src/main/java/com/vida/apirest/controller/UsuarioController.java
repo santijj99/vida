@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.vida.apirest.dto.usuario.CreateUsuarioRequest;
+import com.vida.apirest.dto.usuario.AdminUpdateUsuarioRequest;
 import com.vida.apirest.dto.usuario.UpdateUsuarioRequest;
 import com.vida.apirest.dto.usuario.UsuarioResponse;
 import com.vida.apirest.servicies.UsuarioService;
@@ -40,6 +41,14 @@ public class UsuarioController {
     public ResponseEntity<UsuarioResponse> createByAdmin(@RequestBody CreateUsuarioRequest request) {
         UsuarioResponse response = usuarioService.createByAdmin(request);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    }
+
+    @PutMapping("/admin/{id}")
+    @PreAuthorize("hasAuthority('MODIFICAR_USUARIOS')")
+    public ResponseEntity<UsuarioResponse> updateByAdmin(
+            @PathVariable Long id,
+            @RequestBody AdminUpdateUsuarioRequest request) {
+        return ResponseEntity.ok(usuarioService.updateByAdmin(id, request));
     }
 
     @GetMapping(value = "/{id}")

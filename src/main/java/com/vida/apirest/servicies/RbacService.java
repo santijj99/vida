@@ -11,11 +11,13 @@ import com.vida.apirest.model.auth.Permiso;
 import com.vida.apirest.model.auth.Role;
 import com.vida.apirest.model.auth.RolePermiso;
 import com.vida.apirest.model.auth.Usuario;
+import com.vida.apirest.model.auth.UsuarioHasRoles;
 import com.vida.apirest.model.auth.UsuarioPermisoDeny;
 import com.vida.apirest.model.auth.UsuarioPermisoGrant;
 import com.vida.apirest.repositories.PermisoRepository;
 import com.vida.apirest.repositories.RolePermisoRepository;
 import com.vida.apirest.repositories.RoleRepository;
+import com.vida.apirest.repositories.UsuarioHasRoleRepository;
 import com.vida.apirest.repositories.UsuarioPermisoDenyRepository;
 import com.vida.apirest.repositories.UsuarioPermisoGrantRepository;
 import com.vida.apirest.repositories.UsuarioRepository;
@@ -36,6 +38,7 @@ public class RbacService {
     private final RoleRepository roleRepository;
     private final RolePermisoRepository rolePermisoRepository;
     private final UsuarioRepository usuarioRepository;
+    private final UsuarioHasRoleRepository usuarioHasRoleRepository;
     private final UsuarioPermisoGrantRepository grantRepository;
     private final UsuarioPermisoDenyRepository denyRepository;
     private final PermissionResolverService permissionResolverService;
@@ -110,6 +113,9 @@ public class RbacService {
             Role rolPrincipal = roleRepository.findById(request.getRolPrincipalId())
                     .orElseThrow(() -> new RuntimeException("Rol principal no encontrado"));
             usuario.setRolPrincipal(rolPrincipal);
+            // Los permisos heredados salen de usuario_has_roles: al cambiar el rol del sistema
+            // reemplazamos esa asignación para que DEPOSITO → EMPLEADO (caja) surta efecto.
+            sincronizarRolAsignado(usuario, rolPrincipal);
         } else {
             usuario.setRolPrincipal(null);
         }
@@ -135,6 +141,18 @@ public class RbacService {
 
         usuarioRepository.save(usuario);
         return obtenerPermisosUsuario(usuarioId);
+    }
+
+    private void sincronizarRolAsignado(Usuario usuario, Role rol) {
+        if (usuario.getUsuarioHasRoles() != null) {
+            usuario.getUsuarioHasRoles().clear();
+        }
+        usuarioHasRoleRepository.deleteByUsuarioId(usuario.getId());
+        UsuarioHasRoles link = new UsuarioHasRoles(usuario, rol);
+        usuarioHasRoleRepository.save(link);
+        if (usuario.getUsuarioHasRoles() != null) {
+            usuario.getUsuarioHasRoles().add(link);
+        }
     }
 
     private PermisoDTO toDto(Permiso permiso) {

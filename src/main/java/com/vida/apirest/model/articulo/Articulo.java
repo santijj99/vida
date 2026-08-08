@@ -71,7 +71,8 @@ public class Articulo {
         @JsonManagedReference
         private List<VarianteArticulo> variantes;
 
-    @OneToMany(mappedBy = "articulo", cascade = CascadeType.ALL, orphanRemoval = true)
+    /** Gestionados solo vía TaxonArticuloRepository (sin cascade: evita reinsertar vínculos borrados). */
+    @OneToMany(mappedBy = "articulo", fetch = FetchType.LAZY)
     private List<TaxonArticulo> taxones;
 
     @CreationTimestamp

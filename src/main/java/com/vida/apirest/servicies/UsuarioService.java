@@ -26,6 +26,7 @@ import com.vida.apirest.config.LicenciaProperties;
 import com.vida.apirest.exception.ForbiddenException;
 import com.vida.apirest.exception.RegistrationDisabledException;
 import com.vida.apirest.dto.afip.TokenValidationResponse;
+import com.vida.apirest.dto.usuario.AdminUpdateUsuarioRequest;
 import com.vida.apirest.dto.usuario.CreateUsuarioRequest;
 import com.vida.apirest.dto.usuario.ForgotPasswordRequest;
 import com.vida.apirest.dto.usuario.LoginRequest;
@@ -183,6 +184,60 @@ public class UsuarioService {
         }
 
         return buildProfileResponse(savedUser);
+    }
+
+    @Transactional
+    public UsuarioResponse updateByAdmin(Long id, AdminUpdateUsuarioRequest request) {
+        Usuario usuario = usuarioRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("El usuario no existe"));
+
+        if (request.usuario != null && !request.usuario.isBlank()) {
+            String nuevoUsuario = request.usuario.trim();
+            if (!nuevoUsuario.equalsIgnoreCase(usuario.getUsuario())) {
+                usuarioRepository.findByUsuario(nuevoUsuario)
+                        .filter(existente -> !existente.getId().equals(id))
+                        .ifPresent(existente -> {
+                            throw new RuntimeException("El nombre de usuario ya está en uso");
+                        });
+                usuario.setUsuario(nuevoUsuario);
+            }
+        }
+
+        if (request.email != null) {
+            String email = request.email.isBlank() ? null : request.email.trim();
+            if (email != null && (usuario.getEmail() == null || !email.equalsIgnoreCase(usuario.getEmail()))) {
+                usuarioRepository.findByEmail(email)
+                        .filter(existente -> !existente.getId().equals(id))
+                        .ifPresent(existente -> {
+                            throw new RuntimeException("El correo ya está en uso");
+                        });
+            }
+            usuario.setEmail(email);
+        }
+
+        if (request.celular != null) {
+            String celular = celularNormalizado(request.celular);
+            if (celular != null
+                    && (usuario.getCelular() == null || !celular.equals(usuario.getCelular()))
+                    && usuarioRepository.existsByCelular(celular)) {
+                throw new RuntimeException("El celular ya está en uso");
+            }
+            usuario.setCelular(celular);
+        }
+
+        if (request.password != null && !request.password.isBlank()) {
+            if (request.password.length() < 6) {
+                throw new RuntimeException("La contraseña debe tener al menos 6 caracteres");
+            }
+            usuario.setPassword(passwordEncoder.encode(request.password));
+        }
+
+        if (request.activo != null) {
+            usuario.setActivo(request.activo);
+        }
+
+        usuarioRepository.save(usuario);
+        return buildProfileResponse(usuario);
     }
 
     @Transactional
@@ -420,12 +475,20 @@ public class UsuarioService {
                 .orElseThrow(() -> new RuntimeException("El rol no existe"));
 
         boolean yaAsignado = usuarioHasRoleRepository.existsByUsuarioIdAndRoleId(usuario.getId(), rolId);
-        if (yaAsignado) {
-            return;
+        if (!yaAsignado) {
+            // Un solo rol de sistema efectivo: reemplaza asignaciones previas.
+            if (usuario.getUsuarioHasRoles() != null) {
+                usuario.getUsuarioHasRoles().clear();
+            }
+            usuarioHasRoleRepository.deleteByUsuarioId(usuario.getId());
+            UsuarioHasRoles usuarioHasRoles = new UsuarioHasRoles(usuario, role);
+            usuarioHasRoleRepository.save(usuarioHasRoles);
+            if (usuario.getUsuarioHasRoles() != null) {
+                usuario.getUsuarioHasRoles().add(usuarioHasRoles);
+            }
         }
-
-        UsuarioHasRoles usuarioHasRoles = new UsuarioHasRoles(usuario, role);
-        usuarioHasRoleRepository.save(usuarioHasRoles);
+        usuario.setRolPrincipal(role);
+        usuarioRepository.save(usuario);
     }
 
     private String generarCodigo6Digitos() {
