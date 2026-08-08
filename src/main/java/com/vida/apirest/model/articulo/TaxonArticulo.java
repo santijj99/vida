@@ -18,6 +18,8 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 import lombok.Data;
+import org.hibernate.annotations.NotFound;
+import org.hibernate.annotations.NotFoundAction;
 
 @Data
 @Entity
@@ -54,8 +56,9 @@ public class TaxonArticulo {
     @Column(name = "taxon_id", nullable = false)
     private Long taxonId;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "taxon_id", insertable = false, updatable = false)
+    @NotFound(action = NotFoundAction.IGNORE)
     private Taxon taxon;
 
     @Enumerated(EnumType.STRING)

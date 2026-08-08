@@ -630,7 +630,9 @@ public class ArticuloService {
 
     @Transactional
     public Articulo updateArticulo(Long id, ArticuloUpdateRequest request) {
-        Articulo articulo = getArticuloById(id);
+        // Sin taxones en sesión: se sincronizan por repositorio (cascade los reinsertaba rotos).
+        Articulo articulo = articuloRepository.findByIdWithVariantes(id)
+                .orElseThrow(() -> new RuntimeException("Artículo no encontrado con id: " + id));
         aplicarCatalogoArticulo(articulo, request);
         validarYCambiarCodigo(articulo, id, request);
         aplicarCamposTextoArticulo(articulo, request);

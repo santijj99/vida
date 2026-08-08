@@ -38,6 +38,7 @@ public class ClasificacionArticuloSupport {
     }
 
     public void sincronizarSubCategoria(Long articuloId, String subCategoria) {
+        taxonArticuloRepository.deleteOrphanLinks();
         taxonArticuloRepository.deleteByArticuloIdAndTipo(articuloId, TipoVinculo.SUBCATEGORIA);
         if (subCategoria == null || subCategoria.isBlank()) {
             return;
@@ -50,6 +51,7 @@ public class ClasificacionArticuloSupport {
     }
 
     public void sincronizarClasificaciones(Long articuloId, List<String> clasificaciones) {
+        taxonArticuloRepository.deleteOrphanLinks();
         List<String> deseados = normalizarNombres(clasificaciones);
         List<TaxonArticulo> actuales = taxonArticuloRepository.findByArticuloIdAndTipo(
                 articuloId, TipoVinculo.CLASIFICACION);
@@ -101,7 +103,9 @@ public class ClasificacionArticuloSupport {
     }
 
     private void vincularSiNoExiste(Long articuloId, Long taxonId, TipoVinculo tipo) {
-        if (taxonArticuloRepository.existsByArticuloIdAndTaxonIdAndTipo(articuloId, taxonId, tipo)) {
+        // La UK es (articulo_id, taxon_id) sin tipo: subcategoría y clasificación
+        // con el mismo nombre (p.ej. CASUAL / Casual) comparten taxón y no pueden duplicarse.
+        if (taxonArticuloRepository.existsByArticuloIdAndTaxonId(articuloId, taxonId)) {
             return;
         }
         TaxonArticulo link = new TaxonArticulo();

@@ -33,6 +33,7 @@ public class PreferenciaVistaService {
 
     static {
         COLUMNAS_ARTICULOS.put("codigo", "CÓDIGO");
+        COLUMNAS_ARTICULOS.put("codigoBarras", "CÓD. BARRAS");
         COLUMNAS_ARTICULOS.put("marca", "MARCA");
         COLUMNAS_ARTICULOS.put("modelo", "MODELO");
         COLUMNAS_ARTICULOS.put("categoria", "CATEGORÍA");
@@ -40,7 +41,6 @@ public class PreferenciaVistaService {
         COLUMNAS_ARTICULOS.put("genero", "GÉNERO");
         COLUMNAS_ARTICULOS.put("talle", "TALLE");
         COLUMNAS_ARTICULOS.put("color", "COLOR");
-        COLUMNAS_ARTICULOS.put("codigoBarras", "CÓD. BARRAS");
         COLUMNAS_ARTICULOS.put("precio", "PRECIO");
         COLUMNAS_ARTICULOS.put("cantidad", "STOCK");
         COLUMNAS_PEDIDOS.put("barras", "BARRAS");
@@ -133,7 +133,39 @@ public class PreferenciaVistaService {
         if (json == null || json.isBlank()) {
             return new ArrayList<>(catalogo.keySet());
         }
-        return validarColumnas(leerJson(json, catalogo), catalogo);
+        List<String> validadas = validarColumnas(leerJson(json, catalogo), catalogo);
+        if (CLAVE_COLUMNAS_ARTICULOS.equals(clave)) {
+            return ordenarCodigoBarrasTrasCodigo(validadas, catalogo);
+        }
+        return validadas;
+    }
+
+    /** Deja codigoBarras inmediatamente después de codigo si ambas están activas. */
+    private List<String> ordenarCodigoBarrasTrasCodigo(
+            List<String> activas, Map<String, String> catalogo) {
+        final String codigo = "codigo";
+        final String barras = "codigoBarras";
+        List<String> base = new ArrayList<>();
+        for (String id : catalogo.keySet()) {
+            if (activas.contains(id) && !barras.equals(id)) {
+                base.add(id);
+            }
+        }
+        for (String id : activas) {
+            if (!barras.equals(id) && !base.contains(id)) {
+                base.add(id);
+            }
+        }
+        if (!activas.contains(barras)) {
+            return base;
+        }
+        int idx = base.indexOf(codigo);
+        if (idx >= 0) {
+            base.add(idx + 1, barras);
+        } else {
+            base.add(0, barras);
+        }
+        return base;
     }
 
     private List<String> validarColumnas(List<String> columnas, Map<String, String> catalogo) {
