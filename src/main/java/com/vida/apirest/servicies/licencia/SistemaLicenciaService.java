@@ -155,13 +155,15 @@ public class SistemaLicenciaService {
             cache.setValida(true);
             cache.setEstado("GRACIA");
             cache.setCodigoError(null);
-            cache.setMensaje("Servidor de licencias inalcanzable; operando en período de gracia");
+            cache.setMensaje("Servidor de licencias inalcanzable; operando en período de gracia ("
+                    + properties.getGraciaDias() + " días desde el último OK)");
         } else {
             cache.setModoGracia(false);
             cache.setValida(false);
             cache.setEstado("DESCONOCIDO");
             cache.setCodigoError("GRACIA_VENCIDA");
-            cache.setMensaje("Período de gracia vencido y el servidor de licencias sigue inalcanzable");
+            cache.setMensaje("Período de gracia de " + properties.getGraciaDias()
+                    + " días vencido y el servidor de licencias sigue inalcanzable");
         }
     }
 
