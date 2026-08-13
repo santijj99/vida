@@ -32,15 +32,28 @@ public class AfipContextService {
 
     @Transactional(readOnly = true)
     public AfipContext resolveForVenta(Venta venta) {
+        return resolveOptionalForVenta(venta)
+                .orElseThrow(() -> new IllegalStateException(
+                        "La empresa no tiene ARCA habilitado. Configurá el módulo ARCA o cobrá sin tarjeta/QR."));
+    }
+
+    /**
+     * Igual que {@link #resolveForVenta} pero sin lanzar si la empresa no tiene ARCA.
+     * Usar en cobro automático para no marcar rollback-only la venta.
+     */
+    @Transactional(readOnly = true)
+    public Optional<AfipContext> resolveOptionalForVenta(Venta venta) {
         if (venta == null || venta.getSucursal() == null) {
-            throw new IllegalStateException("La venta no tiene sucursal asociada");
+            return Optional.empty();
         }
         Sucursal sucursal = venta.getSucursal();
         if (sucursal.getEmpresa() == null) {
-            sucursal = sucursalRepository.findById(sucursal.getId())
-                    .orElseThrow(() -> new IllegalStateException("Sucursal no encontrada"));
+            sucursal = sucursalRepository.findById(sucursal.getId()).orElse(null);
+            if (sucursal == null || sucursal.getEmpresa() == null) {
+                return Optional.empty();
+            }
         }
-        return resolveForEmpresaId(sucursal.getEmpresa().getId());
+        return resolveOptionalForEmpresaId(sucursal.getEmpresa().getId());
     }
 
     @Transactional(readOnly = true)
@@ -55,7 +68,13 @@ public class AfipContextService {
     public Optional<AfipContext> resolveOptionalForEmpresaId(Long empresaId) {
         return empresaAfipConfigRepository.findByEmpresaIdWithEmpresa(empresaId)
                 .filter(EmpresaAfipConfig::isAfipHabilitado)
-                .map(this::buildContext);
+                .flatMap(config -> {
+                    try {
+                        return Optional.of(buildContext(config));
+                    } catch (IllegalStateException e) {
+                        return Optional.empty();
+                    }
+                });
     }
 
     @Transactional(readOnly = true)

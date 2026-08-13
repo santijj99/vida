@@ -1,5 +1,6 @@
 package com.vida.apirest.dto.venta;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Data;
 
 import java.math.BigDecimal;
@@ -17,4 +18,7 @@ public class VentaHistorialItemResponse {
     private String metodoPago;
     private Integer cantidadItems;
     private String motivoCancelacion;
+    /** true si la venta tiene factura ARCA autorizada (CAE). */
+    @JsonProperty("facturadaArca")
+    private boolean facturadaArca;
 }
