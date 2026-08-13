@@ -49,7 +49,6 @@ import com.vida.apirest.repositories.VarianteArticuloRepository;
 import com.vida.apirest.security.SucursalScopeService;
 import com.vida.apirest.dto.afip.FacturaAFIPResponse;
 import com.vida.apirest.model.afip.FacturaAFIP;
-import com.vida.apirest.servicies.afip.AfipContextService;
 import com.vida.apirest.servicies.afip.FacturaAFIPService;
 import com.vida.apirest.servicies.afip.TicketPDFService;
 import lombok.RequiredArgsConstructor;
@@ -68,6 +67,7 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -92,7 +92,6 @@ public class VentaService {
     private final MovimientoFinancieroRepository movimientoFinancieroRepository;
     private final VentaCambioArticuloRepository ventaCambioArticuloRepository;
     private final FacturaAFIPService facturaAFIPService;
-    private final AfipContextService afipContextService;
     private final TicketPDFService ticketPDFService;
     private final TicketConfigService ticketConfigService;
     private final CajaMovimientoService cajaMovimientoService;
@@ -521,6 +520,7 @@ public class VentaService {
             LocalDate desde,
             LocalDate hasta,
             String q,
+            Boolean facturadaArca,
             int page,
             int size
     ) {
@@ -537,9 +537,12 @@ public class VentaService {
                 desdeDt,
                 hastaExclusivo,
                 q != null ? q.trim() : null,
+                facturadaArca,
                 pageable
         );
-        return PageResponse.from(result.map(this::mapHistorialItem));
+        Set<Long> facturadas = facturaAFIPService.ventaIdsFacturadas(
+                result.getContent().stream().map(Venta::getId).toList());
+        return PageResponse.from(result.map(v -> mapHistorialItem(v, facturadas.contains(v.getId()))));
     }
 
     @Transactional(readOnly = true)
@@ -889,7 +892,7 @@ public class VentaService {
         venta.setTotal(total);
     }
 
-    private VentaHistorialItemResponse mapHistorialItem(Venta venta) {
+    private VentaHistorialItemResponse mapHistorialItem(Venta venta, boolean facturadaArca) {
         VentaHistorialItemResponse item = new VentaHistorialItemResponse();
         item.setId(venta.getId());
         item.setNumeroFactura(venta.getNumeroFactura());
@@ -906,6 +909,7 @@ public class VentaService {
         item.setMotivoCancelacion(venta.getMotivoCancelacion());
         int items = venta.getDetalles() != null ? venta.getDetalles().size() : 0;
         item.setCantidadItems(items);
+        item.setFacturadaArca(facturadaArca);
         return item;
     }
 
@@ -944,6 +948,7 @@ public class VentaService {
         }
         List<VentaCambioArticulo> cambios = ventaCambioArticuloRepository.findByVentaIdOrderByCreatedAtDesc(venta.getId());
         response.setCambiosArticulo(cambios.stream().map(this::mapCambioArticuloResponse).collect(Collectors.toList()));
+        facturaAFIPService.findResponseByVentaId(venta.getId()).ifPresent(response::setFacturaAfip);
         return response;
     }
 

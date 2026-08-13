@@ -74,11 +74,12 @@ public class VentaController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate desde,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate hasta,
             @RequestParam(required = false) String q,
+            @RequestParam(required = false) Boolean facturadaArca,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "15") int size
     ) {
         return ResponseEntity.ok(ventaService.listarHistorial(
-                sucursalId, estado, desde, hasta, q, page, size));
+                sucursalId, estado, desde, hasta, q, facturadaArca, page, size));
     }
 
     @GetMapping("/{id}")
