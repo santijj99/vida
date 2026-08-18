@@ -79,23 +79,36 @@ public class GlobalExceptionHandler {
             return "No se pudo guardar: datos inconsistentes";
         }
         String lower = raw.toLowerCase(Locale.ROOT);
+        if (lower.contains("uk_taxon_articulo") || (lower.contains("taxon") && lower.contains("articulo_id"))) {
+            return "La subcategoría y una clasificación usan la misma etiqueta. Quitá el duplicado o dejá solo una.";
+        }
+        if (lower.contains("uk_variante_articulo_color_talle")
+                || (lower.contains("color_id") && lower.contains("talle_id") && lower.contains("articulo_id"))) {
+            return "Ya existe una variante con ese talle y color en este artículo";
+        }
+        if (lower.contains("uk_variante_codigo_barras") || lower.contains("codigo_barras")) {
+            return "El código de barras ya está registrado en otra variante";
+        }
+        if (lower.contains("ix_articulo_codigo") || (lower.contains("(codigo)=") && lower.contains("articulo"))) {
+            return "Ya existe un artículo con ese código base";
+        }
         if (lower.contains("proveedor_id") && lower.contains("tercero")) {
             return "El proveedor no es válido. Reinicie la API para aplicar la migración de base de datos.";
         }
         if (lower.contains("proveedor_id")) {
             return "El proveedor seleccionado no existe o no es válido";
         }
-        if (lower.contains("articulo_id") || lower.contains("variante_id")) {
-            return "Uno de los artículos del pedido no es válido";
-        }
-        if (lower.contains("(celular)=") || lower.contains("celular")) {
+        if (lower.contains("(celular)=") || (lower.contains("celular") && lower.contains("unique"))) {
             return "El celular ya está registrado en otro usuario";
         }
-        if (lower.contains("(email)=") || lower.contains("email")) {
+        if (lower.contains("(email)=") || (lower.contains("email") && lower.contains("unique"))) {
             return "El correo ya está registrado en otro usuario";
         }
-        if (lower.contains("(usuario)=") || lower.contains("usuario")) {
+        if (lower.contains("(usuario)=") || (lower.contains("usuario") && lower.contains("unique"))) {
             return "El nombre de usuario ya está en uso";
+        }
+        if (lower.contains("uk_venta_client_request_id") || lower.contains("client_request_id")) {
+            return "La venta ya fue registrada (idempotencia)";
         }
         return "No se pudo guardar: datos inconsistentes";
     }

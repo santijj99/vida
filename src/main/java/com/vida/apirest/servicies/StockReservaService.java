@@ -51,6 +51,7 @@ public class StockReservaService {
     }
 
     public void reservar(Stock stock, Integer cantidad, String referencia, ModoReserva modo) {
+        stock = stockOperacionesService.lock(stock);
         int disponible = cantidadOZero(stock.getCantidadDisponible());
         if (disponible < cantidad) {
             throw new RuntimeException("Stock insuficiente para el artículo");
@@ -70,6 +71,7 @@ public class StockReservaService {
     }
 
     public void liberar(Stock stock, Integer cantidad, String referencia, ModoReserva modo) {
+        stock = stockOperacionesService.lock(stock);
         int reservada = cantidadOZero(stock.getCantidadReservada());
         if (reservada < cantidad) {
             throw new RuntimeException("Cantidad reservada insuficiente para liberar");
@@ -89,6 +91,7 @@ public class StockReservaService {
     }
 
     public void consumir(Stock stock, Integer cantidad, String referencia, ModoReserva modo) {
+        stock = stockOperacionesService.lock(stock);
         int reservada = cantidadOZero(stock.getCantidadReservada());
         if (reservada < cantidad) {
             throw new RuntimeException("Cantidad reservada insuficiente");

@@ -10,13 +10,18 @@ import org.bouncycastle.openssl.PEMParser;
 import org.bouncycastle.openssl.jcajce.JcaPEMKeyConverter;
 import org.bouncycastle.openssl.jcajce.JcePEMDecryptorProviderBuilder;
 
+import org.bouncycastle.pkcs.PKCS10CertificationRequest;
+
+import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.KeyStore;
 import java.security.PrivateKey;
 import java.security.Security;
+import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
 import java.util.ArrayList;
 import java.util.Enumeration;
@@ -24,6 +29,8 @@ import java.util.List;
 import java.util.Locale;
 
 public final class AfipCertificateLoader {
+
+    private static final int MAX_CERT_BYTES = 2 * 1024 * 1024;
 
     public record AfipCredentials(
             PrivateKey privateKey,
@@ -109,8 +116,89 @@ public final class AfipCertificateLoader {
     }
 
     public static PrivateKey loadPrivateKey(Path keyPath, String password) throws Exception {
-        try (InputStream is = Files.newInputStream(keyPath);
-             PEMParser parser = new PEMParser(new InputStreamReader(is))) {
+        try (InputStream is = Files.newInputStream(keyPath)) {
+            return loadPrivateKey(is, password, keyPath.toString());
+        }
+    }
+
+    public static void validarContenidoPkcs12(byte[] bytes, String password) throws Exception {
+        exigirTamano(bytes, "PKCS#12");
+        char[] pass = password != null ? password.toCharArray() : new char[0];
+        KeyStore ks = KeyStore.getInstance("PKCS12");
+        try (InputStream is = new ByteArrayInputStream(bytes)) {
+            ks.load(is, pass);
+        } catch (Exception e) {
+            throw new IllegalArgumentException(
+                    "El archivo no es un PKCS#12 válido o la contraseña es incorrecta");
+        }
+        Enumeration<String> aliases = ks.aliases();
+        while (aliases.hasMoreElements()) {
+            if (ks.isKeyEntry(aliases.nextElement())) {
+                return;
+            }
+        }
+        throw new IllegalArgumentException("El PKCS#12 no contiene una clave privada");
+    }
+
+    public static void validarContenidoCertificado(byte[] bytes) throws Exception {
+        exigirTamano(bytes, "certificado");
+        String ascii = new String(bytes, 0, Math.min(bytes.length, 256), StandardCharsets.US_ASCII);
+        if (ascii.contains("BEGIN CERTIFICATE REQUEST") || ascii.contains("BEGIN NEW CERTIFICATE REQUEST")) {
+            throw new IllegalArgumentException(
+                    "Subiste un CSR. AFIP necesita el certificado emitido (.crt), no el pedido de firma.");
+        }
+        try (InputStream is = new ByteArrayInputStream(bytes);
+             PEMParser parser = new PEMParser(new InputStreamReader(is, StandardCharsets.US_ASCII))) {
+            Object object;
+            boolean found = false;
+            while ((object = parser.readObject()) != null) {
+                if (object instanceof PKCS10CertificationRequest) {
+                    throw new IllegalArgumentException(
+                            "Subiste un CSR. AFIP necesita el certificado emitido (.crt), no el pedido de firma.");
+                }
+                if (object instanceof X509CertificateHolder) {
+                    found = true;
+                }
+            }
+            if (found) {
+                return;
+            }
+        }
+        try (InputStream is = new ByteArrayInputStream(bytes)) {
+            CertificateFactory cf = CertificateFactory.getInstance("X.509");
+            if (!(cf.generateCertificate(is) instanceof X509Certificate)) {
+                throw new IllegalArgumentException("El archivo no es un certificado X.509");
+            }
+        } catch (IllegalArgumentException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new IllegalArgumentException("El archivo no es un certificado X.509/PEM válido");
+        }
+    }
+
+    public static void validarContenidoClavePrivada(byte[] bytes, String password) throws Exception {
+        exigirTamano(bytes, "clave privada");
+        try (InputStream is = new ByteArrayInputStream(bytes)) {
+            loadPrivateKey(is, password, "clave privada");
+        } catch (IllegalStateException | IllegalArgumentException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new IllegalArgumentException(
+                    "La clave privada no es PEM válida o la contraseña es incorrecta");
+        }
+    }
+
+    private static void exigirTamano(byte[] bytes, String que) {
+        if (bytes == null || bytes.length == 0) {
+            throw new IllegalArgumentException("El archivo de " + que + " está vacío");
+        }
+        if (bytes.length > MAX_CERT_BYTES) {
+            throw new IllegalArgumentException("El archivo de " + que + " supera 2 MB");
+        }
+    }
+
+    private static PrivateKey loadPrivateKey(InputStream is, String password, String origen) throws Exception {
+        try (PEMParser parser = new PEMParser(new InputStreamReader(is, StandardCharsets.US_ASCII))) {
             Object object = parser.readObject();
             JcaPEMKeyConverter converter = new JcaPEMKeyConverter()
                     .setProvider(BouncyCastleProvider.PROVIDER_NAME);
@@ -129,7 +217,7 @@ public final class AfipCertificateLoader {
             if (object instanceof PrivateKeyInfo privateKeyInfo) {
                 return converter.getPrivateKey(privateKeyInfo);
             }
-            throw new IllegalStateException("Formato de clave privada no soportado: " + keyPath);
+            throw new IllegalStateException("Formato de clave privada no soportado: " + origen);
         }
     }
 

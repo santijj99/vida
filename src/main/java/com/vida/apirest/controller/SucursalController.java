@@ -3,6 +3,7 @@ package com.vida.apirest.controller;
 import com.vida.apirest.dto.almacen.SucursalCreateRequest;
 import com.vida.apirest.dto.almacen.SucursalResponse;
 import com.vida.apirest.dto.empleado.EmpleadoResponse;
+import com.vida.apirest.security.Authz;
 import com.vida.apirest.servicies.SucursalService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -16,17 +17,19 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/sucursales")
 @RequiredArgsConstructor
-@PreAuthorize("hasAuthority('VER_ORGANIZACION')")
+@PreAuthorize(Authz.VER_O_GESTIONAR_ORGANIZACION)
 public class SucursalController {
 
     private final SucursalService sucursalService;
 
     @PostMapping
+    @PreAuthorize(Authz.GESTIONAR_ORGANIZACION)
     public ResponseEntity<SucursalResponse> createSucursal(@RequestBody SucursalCreateRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(sucursalService.create(request));
     }
 
     @PutMapping("/{id}")
+    @PreAuthorize(Authz.GESTIONAR_ORGANIZACION)
     public ResponseEntity<SucursalResponse> updateSucursal(
             @PathVariable Long id,
             @RequestBody SucursalCreateRequest request) {
@@ -49,6 +52,7 @@ public class SucursalController {
     }
 
     @PostMapping("/{id}/empleados")
+    @PreAuthorize(Authz.GESTIONAR_ORGANIZACION)
     public ResponseEntity<EmpleadoResponse> asignarEmpleado(
             @PathVariable Long id,
             @RequestBody Map<String, Long> body) {
@@ -60,6 +64,7 @@ public class SucursalController {
     }
 
     @DeleteMapping("/{id}/empleados/{empleadoId}")
+    @PreAuthorize(Authz.GESTIONAR_ORGANIZACION)
     public ResponseEntity<Void> quitarEmpleado(@PathVariable Long id, @PathVariable Long empleadoId) {
         sucursalService.quitarEmpleado(id, empleadoId);
         return ResponseEntity.noContent().build();

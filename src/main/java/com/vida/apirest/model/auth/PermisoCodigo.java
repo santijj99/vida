@@ -38,19 +38,33 @@ public final class PermisoCodigo {
 
     public static final String VER_DASHBOARD = "VER_DASHBOARD";
     public static final String VER_VENTAS = "VER_VENTAS";
+    public static final String GESTIONAR_VENTAS = "GESTIONAR_VENTAS";
     public static final String VER_HISTORIAL_VENTAS = "VER_HISTORIAL_VENTAS";
+    public static final String GESTIONAR_HISTORIAL_VENTAS = "GESTIONAR_HISTORIAL_VENTAS";
     public static final String VER_CAJA = "VER_CAJA";
+    public static final String GESTIONAR_CAJA = "GESTIONAR_CAJA";
     public static final String VER_ARTICULOS = "VER_ARTICULOS";
+    public static final String GESTIONAR_ARTICULOS = "GESTIONAR_ARTICULOS";
     public static final String VER_CATEGORIAS = "VER_CATEGORIAS";
+    public static final String GESTIONAR_CATEGORIAS = "GESTIONAR_CATEGORIAS";
     public static final String VER_SUBCATEGORIAS = "VER_SUBCATEGORIAS";
+    public static final String GESTIONAR_SUBCATEGORIAS = "GESTIONAR_SUBCATEGORIAS";
     public static final String VER_TALLES = "VER_TALLES";
+    public static final String GESTIONAR_TALLES = "GESTIONAR_TALLES";
     public static final String VER_COLORES = "VER_COLORES";
+    public static final String GESTIONAR_COLORES = "GESTIONAR_COLORES";
     public static final String VER_GENEROS = "VER_GENEROS";
+    public static final String GESTIONAR_GENEROS = "GESTIONAR_GENEROS";
     public static final String VER_PROMOCIONES = "VER_PROMOCIONES";
+    public static final String GESTIONAR_PROMOCIONES = "GESTIONAR_PROMOCIONES";
     public static final String VER_CLIENTES = "VER_CLIENTES";
+    public static final String GESTIONAR_CLIENTES = "GESTIONAR_CLIENTES";
     public static final String VER_PROVEEDORES = "VER_PROVEEDORES";
+    public static final String GESTIONAR_PROVEEDORES = "GESTIONAR_PROVEEDORES";
     public static final String VER_PEDIDOS = "VER_PEDIDOS";
+    public static final String GESTIONAR_PEDIDOS = "GESTIONAR_PEDIDOS";
     public static final String VER_CUENTAS = "VER_CUENTAS";
+    public static final String GESTIONAR_CUENTAS = "GESTIONAR_CUENTAS";
     public static final String CONFIGURAR_CREDITOS = "CONFIGURAR_CREDITOS";
     public static final String EDITAR_CREDITOS = "EDITAR_CREDITOS";
     /** Cancelar un crédito activo (solo ADMINISTRADOR por defecto). */
@@ -59,8 +73,11 @@ public final class PermisoCodigo {
     public static final String VER_GASTOS = "VER_GASTOS";
     public static final String GESTIONAR_GASTOS = "GESTIONAR_GASTOS";
     public static final String VER_ORGANIZACION = "VER_ORGANIZACION";
+    public static final String GESTIONAR_ORGANIZACION = "GESTIONAR_ORGANIZACION";
     public static final String VER_EMPLEADOS = "VER_EMPLEADOS";
+    public static final String GESTIONAR_EMPLEADOS = "GESTIONAR_EMPLEADOS";
     public static final String VER_ARCA = "VER_ARCA";
+    public static final String GESTIONAR_ARCA = "GESTIONAR_ARCA";
     public static final String VER_SUELDOS = "VER_SUELDOS";
     public static final String GESTIONAR_SUELDOS = "GESTIONAR_SUELDOS";
 
@@ -76,19 +93,33 @@ public final class PermisoCodigo {
                 ADMINISTRAR_PERMISOS,
                 VER_DASHBOARD,
                 VER_VENTAS,
+                GESTIONAR_VENTAS,
                 VER_HISTORIAL_VENTAS,
+                GESTIONAR_HISTORIAL_VENTAS,
                 VER_CAJA,
+                GESTIONAR_CAJA,
                 VER_ARTICULOS,
+                GESTIONAR_ARTICULOS,
                 VER_CATEGORIAS,
+                GESTIONAR_CATEGORIAS,
                 VER_SUBCATEGORIAS,
+                GESTIONAR_SUBCATEGORIAS,
                 VER_TALLES,
+                GESTIONAR_TALLES,
                 VER_COLORES,
+                GESTIONAR_COLORES,
                 VER_GENEROS,
+                GESTIONAR_GENEROS,
                 VER_PROMOCIONES,
+                GESTIONAR_PROMOCIONES,
                 VER_CLIENTES,
+                GESTIONAR_CLIENTES,
                 VER_PROVEEDORES,
+                GESTIONAR_PROVEEDORES,
                 VER_PEDIDOS,
+                GESTIONAR_PEDIDOS,
                 VER_CUENTAS,
+                GESTIONAR_CUENTAS,
                 CONFIGURAR_CREDITOS,
                 EDITAR_CREDITOS,
                 CANCELAR_CREDITOS,
@@ -96,9 +127,11 @@ public final class PermisoCodigo {
                 VER_GASTOS,
                 GESTIONAR_GASTOS,
                 VER_ORGANIZACION,
-                VER_TRANSFERENCIAS_STOCK,
+                GESTIONAR_ORGANIZACION,
                 VER_EMPLEADOS,
+                GESTIONAR_EMPLEADOS,
                 VER_ARCA,
+                GESTIONAR_ARCA,
                 VER_SUELDOS,
                 GESTIONAR_SUELDOS
         );

@@ -6,6 +6,7 @@ import com.vida.apirest.model.empresa.Empresa;
 import com.vida.apirest.model.empresa.EmpresaAfipConfig;
 import com.vida.apirest.model.venta.Venta;
 import com.vida.apirest.repositories.EmpresaAfipConfigRepository;
+import com.vida.apirest.repositories.EmpresaRepository;
 import com.vida.apirest.repositories.SucursalRepository;
 import com.vida.apirest.repositories.UsuarioSucursalRepository;
 import com.vida.apirest.security.AppUserDetails;
@@ -27,20 +28,35 @@ public class AfipContextService {
 
     private final AfipProperties afipProperties;
     private final EmpresaAfipConfigRepository empresaAfipConfigRepository;
+    private final EmpresaRepository empresaRepository;
     private final SucursalRepository sucursalRepository;
     private final UsuarioSucursalRepository usuarioSucursalRepository;
+    private final AfipSecretCipher afipSecretCipher;
 
     @Transactional(readOnly = true)
     public AfipContext resolveForVenta(Venta venta) {
+        return resolveOptionalForVenta(venta)
+                .orElseThrow(() -> new IllegalStateException(
+                        "La empresa no tiene ARCA habilitado. Configurá el módulo ARCA o cobrá sin tarjeta/QR."));
+    }
+
+    /**
+     * Igual que {@link #resolveForVenta} pero sin lanzar si la empresa no tiene ARCA.
+     * Usar en cobro automático para no marcar rollback-only la venta.
+     */
+    @Transactional(readOnly = true)
+    public Optional<AfipContext> resolveOptionalForVenta(Venta venta) {
         if (venta == null || venta.getSucursal() == null) {
-            throw new IllegalStateException("La venta no tiene sucursal asociada");
+            return Optional.empty();
         }
         Sucursal sucursal = venta.getSucursal();
         if (sucursal.getEmpresa() == null) {
-            sucursal = sucursalRepository.findById(sucursal.getId())
-                    .orElseThrow(() -> new IllegalStateException("Sucursal no encontrada"));
+            sucursal = sucursalRepository.findById(sucursal.getId()).orElse(null);
+            if (sucursal == null || sucursal.getEmpresa() == null) {
+                return Optional.empty();
+            }
         }
-        return resolveForEmpresaId(sucursal.getEmpresa().getId());
+        return resolveOptionalForEmpresaId(sucursal.getEmpresa().getId());
     }
 
     @Transactional(readOnly = true)
@@ -55,7 +71,13 @@ public class AfipContextService {
     public Optional<AfipContext> resolveOptionalForEmpresaId(Long empresaId) {
         return empresaAfipConfigRepository.findByEmpresaIdWithEmpresa(empresaId)
                 .filter(EmpresaAfipConfig::isAfipHabilitado)
-                .map(this::buildContext);
+                .flatMap(config -> {
+                    try {
+                        return Optional.of(buildContext(config));
+                    } catch (IllegalStateException e) {
+                        return Optional.empty();
+                    }
+                });
     }
 
     @Transactional(readOnly = true)
@@ -76,12 +98,20 @@ public class AfipContextService {
         Long usuarioId = details.getUsuario().getId();
 
         List<Long> sucursalIds = usuarioSucursalRepository.findSucursalIdsByUsuarioId(usuarioId);
-        if (sucursalIds.isEmpty()) {
-            return Optional.empty();
+        for (Long sucursalId : sucursalIds) {
+            Optional<Long> empresaId = sucursalRepository.findById(sucursalId)
+                    .map(Sucursal::getEmpresa)
+                    .map(Empresa::getId);
+            if (empresaId.isPresent()) {
+                return empresaId;
+            }
         }
 
-        return sucursalRepository.findById(sucursalIds.get(0))
-                .map(s -> s.getEmpresa().getId());
+        // Admin / usuario sin filas en usuario_sucursal: primera empresa del tenant.
+        return empresaRepository.findAll().stream()
+                .map(Empresa::getId)
+                .filter(id -> id != null)
+                .findFirst();
     }
 
     @Transactional(readOnly = true)
@@ -135,7 +165,7 @@ public class AfipContextService {
                 config.getCbteTipoDefault() != null ? config.getCbteTipoDefault() : 6,
                 config.isHomologacion(),
                 certDir,
-                config.getClavePrivadaPassword()
+                afipSecretCipher.decryptToPlain(config.getClavePrivadaPassword())
         );
     }
 

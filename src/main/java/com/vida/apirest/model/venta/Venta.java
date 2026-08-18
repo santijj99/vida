@@ -31,7 +31,8 @@ import java.util.Set;
                 @Index(name = "ix_venta_sucursal", columnList = "sucursal_id"),
                 @Index(name = "ix_venta_numero", columnList = "numero_factura", unique = true),
                 @Index(name = "ix_venta_fecha", columnList = "fecha_venta"),
-                @Index(name = "ix_venta_estado", columnList = "estado")
+                @Index(name = "ix_venta_estado", columnList = "estado"),
+                @Index(name = "uk_venta_client_request_id", columnList = "client_request_id", unique = true)
         }
 )
 public class Venta {
@@ -43,6 +44,13 @@ public class Venta {
     @Column(name = "id")
     @EqualsAndHashCode.Include
     private Long id;
+
+    /**
+     * Idempotencia de sync offline (FRONT outbox). Nullable: ventas online no lo envían.
+     * UNIQUE en PG permite múltiples NULL.
+     */
+    @Column(name = "client_request_id", length = 96, unique = true)
+    private String clientRequestId;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "sucursal_id", nullable = false)

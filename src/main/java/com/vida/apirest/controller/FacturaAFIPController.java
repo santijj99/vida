@@ -11,6 +11,7 @@ import com.vida.apirest.servicies.afip.AFIPTokenValidatorService;
 import com.vida.apirest.servicies.afip.AfipConfigService;
 import com.vida.apirest.servicies.afip.FacturaAFIPService;
 import com.vida.apirest.servicies.afip.ReceptorAfipConsultaService;
+import com.vida.apirest.security.Authz;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -25,7 +26,7 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/facturas-afip")
 @RequiredArgsConstructor
-@PreAuthorize("hasAuthority('VER_ARCA')")
+@PreAuthorize(Authz.VER_O_GESTIONAR_ARCA)
 public class FacturaAFIPController {
 
     private final FacturaAFIPService facturaAFIPService;
@@ -61,6 +62,7 @@ public class FacturaAFIPController {
     }
 
     @PostMapping("/venta/{ventaId}/emitir")
+    @PreAuthorize(Authz.GESTIONAR_ARCA)
     public ResponseEntity<?> emitir(@PathVariable Long ventaId,
                                     @RequestBody(required = false) EmitirFacturaAFIPRequest request) {
         try {
@@ -96,6 +98,7 @@ public class FacturaAFIPController {
     }
 
     @PostMapping("/token/validar")
+    @PreAuthorize(Authz.GESTIONAR_ARCA)
     public ResponseEntity<TokenValidationResponse> validarToken(
             @RequestParam(required = false) Long empresaId) {
         return ResponseEntity.ok(tokenValidatorService.validarYRegenerarToken(empresaId));
@@ -108,6 +111,7 @@ public class FacturaAFIPController {
     }
 
     @PutMapping("/config/ambiente")
+    @PreAuthorize(Authz.GESTIONAR_ARCA)
     public ResponseEntity<AfipAmbienteResponse> cambiarAmbiente(@RequestBody AfipAmbienteRequest request) {
         if (request.getHomologacion() == null) {
             return ResponseEntity.badRequest().build();

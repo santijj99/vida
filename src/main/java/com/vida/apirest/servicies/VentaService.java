@@ -49,12 +49,12 @@ import com.vida.apirest.repositories.VarianteArticuloRepository;
 import com.vida.apirest.security.SucursalScopeService;
 import com.vida.apirest.dto.afip.FacturaAFIPResponse;
 import com.vida.apirest.model.afip.FacturaAFIP;
-import com.vida.apirest.servicies.afip.AfipContextService;
 import com.vida.apirest.servicies.afip.FacturaAFIPService;
 import com.vida.apirest.servicies.afip.TicketPDFService;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -66,8 +66,11 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -92,7 +95,6 @@ public class VentaService {
     private final MovimientoFinancieroRepository movimientoFinancieroRepository;
     private final VentaCambioArticuloRepository ventaCambioArticuloRepository;
     private final FacturaAFIPService facturaAFIPService;
-    private final AfipContextService afipContextService;
     private final TicketPDFService ticketPDFService;
     private final TicketConfigService ticketConfigService;
     private final CajaMovimientoService cajaMovimientoService;
@@ -107,6 +109,19 @@ public class VentaService {
 
     @Transactional
     public VentaResponse registrarVenta(VentaCreateRequest request, boolean descontarStock) {
+        String clientRequestId = normalizarClientRequestId(request.getClientRequestId());
+        if (clientRequestId != null) {
+            Optional<Venta> existente = ventaRepository.findByClientRequestId(clientRequestId);
+            if (existente.isPresent()) {
+                log.info(
+                        "Idempotencia venta: reutilizando id={} clientRequestId={}",
+                        existente.get().getId(),
+                        clientRequestId
+                );
+                return construirRespuestaVenta(existente.get().getId(), request);
+            }
+        }
+
         validarRegistroVenta(request);
 
         Cliente cliente = cargarCliente(request.getClienteDni());
@@ -114,6 +129,7 @@ public class VentaService {
         Empleado empleado = cargarEmpleadoOpcional(request.getEmpleadoId());
 
         Venta venta = inicializarVentaCabecera(request, cliente, sucursal, empleado);
+        venta.setClientRequestId(clientRequestId);
         TotalesAcumulados totales = agregarDetallesAVenta(venta, request.getDetalles(), sucursal, descontarStock);
         aplicarTotalesVenta(venta, totales);
         venta.setEstado(tienePagos(request) ? Venta.EstadoVenta.CONFIRMADA : Venta.EstadoVenta.BORRADOR);
@@ -124,6 +140,50 @@ public class VentaService {
         }
 
         return construirRespuestaVenta(ventaGuardada.getId(), request);
+    }
+
+    /**
+     * Replay tras carrera de UNIQUE (POST paralelo con el mismo clientRequestId).
+     * Se llama fuera de la TX fallida (p. ej. desde el controller).
+     */
+    @Transactional(readOnly = true)
+    public Optional<VentaResponse> buscarRespuestaPorClientRequestId(String clientRequestIdRaw) {
+        String clientRequestId = normalizarClientRequestId(clientRequestIdRaw);
+        if (clientRequestId == null) {
+            return Optional.empty();
+        }
+        return ventaRepository.findByClientRequestId(clientRequestId)
+                .map(v -> {
+                    Venta ventaCompleta = ventaRepository.findByIdWithDetalles(v.getId())
+                            .orElse(v);
+                    return mapVentaResponse(ventaCompleta);
+                });
+    }
+
+    public static boolean esConflictoClientRequestId(DataIntegrityViolationException ex) {
+        String raw = ex.getMostSpecificCause() != null
+                ? ex.getMostSpecificCause().getMessage()
+                : ex.getMessage();
+        if (raw == null) {
+            return false;
+        }
+        String lower = raw.toLowerCase();
+        return lower.contains("uk_venta_client_request_id")
+                || lower.contains("client_request_id");
+    }
+
+    private static String normalizarClientRequestId(String raw) {
+        if (raw == null) {
+            return null;
+        }
+        String trimmed = raw.trim();
+        if (trimmed.isEmpty()) {
+            return null;
+        }
+        if (trimmed.length() > 96) {
+            throw new IllegalArgumentException("clientRequestId demasiado largo (máx. 96)");
+        }
+        return trimmed;
     }
 
     private void validarRegistroVenta(VentaCreateRequest request) {
@@ -195,34 +255,60 @@ public class VentaService {
             Sucursal sucursal,
             boolean descontarStock
     ) {
-        TotalesAcumulados totales = new TotalesAcumulados();
+        record LineaPreparada(
+                com.vida.apirest.dto.venta.VentaDetalleRequest request,
+                VentaDetalleSupport.ArticuloVarianteResuelto resolucion,
+                BigDecimal precioUnitario,
+                Long stockId
+        ) {
+        }
+
+        List<LineaPreparada> lineas = new ArrayList<>();
         for (var detalleReq : detalles) {
-            VentaDetalleSupport.ArticuloVarianteResuelto resolucion = ventaDetalleSupport.resolverArticuloYVariante(detalleReq);
+            VentaDetalleSupport.ArticuloVarianteResuelto resolucion =
+                    ventaDetalleSupport.resolverArticuloYVariante(detalleReq);
             ventaDetalleSupport.validarCantidad(detalleReq.getCantidad());
-
             BigDecimal precioUnitario = ventaDetalleSupport.resolverPrecioUnitario(detalleReq, resolucion.variante());
-            if (descontarStock) {
-                descontarStockDetalle(resolucion, detalleReq.getCantidad(), sucursal.getId(), venta.getNumeroFactura());
-            }
+            Long stockId = descontarStock ? resolverStock(resolucion, sucursal.getId()).getId() : null;
+            lineas.add(new LineaPreparada(detalleReq, resolucion, precioUnitario, stockId));
+        }
 
-            VentaDetalleSupport.MontosDetalle montos = ventaDetalleSupport.calcularMontos(precioUnitario, detalleReq);
-            VentaDetalle detalle = ventaDetalleSupport.construirDetalle(venta, resolucion, detalleReq, precioUnitario, montos);
+        Map<Long, Stock> stocksLockeados = Map.of();
+        if (descontarStock) {
+            stocksLockeados = stockOperacionesService.lockAllById(
+                    lineas.stream().map(LineaPreparada::stockId).toList());
+        }
+
+        TotalesAcumulados totales = new TotalesAcumulados();
+        for (LineaPreparada linea : lineas) {
+            if (descontarStock) {
+                ajustarStock(stocksLockeados.get(linea.stockId()), linea.request().getCantidad(),
+                        venta.getNumeroFactura());
+            }
+            VentaDetalleSupport.MontosDetalle montos =
+                    ventaDetalleSupport.calcularMontos(linea.precioUnitario(), linea.request());
+            VentaDetalle detalle = ventaDetalleSupport.construirDetalle(
+                    venta, linea.resolucion(), linea.request(), linea.precioUnitario(), montos);
             totales.acumular(montos);
             venta.getDetalles().add(detalle);
         }
         return totales;
     }
 
-    private void descontarStockDetalle(
-            VentaDetalleSupport.ArticuloVarianteResuelto resolucion,
-            Integer cantidad,
-            Long sucursalId,
-            String referencia
-    ) {
-        Stock stock = resolucion.variante() != null
+    private Stock resolverStock(VentaDetalleSupport.ArticuloVarianteResuelto resolucion, Long sucursalId) {
+        return resolucion.variante() != null
                 ? stockOperacionesService.requireStockByVariante(resolucion.variante().getId(), sucursalId)
                 : stockOperacionesService.requireStock(resolucion.articulo().getId(), null, sucursalId);
-        ajustarStock(stock, cantidad, referencia);
+    }
+
+    private Stock resolverStockDeDetalle(VentaDetalle detalle, Long sucursalId) {
+        if (detalle.getVariante() != null) {
+            return stockOperacionesService.requireStockByVariante(detalle.getVariante().getId(), sucursalId);
+        }
+        if (detalle.getArticulo() != null) {
+            return stockOperacionesService.requireStock(detalle.getArticulo().getId(), null, sucursalId);
+        }
+        throw new RuntimeException("La línea de venta no tiene artículo ni variante");
     }
 
     private void aplicarTotalesVenta(Venta venta, TotalesAcumulados totales) {
@@ -521,6 +607,7 @@ public class VentaService {
             LocalDate desde,
             LocalDate hasta,
             String q,
+            Boolean facturadaArca,
             int page,
             int size
     ) {
@@ -537,9 +624,12 @@ public class VentaService {
                 desdeDt,
                 hastaExclusivo,
                 q != null ? q.trim() : null,
+                facturadaArca,
                 pageable
         );
-        return PageResponse.from(result.map(this::mapHistorialItem));
+        Set<Long> facturadas = facturaAFIPService.ventaIdsFacturadas(
+                result.getContent().stream().map(Venta::getId).toList());
+        return PageResponse.from(result.map(v -> mapHistorialItem(v, facturadas.contains(v.getId()))));
     }
 
     @Transactional(readOnly = true)
@@ -613,14 +703,16 @@ public class VentaService {
         Long sucursalId = venta.getSucursal().getId();
         String referencia = venta.getNumeroFactura();
 
+        List<Long> stockIds = new ArrayList<>();
+        Map<VentaDetalle, Long> stockPorDetalle = new HashMap<>();
         for (VentaDetalle detalle : venta.getDetalles()) {
-            if (detalle.getVariante() != null) {
-                Stock stock = stockOperacionesService.requireStockByVariante(detalle.getVariante().getId(), sucursalId);
-                ingresarStockDevolucion(stock, detalle.getCantidad(), referencia);
-            } else if (detalle.getArticulo() != null) {
-                Stock stock = stockOperacionesService.requireStock(detalle.getArticulo().getId(), null, sucursalId);
-                ingresarStockDevolucion(stock, detalle.getCantidad(), referencia);
-            }
+            Stock stock = resolverStockDeDetalle(detalle, sucursalId);
+            stockIds.add(stock.getId());
+            stockPorDetalle.put(detalle, stock.getId());
+        }
+        Map<Long, Stock> locked = stockOperacionesService.lockAllById(stockIds);
+        for (VentaDetalle detalle : venta.getDetalles()) {
+            ingresarStockDevolucion(locked.get(stockPorDetalle.get(detalle)), detalle.getCantidad(), referencia);
         }
 
         if (venta.getPagos() != null) {
@@ -693,16 +785,15 @@ public class VentaService {
         Long sucursalId = venta.getSucursal().getId();
         String referencia = venta.getNumeroFactura();
 
-        if (varianteDevuelta != null) {
-            Stock stockDevuelto = stockOperacionesService.requireStockByVariante(varianteDevuelta.getId(), sucursalId);
-            ingresarStockDevolucion(stockDevuelto, cantidad, referencia);
-        } else {
-            Stock stockDevuelto = stockOperacionesService.requireStock(detalle.getArticulo().getId(), null, sucursalId);
-            ingresarStockDevolucion(stockDevuelto, cantidad, referencia);
-        }
+        Stock stockDevueltoLookup = varianteDevuelta != null
+                ? stockOperacionesService.requireStockByVariante(varianteDevuelta.getId(), sucursalId)
+                : stockOperacionesService.requireStock(detalle.getArticulo().getId(), null, sucursalId);
+        Stock stockNuevoLookup = stockOperacionesService.requireStockByVariante(varianteNueva.getId(), sucursalId);
+        Map<Long, Stock> locked = stockOperacionesService.lockAllById(
+                List.of(stockDevueltoLookup.getId(), stockNuevoLookup.getId()));
 
-        Stock stockNuevo = stockOperacionesService.requireStockByVariante(varianteNueva.getId(), sucursalId);
-        ajustarStock(stockNuevo, cantidad, referencia + "-CAMBIO");
+        ingresarStockDevolucion(locked.get(stockDevueltoLookup.getId()), cantidad, referencia);
+        ajustarStock(locked.get(stockNuevoLookup.getId()), cantidad, referencia + "-CAMBIO");
 
         Articulo articuloNuevo = articuloRepository.findById(varianteNueva.getArticuloId())
                 .orElseThrow(() -> new RuntimeException("Artículo de la variante nueva no encontrado"));
@@ -764,6 +855,9 @@ public class VentaService {
     }
 
     private void ajustarStock(Stock stock, Integer cantidad, String referencia) {
+        if (stock == null) {
+            throw new RuntimeException("Stock no encontrado para descontar");
+        }
         Integer disponibleAnterior = stock.getCantidadDisponible();
         if (disponibleAnterior == null) {
             disponibleAnterior = 0;
@@ -774,7 +868,7 @@ public class VentaService {
 
         Integer nuevoDisponible = disponibleAnterior - cantidad;
         stock.setCantidadDisponible(nuevoDisponible);
-        stock.setCantidadActual(Math.max(0, stock.getCantidadActual() - cantidad));
+        stock.setCantidadActual(Math.max(0, (stock.getCantidadActual() != null ? stock.getCantidadActual() : 0) - cantidad));
         stockRepository.save(stock);
 
         stockOperacionesService.registrarMovimiento(
@@ -889,7 +983,7 @@ public class VentaService {
         venta.setTotal(total);
     }
 
-    private VentaHistorialItemResponse mapHistorialItem(Venta venta) {
+    private VentaHistorialItemResponse mapHistorialItem(Venta venta, boolean facturadaArca) {
         VentaHistorialItemResponse item = new VentaHistorialItemResponse();
         item.setId(venta.getId());
         item.setNumeroFactura(venta.getNumeroFactura());
@@ -906,6 +1000,7 @@ public class VentaService {
         item.setMotivoCancelacion(venta.getMotivoCancelacion());
         int items = venta.getDetalles() != null ? venta.getDetalles().size() : 0;
         item.setCantidadItems(items);
+        item.setFacturadaArca(facturadaArca);
         return item;
     }
 
@@ -944,6 +1039,7 @@ public class VentaService {
         }
         List<VentaCambioArticulo> cambios = ventaCambioArticuloRepository.findByVentaIdOrderByCreatedAtDesc(venta.getId());
         response.setCambiosArticulo(cambios.stream().map(this::mapCambioArticuloResponse).collect(Collectors.toList()));
+        facturaAFIPService.findResponseByVentaId(venta.getId()).ifPresent(response::setFacturaAfip);
         return response;
     }
 

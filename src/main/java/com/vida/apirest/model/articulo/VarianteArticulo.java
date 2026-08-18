@@ -79,6 +79,7 @@ public class VarianteArticulo {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "taxon_id", insertable = false, updatable = false)
+    @org.hibernate.annotations.NotFound(action = org.hibernate.annotations.NotFoundAction.IGNORE)
     private Taxon taxon;
 
     @Column(name = "codigo_barras", length = 64, unique = true)

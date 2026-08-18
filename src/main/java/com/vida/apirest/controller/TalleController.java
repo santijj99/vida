@@ -2,6 +2,7 @@ package com.vida.apirest.controller;
 
 import com.vida.apirest.dto.ariticulo.CreateTalleRequest;
 import com.vida.apirest.dto.ariticulo.TalleResponse;
+import com.vida.apirest.security.Authz;
 import com.vida.apirest.servicies.TalleService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -18,7 +19,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/talles")
 @RequiredArgsConstructor
-@PreAuthorize("hasAuthority('VER_TALLES')")
+@PreAuthorize(Authz.VER_O_GESTIONAR_TALLES)
 public class TalleController {
 
     private final TalleService talleService;
@@ -29,6 +30,7 @@ public class TalleController {
     }
 
     @PostMapping
+    @PreAuthorize(Authz.GESTIONAR_TALLES)
     public ResponseEntity<TalleResponse> create(@RequestBody CreateTalleRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(talleService.create(request));
     }

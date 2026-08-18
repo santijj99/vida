@@ -21,6 +21,6 @@ public class AfipProperties {
      */
     private String certificadosBaseDir = "./data/afip";
 
-    private boolean autoFacturarEnVenta = true;
+    private boolean autoFacturarEnVenta = false;
     private boolean validarTokenEnLogin = true;
 }

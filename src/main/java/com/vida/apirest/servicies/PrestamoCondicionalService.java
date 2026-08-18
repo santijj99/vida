@@ -183,6 +183,7 @@ public class PrestamoCondicionalService {
         ventaReq.setMetodoPago(request.getMetodoPago());
         ventaReq.setDetalles(request.getDetalles());
         ventaReq.setPagos(request.getPagos());
+        ventaReq.setFacturaAfip(request.getFacturaAfip());
 
         VentaResponse ventaResp = ventaService.registrarVenta(ventaReq, false);
         vincularVentaSiCorresponde(prestamo, ventaResp.getId());

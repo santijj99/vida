@@ -194,6 +194,9 @@ public class ArticuloConsultaService {
                 variantDto.setId(variante.getId());
                 variantDto.setColor(variante.getColor() != null ? variante.getColor().getNombre() : null);
                 variantDto.setTalle(variante.getTalle() != null ? variante.getTalle().getNumero() : null);
+                variantDto.setPais(variante.getTalle() != null && variante.getTalle().getPais() != null
+                        ? variante.getTalle().getPais().name()
+                        : null);
                 variantDto.setCodigoBarras(variante.getCodigoBarras());
                 variantDto.setPrecio(precios.get(variante.getId()));
                 variantDto.setCantidad(getCantidadDisponibleForVariante(articulo.getId(), variante.getId()));

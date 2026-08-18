@@ -2,6 +2,7 @@ package com.vida.apirest.servicies.afip;
 
 import com.vida.apirest.config.AfipProperties;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.io.BufferedReader;
@@ -20,6 +21,7 @@ import java.security.cert.X509Certificate;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class WSFEService {
 
     private static final String WSFE_URL_HOMOLOGACION = "https://wswhomo.afip.gov.ar/wsfev1/service.asmx";
@@ -59,14 +61,8 @@ public class WSFEService {
         // Limpiar token y sign (eliminar espacios y saltos de línea)
         String token = tokenSign.getToken().trim().replaceAll("\\s+", "");
         String sign = tokenSign.getSign().trim().replaceAll("\\s+", "");
-        
-        System.out.println("\n=== TOKEN Y SIGN PARA FECAESolicitar ===");
-        System.out.println("Token (longitud): " + token.length());
-        System.out.println("Token (primeros 100 chars): " + (token.length() > 100 ? token.substring(0, 100) + "..." : token));
-        System.out.println("Sign (longitud): " + sign.length());
-        System.out.println("Sign (primeros 100 chars): " + (sign.length() > 100 ? sign.substring(0, 100) + "..." : sign));
-        System.out.println("CUIT: " + obtenerCuit());
-        System.out.println("========================================\n");
+
+        log.debug("FECAESolicitar token/sign listos (longitudes {} / {})", token.length(), sign.length());
         
         String soapRequest = crearSoapRequestFECAESolicitar(
             token,
@@ -75,16 +71,8 @@ public class WSFEService {
         );
         
         String respuesta = enviarSoapRequest(soapRequest, "FECAESolicitar");
-        
-        // Log de la respuesta para debugging
-        System.out.println("\n=== RESPUESTA DE AFIP (FECAESolicitar) ===");
-        System.out.println("Longitud: " + respuesta.length());
-        System.out.println("Primeros 500 caracteres: " + (respuesta.length() > 500 ? respuesta.substring(0, 500) : respuesta));
-        if (respuesta.length() > 500) {
-            System.out.println("Últimos 500 caracteres: " + respuesta.substring(Math.max(0, respuesta.length() - 500)));
-        }
-        System.out.println("==========================================\n");
-        
+        log.debug("FECAESolicitar respuesta recibida ({} chars)", respuesta.length());
+
         return parsearFECAEResponse(respuesta);
     }
     
@@ -232,7 +220,7 @@ public class WSFEService {
         
         // Verificar código de respuesta
         int responseCode = conn.getResponseCode();
-        System.out.println("Código de respuesta HTTP: " + responseCode);
+        log.debug("WSFE {} HTTP {}", operation, responseCode);
         
         StringBuilder response = new StringBuilder();
         
@@ -245,8 +233,8 @@ public class WSFEService {
                     response.append(line);
                 }
             }
-            System.err.println("Error HTTP " + responseCode + ": " + response.toString());
-            throw new Exception("Error HTTP " + responseCode + ": " + response.toString());
+            log.warn("WSFE {} falló HTTP {} ({} chars)", operation, responseCode, response.length());
+            throw new Exception("Error HTTP " + responseCode + " al llamar " + operation);
         }
         
         // Leer respuesta exitosa
@@ -269,7 +257,7 @@ public class WSFEService {
         int fin = respuesta.indexOf("</CbteNro>");
         
         if (inicio == -1 || fin == -1) {
-            throw new Exception("No se pudo obtener el último comprobante: " + respuesta);
+            throw new Exception("No se pudo obtener el último comprobante AFIP");
         }
         
         String numero = respuesta.substring(inicio + 9, fin).trim();
@@ -294,11 +282,7 @@ public class WSFEService {
      */
     private FECAEResponse parsearFECAEResponse(String respuesta) throws Exception {
         FECAEResponse response = new FECAEResponse();
-        
-        System.out.println("=== Parseando respuesta FECAESolicitar ===");
-        
-        // Primero, extraer el contenido dentro de FECAEDetResponse
-        // Buscar el inicio de FECAEDetResponse
+
         int detResponseInicio = respuesta.indexOf("<FECAEDetResponse");
         if (detResponseInicio == -1) {
             detResponseInicio = respuesta.indexOf("<FECAEDetResponse>");
@@ -310,7 +294,6 @@ public class WSFEService {
             int detResponseFin = respuesta.indexOf("</FECAEDetResponse>", detResponseInicio);
             if (detResponseFin != -1) {
                 contenidoDetResponse = respuesta.substring(detResponseInicio, detResponseFin);
-                System.out.println("FECAEDetResponse encontrado, parseando contenido...");
             }
         }
         
@@ -330,12 +313,9 @@ public class WSFEService {
         
         if (resultado != null && !resultado.isEmpty()) {
             response.setResultado(resultado);
-            System.out.println("✓ Resultado encontrado: " + resultado);
+            log.debug("FECAESolicitar Resultado={}", resultado);
         } else {
-            System.out.println("⚠ Resultado NO encontrado");
-            // Mostrar un fragmento de la respuesta para debugging
-            int muestraInicio = Math.max(0, contenidoDetResponse.length() - 200);
-            System.out.println("Fragmento de respuesta: " + contenidoDetResponse.substring(muestraInicio));
+            log.warn("FECAESolicitar sin tag Resultado ({} chars)", contenidoDetResponse.length());
         }
         
         // Buscar CAE
@@ -349,9 +329,9 @@ public class WSFEService {
         }
         if (cae != null && !cae.isEmpty()) {
             response.setCae(cae);
-            System.out.println("✓ CAE encontrado: " + cae);
+            log.debug("FECAESolicitar CAE presente");
         } else {
-            System.out.println("⚠ CAE NO encontrado");
+            log.debug("FECAESolicitar sin CAE");
         }
         
         // Buscar CAEFchVto
@@ -365,7 +345,6 @@ public class WSFEService {
         }
         if (caeFchVto != null && !caeFchVto.isEmpty()) {
             response.setCaeFchVto(caeFchVto);
-            System.out.println("✓ CAEFchVto encontrado: " + caeFchVto);
         }
         
         // Buscar Motivos
@@ -379,7 +358,6 @@ public class WSFEService {
         }
         if (motivos != null && !motivos.isEmpty()) {
             response.setMotivos(motivos);
-            System.out.println("✓ Motivos encontrados: " + motivos);
         }
         
         // Buscar Observaciones
@@ -393,12 +371,11 @@ public class WSFEService {
         }
         if (observaciones != null && !observaciones.isEmpty()) {
             response.setObservaciones(observaciones);
-            System.out.println("✓ Observaciones encontradas: " + observaciones);
         }
         
         // Buscar errores en la respuesta (pueden estar en <Errors><Err>)
         if (respuesta.contains("<Errors>") || respuesta.contains("<Err>")) {
-            System.out.println("⚠ Se detectaron errores en la respuesta");
+            log.debug("FECAESolicitar incluye bloque Errors");
             
             // Buscar todos los errores
             String erroresCompletos = "";
@@ -431,7 +408,7 @@ public class WSFEService {
                                     erroresCompletos += " | ";
                                 }
                                 erroresCompletos += errorCompleto;
-                                System.err.println("ERROR AFIP: " + errorCompleto);
+                                log.warn("AFIP rechazó FECAESolicitar: {}", errorCompleto);
                             }
                             
                             pos = errFin;
@@ -445,7 +422,6 @@ public class WSFEService {
             if (!erroresCompletos.isEmpty()) {
                 response.setMotivos(erroresCompletos);
                 response.setResultado("R"); // Rechazado por error
-                System.out.println("✓ Error parseado: " + erroresCompletos);
             }
         }
         
@@ -457,7 +433,7 @@ public class WSFEService {
                 "faultstring>", "</faultstring>"
             });
             if (error != null) {
-                System.err.println("ERROR SOAP: " + error);
+                log.warn("AFIP SOAP fault: {}", error);
                 if (response.getMotivos() == null || response.getMotivos().isEmpty()) {
                     response.setMotivos("Error SOAP: " + error);
                 }
@@ -467,13 +443,9 @@ public class WSFEService {
         
         // Si aún no hay resultado y no hay errores, mostrar más de la respuesta para debugging
         if (response.getResultado() == null && (response.getMotivos() == null || response.getMotivos().isEmpty())) {
-            System.err.println("\n=== RESPUESTA COMPLETA PARA DEBUGGING ===");
-            System.err.println(respuesta);
-            System.err.println("==========================================\n");
+            log.warn("FECAESolicitar sin Resultado ni motivos ({} chars)", respuesta.length());
         }
-        
-        System.out.println("=== Fin del parseo ===\n");
-        
+
         return response;
     }
     

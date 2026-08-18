@@ -2,6 +2,7 @@ package com.vida.apirest.controller;
 
 import com.vida.apirest.dto.ariticulo.CategoriaResponse;
 import com.vida.apirest.dto.ariticulo.CreateCategoriaRequest;
+import com.vida.apirest.security.Authz;
 import com.vida.apirest.servicies.CategoriaService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -18,7 +19,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/categorias")
 @RequiredArgsConstructor
-@PreAuthorize("hasAuthority('VER_CATEGORIAS')")
+@PreAuthorize(Authz.VER_O_GESTIONAR_CATEGORIAS)
 public class CategoriaController {
 
     private final CategoriaService categoriaService;
@@ -29,6 +30,7 @@ public class CategoriaController {
     }
 
     @PostMapping
+    @PreAuthorize(Authz.GESTIONAR_CATEGORIAS)
     public ResponseEntity<CategoriaResponse> create(@RequestBody CreateCategoriaRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(categoriaService.create(request));
     }

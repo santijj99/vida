@@ -7,7 +7,6 @@ import java.nio.file.StandardCopyOption;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
-import java.util.Random;
 import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
@@ -23,14 +22,22 @@ import org.springframework.transaction.annotation.Transactional;
 import com.vida.apirest.config.AfipProperties;
 import com.vida.apirest.config.AppSecurityProperties;
 import com.vida.apirest.config.LicenciaProperties;
+import com.vida.apirest.exception.BadRequestException;
 import com.vida.apirest.exception.ForbiddenException;
 import com.vida.apirest.exception.RegistrationDisabledException;
+import com.vida.apirest.exception.TooManyRequestsException;
+import com.vida.apirest.security.AuthRateLimiter;
+import com.vida.apirest.security.PasswordResetCodes;
+import com.vida.apirest.tenant.TenantContext;
 import com.vida.apirest.dto.afip.TokenValidationResponse;
+import com.vida.apirest.dto.usuario.AdminUpdateUsuarioRequest;
+import com.vida.apirest.dto.usuario.CambiarPasswordInicialRequest;
 import com.vida.apirest.dto.usuario.CreateUsuarioRequest;
 import com.vida.apirest.dto.usuario.ForgotPasswordRequest;
 import com.vida.apirest.dto.usuario.LoginRequest;
 import com.vida.apirest.dto.usuario.LoginResponse;
 import com.vida.apirest.dto.usuario.ResetPasswordRequest;
+import com.vida.apirest.dto.usuario.SoporteLoginRequest;
 import com.vida.apirest.dto.usuario.UpdateUsuarioRequest;
 import com.vida.apirest.dto.usuario.UsuarioResponse;
 import com.vida.apirest.dto.usuario.UsuarioSucursalDTO;
@@ -44,14 +51,26 @@ import com.vida.apirest.repositories.SucursalRepository;
 import com.vida.apirest.repositories.UsuarioHasRoleRepository;
 import com.vida.apirest.repositories.UsuarioRepository;
 import com.vida.apirest.repositories.UsuarioSucursalRepository;
+import com.vida.apirest.security.AppUserDetails;
 import com.vida.apirest.servicies.afip.AFIPTokenValidatorService;
 import com.vida.apirest.servicies.afip.AfipContextService;
+import com.vida.apirest.tenant.TenantBootstrapService;
 import com.vida.apirest.utils.FileUploadUtils;
 import com.vida.apirest.utils.JwtUtil;
 import com.vida.apirest.dto.auth.EffectivePermissions;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 @Service
 public class UsuarioService {
+
+    private static final String SOPORTE_USER = "soporte";
+    private static final String SOPORTE_EMAIL = "soporte@athland.local";
+    private static final String MSG_RESET_GENERICO = "Código inválido o expirado";
+    private static final String MSG_RATE_LIMIT = "Demasiados intentos. Probá de nuevo en unos minutos.";
+    private static final int MAX_LOGIN_POR_IDENT = 8;
+    private static final int MAX_FORGOT_POR_EMAIL = 3;
+    private static final int MAX_RESET_POR_EMAIL = 10;
 
     private static final Logger log = LoggerFactory.getLogger(UsuarioService.class);
 
@@ -102,6 +121,15 @@ public class UsuarioService {
 
     @Autowired
     private com.vida.apirest.tenant.TenantDataSourceManager tenantDataSourceManager;
+
+    @Autowired
+    private com.vida.apirest.servicies.licencia.LicenciaServerClient licenciaServerClient;
+
+    @Autowired
+    private AuthRateLimiter authRateLimiter;
+
+    @Autowired
+    private PasswordResetAttemptService passwordResetAttemptService;
 
     @Autowired(required = false)
     private JavaMailSender mailSender;
@@ -186,6 +214,64 @@ public class UsuarioService {
     }
 
     @Transactional
+    public UsuarioResponse updateByAdmin(Long id, AdminUpdateUsuarioRequest request) {
+        Usuario usuario = usuarioRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("El usuario no existe"));
+
+        if (request.usuario != null && !request.usuario.isBlank()) {
+            String nuevoUsuario = request.usuario.trim();
+            if (!nuevoUsuario.equalsIgnoreCase(usuario.getUsuario())) {
+                usuarioRepository.findByUsuario(nuevoUsuario)
+                        .filter(existente -> !existente.getId().equals(id))
+                        .ifPresent(existente -> {
+                            throw new RuntimeException("El nombre de usuario ya está en uso");
+                        });
+                usuario.setUsuario(nuevoUsuario);
+            }
+        }
+
+        if (request.email != null) {
+            String email = request.email.isBlank() ? null : request.email.trim();
+            if (email != null && (usuario.getEmail() == null || !email.equalsIgnoreCase(usuario.getEmail()))) {
+                usuarioRepository.findByEmail(email)
+                        .filter(existente -> !existente.getId().equals(id))
+                        .ifPresent(existente -> {
+                            throw new RuntimeException("El correo ya está en uso");
+                        });
+            }
+            usuario.setEmail(email);
+        }
+
+        if (request.celular != null) {
+            String celular = celularNormalizado(request.celular);
+            if (celular != null
+                    && (usuario.getCelular() == null || !celular.equals(usuario.getCelular()))
+                    && usuarioRepository.existsByCelular(celular)) {
+                throw new RuntimeException("El celular ya está en uso");
+            }
+            usuario.setCelular(celular);
+        }
+
+        if (request.password != null && !request.password.isBlank()) {
+            if (request.password.length() < 6) {
+                throw new RuntimeException("La contraseña debe tener al menos 6 caracteres");
+            }
+            usuario.setPassword(passwordEncoder.encode(request.password));
+            usuario.invalidarTokens();
+        }
+
+        if (request.activo != null) {
+            if (Boolean.FALSE.equals(request.activo) && usuario.isEnabled()) {
+                usuario.invalidarTokens();
+            }
+            usuario.setActivo(request.activo);
+        }
+
+        usuarioRepository.save(usuario);
+        return buildProfileResponse(usuario);
+    }
+
+    @Transactional
     public LoginResponse login(LoginRequest request) {
         String codigoLicencia = resolveCodigoLicencia(request.getCodigoLicencia());
         if (tenantDataSourceManager.isMultiTenantEnabled()) {
@@ -199,11 +285,21 @@ public class UsuarioService {
         if (identificador == null || identificador.isBlank()) {
             throw new RuntimeException("Debes ingresar usuario o email");
         }
+        String identKey = rateKey("login-id", identificador.trim().toLowerCase());
         Usuario usuario = usuarioRepository.findByIdentificadorWithRolesAndRolPrincipal(identificador.trim())
-                .orElseThrow(() -> new RuntimeException("El usuario/email o password no son validos"));
-        if (!passwordEncoder.matches(request.getPassword(), usuario.getPassword())) {
+                .orElse(null);
+        if (usuario != null && usuario.esSoporte()) {
+            rechazarLoginSiExcedio(identKey);
+            throw new ForbiddenException("Usá el ticket de soporte para entrar");
+        }
+        if (usuario == null
+                || !usuario.isEnabled()
+                || usuario.soporteVencido()
+                || !passwordEncoder.matches(request.getPassword(), usuario.getPassword())) {
+            rechazarLoginSiExcedio(identKey);
             throw new RuntimeException("El usuario/email o password no son validos");
         }
+        authRateLimiter.reset(identKey);
         if (!tenantDataSourceManager.isMultiTenantEnabled()
                 && licenciaProperties.isEnabled()
                 && licenciaProperties.isBloquearSiInvalida()
@@ -215,19 +311,65 @@ public class UsuarioService {
     }
 
     @Transactional
+    public LoginResponse loginSoporte(SoporteLoginRequest request) {
+        if (request == null || request.getToken() == null || request.getToken().isBlank()) {
+            throw new BadRequestException("Falta el ticket de soporte");
+        }
+        String codigoLicencia = resolveCodigoLicencia(request.getCodigoLicencia());
+        if (tenantDataSourceManager.isMultiTenantEnabled()) {
+            tenantDataSourceManager.ensureTenantReady(codigoLicencia);
+        } else if (licenciaProperties.isEnabled()
+                && licenciaProperties.isBloquearSiInvalida()
+                && !sistemaLicenciaService.isLicenciaOperativa()) {
+            throw new ForbiddenException(
+                    "La licencia del sistema no está activa. Contactá al proveedor para renovarla.");
+        }
+
+        var remoto = licenciaServerClient.consumirSoporte(codigoLicencia, request.getToken().trim());
+        if (!remoto.isAlcanzable()) {
+            throw new ForbiddenException("No se pudo contactar el servidor de licencias");
+        }
+        if (!remoto.isValido()) {
+            throw new ForbiddenException(
+                    remoto.getMensaje() == null || remoto.getMensaje().isBlank()
+                            ? "Ticket de soporte inválido"
+                            : remoto.getMensaje());
+        }
+        if (remoto.getExpiraEn() == null || !remoto.getExpiraEn().isAfter(java.time.Instant.now())) {
+            throw new ForbiddenException("El ticket de soporte venció");
+        }
+
+        String tokenHash = hashSoporteToken(request.getToken().trim());
+        Usuario usuario = asegurarUsuarioSoporte(tokenHash, remoto.getExpiraEn());
+        return buildLoginResponse(usuario, codigoLicencia);
+    }
+
+    @Transactional
     public void forgotPassword(ForgotPasswordRequest request) {
         if (request.getEmail() == null || request.getEmail().isBlank()) {
             throw new RuntimeException("Debes ingresar un email");
         }
-        Usuario usuario = usuarioRepository.findByEmail(request.getEmail().trim())
-                .orElseThrow(() -> new RuntimeException("No existe un usuario con ese email"));
+        if (mailSender == null || mailFrom == null || mailFrom.isBlank()) {
+            throw new RuntimeException("El envío de correos no está configurado en el servidor");
+        }
+        String email = request.getEmail().trim();
+        exigirRateLimit(rateKey("forgot-email", email.toLowerCase()), MAX_FORGOT_POR_EMAIL);
 
-        String codigo = generarCodigo6Digitos();
-        usuario.setResetCodigo(codigo);
-        usuario.setResetCodigoExpiraAt(LocalDateTime.now().plusMinutes(15));
-        usuarioRepository.save(usuario);
-
-        enviarCodigoReset(usuario.getEmail(), codigo, usuario.getUsuario());
+        usuarioRepository.findByEmail(email)
+                .filter(u -> u.isEnabled() && !u.esSoporte())
+                .ifPresent(usuario -> {
+                    String codigo = PasswordResetCodes.generate6Digits();
+                    usuario.setResetCodigo(PasswordResetCodes.hash(codigo));
+                    usuario.setResetCodigoExpiraAt(LocalDateTime.now().plusMinutes(15));
+                    usuario.setResetIntentos(0);
+                    usuarioRepository.save(usuario);
+                    try {
+                        enviarCodigoReset(usuario.getEmail(), codigo, usuario.getUsuario());
+                    } catch (Exception ex) {
+                        log.warn("No se pudo enviar el código de recuperación a {}: {}",
+                                usuario.getEmail(), ex.getMessage());
+                    }
+                });
     }
 
     @Transactional
@@ -240,23 +382,69 @@ public class UsuarioService {
         if (request.getNuevaPassword().length() < 6) {
             throw new RuntimeException("La nueva contraseña debe tener al menos 6 caracteres");
         }
-        Usuario usuario = usuarioRepository.findByEmail(request.getEmail().trim())
-                .orElseThrow(() -> new RuntimeException("No existe un usuario con ese email"));
+        String email = request.getEmail().trim();
+        exigirRateLimit(rateKey("reset-email", email.toLowerCase()), MAX_RESET_POR_EMAIL);
 
-        if (usuario.getResetCodigo() == null || usuario.getResetCodigoExpiraAt() == null) {
-            throw new RuntimeException("No hay código de recuperación activo");
-        }
-        if (usuario.getResetCodigoExpiraAt().isBefore(LocalDateTime.now())) {
-            throw new RuntimeException("El código ya expiró");
-        }
-        if (!usuario.getResetCodigo().equals(request.getCodigo().trim())) {
-            throw new RuntimeException("Código inválido");
+        Usuario usuario = usuarioRepository.findByEmail(email).orElse(null);
+        if (usuario == null
+                || usuario.getResetCodigo() == null
+                || usuario.getResetCodigoExpiraAt() == null
+                || usuario.getResetCodigoExpiraAt().isBefore(LocalDateTime.now())
+                || !PasswordResetCodes.matches(request.getCodigo(), usuario.getResetCodigo())) {
+            if (usuario != null && usuario.getId() != null) {
+                passwordResetAttemptService.registrarFallo(usuario.getId());
+            }
+            throw new RuntimeException(MSG_RESET_GENERICO);
         }
 
         usuario.setPassword(passwordEncoder.encode(request.getNuevaPassword()));
         usuario.setResetCodigo(null);
         usuario.setResetCodigoExpiraAt(null);
+        usuario.setResetIntentos(0);
+        usuario.setDebeCambiarPassword(false);
+        usuario.invalidarTokens();
         usuarioRepository.save(usuario);
+    }
+
+    @Transactional
+    public LoginResponse cambiarPasswordInicial(CambiarPasswordInicialRequest request) {
+        if (request == null
+                || request.getPasswordActual() == null || request.getPasswordActual().isBlank()
+                || request.getNuevaPassword() == null || request.getNuevaPassword().isBlank()) {
+            throw new RuntimeException("La contraseña actual y la nueva son obligatorias");
+        }
+        String nueva = request.getNuevaPassword().trim();
+        if (nueva.length() < 6) {
+            throw new RuntimeException("La nueva contraseña debe tener al menos 6 caracteres");
+        }
+        if (nueva.equals(request.getPasswordActual())) {
+            throw new RuntimeException("La nueva contraseña tiene que ser distinta a la temporal");
+        }
+        if (TenantBootstrapService.BOOTSTRAP_ADMIN_PASSWORD.equals(nueva)) {
+            throw new RuntimeException("Elegí una contraseña distinta a la temporal de instalación");
+        }
+
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        if (authentication == null || !(authentication.getPrincipal() instanceof AppUserDetails details)) {
+            throw new RuntimeException("No autenticado");
+        }
+        Usuario usuario = usuarioRepository.findById(details.getUsuario().getId())
+                .orElseThrow(() -> new RuntimeException("El usuario no existe"));
+        if (!usuario.debeCambiarPassword()) {
+            throw new RuntimeException("Este usuario no tiene una contraseña temporal pendiente");
+        }
+        if (!passwordEncoder.matches(request.getPasswordActual(), usuario.getPassword())) {
+            throw new RuntimeException("La contraseña actual no es válida");
+        }
+
+        usuario.setPassword(passwordEncoder.encode(nueva));
+        usuario.setDebeCambiarPassword(false);
+        usuario.invalidarTokens();
+        usuarioRepository.save(usuario);
+        Usuario recargado = usuarioRepository
+                .findByIdentificadorWithRolesAndRolPrincipal(usuario.getUsuario())
+                .orElse(usuario);
+        return buildLoginResponse(recargado, resolveCodigoLicencia(null));
     }
 
     @Transactional(readOnly = true)
@@ -331,6 +519,8 @@ public class UsuarioService {
                 .orElseThrow(() -> new RuntimeException("El usuario no existe"));
 
         asignarRolSiNoExiste(usuario, rolId);
+        usuario.invalidarTokens();
+        usuarioRepository.save(usuario);
         return buildProfileResponse(usuario);
     }
 
@@ -347,7 +537,8 @@ public class UsuarioService {
                 usuario,
                 roleNames,
                 permissions.getPermisosEfectivos(),
-                codigoLicencia
+                codigoLicencia,
+                usuario.esSoporte() ? usuario.getSoporteExpiraAt() : null
         );
 
         LoginResponse response = new LoginResponse();
@@ -355,6 +546,7 @@ public class UsuarioService {
         UsuarioResponse usuarioResponse = usuarioMapper.toUsuarioResponse(usuario, roles, permissions);
         usuarioResponse.setSucursales(resolveSucursalesPerfil(usuario, roles));
         response.setUsuario(usuarioResponse);
+        response.setDebeCambiarPassword(usuario.debeCambiarPassword());
         response.setAfipToken(validarTokenAfipEnLogin());
         return response;
     }
@@ -420,17 +612,91 @@ public class UsuarioService {
                 .orElseThrow(() -> new RuntimeException("El rol no existe"));
 
         boolean yaAsignado = usuarioHasRoleRepository.existsByUsuarioIdAndRoleId(usuario.getId(), rolId);
-        if (yaAsignado) {
-            return;
+        if (!yaAsignado) {
+            // Un solo rol de sistema efectivo: reemplaza asignaciones previas.
+            if (usuario.getUsuarioHasRoles() != null) {
+                usuario.getUsuarioHasRoles().clear();
+            }
+            usuarioHasRoleRepository.deleteByUsuarioId(usuario.getId());
+            UsuarioHasRoles usuarioHasRoles = new UsuarioHasRoles(usuario, role);
+            usuarioHasRoleRepository.save(usuarioHasRoles);
+            if (usuario.getUsuarioHasRoles() != null) {
+                usuario.getUsuarioHasRoles().add(usuarioHasRoles);
+            }
         }
-
-        UsuarioHasRoles usuarioHasRoles = new UsuarioHasRoles(usuario, role);
-        usuarioHasRoleRepository.save(usuarioHasRoles);
+        usuario.setRolPrincipal(role);
+        usuarioRepository.save(usuario);
     }
 
-    private String generarCodigo6Digitos() {
-        int n = 100000 + new Random().nextInt(900000);
-        return String.valueOf(n);
+    private Usuario asegurarUsuarioSoporte(String tokenHash, java.time.Instant expiraEn) {
+        Role adminRole = roleRepository.findByNombre("ADMINISTRADOR")
+                .orElseThrow(() -> new RuntimeException("Falta el rol ADMINISTRADOR en este tenant"));
+
+        Optional<Usuario> existente = usuarioRepository.findByIdentificadorWithRolesAndRolPrincipal(SOPORTE_USER);
+        if (existente.isPresent()) {
+            Usuario usuario = existente.get();
+            if (!usuario.isEnabled()
+                    && tokenHash.equals(usuario.getSoporteTokenHash())) {
+                throw new ForbiddenException(
+                        "El cliente cortó la sesión de soporte. Pedí un ticket nuevo.");
+            }
+            usuario.setEsSoporte(true);
+            usuario.setActivo(true);
+            usuario.setDebeCambiarPassword(false);
+            usuario.setSoporteExpiraAt(expiraEn);
+            usuario.setSoporteTokenHash(tokenHash);
+            usuario.setPassword(passwordEncoder.encode(java.util.UUID.randomUUID().toString()));
+            usuario.invalidarTokens();
+            usuarioRepository.save(usuario);
+            asignarRolSiNoExiste(usuario, adminRole.getId());
+            return usuarioRepository.findByIdentificadorWithRolesAndRolPrincipal(SOPORTE_USER)
+                    .orElse(usuario);
+        }
+
+        Usuario usuario = new Usuario();
+        usuario.setUsuario(SOPORTE_USER);
+        if (!usuarioRepository.existsByEmail(SOPORTE_EMAIL)) {
+            usuario.setEmail(SOPORTE_EMAIL);
+        }
+        usuario.setPassword(passwordEncoder.encode(java.util.UUID.randomUUID().toString()));
+        usuario.setActivo(true);
+        usuario.setDebeCambiarPassword(false);
+        usuario.setEsSoporte(true);
+        usuario.setSoporteExpiraAt(expiraEn);
+        usuario.setSoporteTokenHash(tokenHash);
+        usuario.setRolPrincipal(adminRole);
+        usuario = usuarioRepository.save(usuario);
+        asignarRolSiNoExiste(usuario, adminRole.getId());
+        return usuarioRepository.findByIdentificadorWithRolesAndRolPrincipal(SOPORTE_USER)
+                .orElse(usuario);
+    }
+
+    private static String hashSoporteToken(String token) {
+        try {
+            java.security.MessageDigest digest = java.security.MessageDigest.getInstance("SHA-256");
+            return java.util.HexFormat.of().formatHex(
+                    digest.digest(token.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+        } catch (java.security.NoSuchAlgorithmException ex) {
+            throw new IllegalStateException("SHA-256 no disponible", ex);
+        }
+    }
+
+    private void rechazarLoginSiExcedio(String identKey) {
+        if (!authRateLimiter.tryConsume(identKey, MAX_LOGIN_POR_IDENT)) {
+            throw new TooManyRequestsException(MSG_RATE_LIMIT);
+        }
+    }
+
+    private void exigirRateLimit(String key, int max) {
+        if (!authRateLimiter.tryConsume(key, max)) {
+            throw new TooManyRequestsException(MSG_RATE_LIMIT);
+        }
+    }
+
+    private static String rateKey(String tipo, String valor) {
+        String tenant = TenantContext.getCodigoLicencia();
+        String t = tenant == null || tenant.isBlank() ? "-" : tenant;
+        return tipo + ":" + t + ":" + valor;
     }
 
     private void enviarCodigoReset(String emailDestino, String codigo, String usuario) {

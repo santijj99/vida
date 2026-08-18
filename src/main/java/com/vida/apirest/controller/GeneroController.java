@@ -2,6 +2,7 @@ package com.vida.apirest.controller;
 
 import com.vida.apirest.dto.ariticulo.CreateGeneroRequest;
 import com.vida.apirest.dto.ariticulo.GeneroResponse;
+import com.vida.apirest.security.Authz;
 import com.vida.apirest.servicies.GeneroService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -18,7 +19,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/generos")
 @RequiredArgsConstructor
-@PreAuthorize("hasAuthority('VER_GENEROS')")
+@PreAuthorize(Authz.VER_O_GESTIONAR_GENEROS)
 public class GeneroController {
 
     private final GeneroService generoService;
@@ -29,6 +30,7 @@ public class GeneroController {
     }
 
     @PostMapping
+    @PreAuthorize(Authz.GESTIONAR_GENEROS)
     public ResponseEntity<GeneroResponse> create(@RequestBody CreateGeneroRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(generoService.create(request));
     }

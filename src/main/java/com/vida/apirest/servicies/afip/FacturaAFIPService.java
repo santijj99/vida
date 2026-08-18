@@ -28,7 +28,10 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Date;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
@@ -179,6 +182,22 @@ public class FacturaAFIPService {
                 () -> ticketPDFService.generarTicketPDFBytes(factura, creditoFinal, cuotasFinal));
     }
 
+    @Transactional(readOnly = true)
+    public Optional<FacturaAFIPResponse> findResponseByVentaId(Long ventaId) {
+        if (ventaId == null) {
+            return Optional.empty();
+        }
+        return facturaAFIPRepository.findByVenta_Id(ventaId).map(this::toResponse);
+    }
+
+    @Transactional(readOnly = true)
+    public Set<Long> ventaIdsFacturadas(Collection<Long> ventaIds) {
+        if (ventaIds == null || ventaIds.isEmpty()) {
+            return Set.of();
+        }
+        return new HashSet<>(facturaAFIPRepository.findVentaIdsFacturadas(ventaIds));
+    }
+
     public boolean requiereFacturacionAutomatica(String metodoPago) {
         if (metodoPago == null) {
             return false;
@@ -226,6 +245,12 @@ public class FacturaAFIPService {
             return null;
         }
 
+        var contextOpt = afipContextService.resolveOptionalForVenta(venta);
+        if (contextOpt.isEmpty()) {
+            log.warn("Facturación ARCA omitida para venta {}: la empresa no tiene ARCA habilitado", ventaId);
+            return null;
+        }
+
         try {
             EmitirFacturaAFIPRequest request = configOpcional != null
                     ? configOpcional
@@ -233,7 +258,7 @@ public class FacturaAFIPService {
             request.setMontoAFacturar(montoArca);
             log.info("Facturación ARCA venta {}: monto a facturar {} (total venta {})",
                     ventaId, montoArca, venta.getTotal());
-            AfipContext context = afipContextService.resolveForVenta(venta);
+            AfipContext context = contextOpt.get();
             return afipContextService.callWithContext(context, () -> emitirFacturaConContexto(venta, ventaId, request, context));
         } catch (Exception e) {
             log.error("Error al facturar automáticamente venta {}: {}", ventaId, e.getMessage(), e);

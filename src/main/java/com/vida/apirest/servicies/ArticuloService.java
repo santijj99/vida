@@ -526,6 +526,9 @@ public class ArticuloService {
         dto.setId(variante.getId());
         dto.setColor(variante.getColor() != null ? variante.getColor().getNombre() : null);
         dto.setTalle(variante.getTalle() != null ? variante.getTalle().getNumero() : null);
+        dto.setPais(variante.getTalle() != null && variante.getTalle().getPais() != null
+                ? variante.getTalle().getPais().name()
+                : null);
         dto.setCodigoBarras(variante.getCodigoBarras());
         dto.setPrecio(getPrecioActual(variante.getId()));
         dto.setCantidad(getCantidadDisponibleForVariante(articuloId, variante.getId()));
@@ -627,7 +630,9 @@ public class ArticuloService {
 
     @Transactional
     public Articulo updateArticulo(Long id, ArticuloUpdateRequest request) {
-        Articulo articulo = getArticuloById(id);
+        // Sin taxones en sesión: se sincronizan por repositorio (cascade los reinsertaba rotos).
+        Articulo articulo = articuloRepository.findByIdWithVariantes(id)
+                .orElseThrow(() -> new RuntimeException("Artículo no encontrado con id: " + id));
         aplicarCatalogoArticulo(articulo, request);
         validarYCambiarCodigo(articulo, id, request);
         aplicarCamposTextoArticulo(articulo, request);
@@ -831,6 +836,9 @@ public class ArticuloService {
                     dto.setId(v.getId());
                     dto.setColor(v.getColor() != null ? v.getColor().getNombre() : null);
                     dto.setTalle(v.getTalle() != null ? v.getTalle().getNumero() : null);
+                    dto.setPais(v.getTalle() != null && v.getTalle().getPais() != null
+                            ? v.getTalle().getPais().name()
+                            : null);
                     dto.setCodigoBarras(v.getCodigoBarras());
                     dto.setPrecio(getPrecioActual(v.getId()));
                     dto.setCantidad(getCantidadDisponibleForVariante(articuloId, v.getId()));

@@ -35,7 +35,11 @@ public final class AfipSchemaSupport {
                     ALTER TABLE empresa_afip_config
                     ALTER COLUMN homologacion SET NOT NULL
                     """);
-            log.info("DDL AFIP empresa_afip_config.homologacion aplicado");
+            st.execute("""
+                    ALTER TABLE empresa_afip_config
+                    ALTER COLUMN clave_privada_password TYPE VARCHAR(512)
+                    """);
+            log.info("DDL AFIP empresa_afip_config.homologacion / clave_privada_password aplicado");
         } catch (Exception e) {
             log.warn("DDL AFIP (idempotente): {}", e.getMessage());
         }

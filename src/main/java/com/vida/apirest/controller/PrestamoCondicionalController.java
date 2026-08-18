@@ -5,6 +5,7 @@ import com.vida.apirest.dto.prestamo.ConfirmarPrestamoRequest;
 import com.vida.apirest.dto.prestamo.DevolverPrestamoDetallesRequest;
 import com.vida.apirest.dto.prestamo.PrestamoCondicionalCreateRequest;
 import com.vida.apirest.dto.prestamo.PrestamoCondicionalResponse;
+import com.vida.apirest.security.Authz;
 import com.vida.apirest.servicies.PrestamoCondicionalService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -17,12 +18,13 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/prestamos-condicionales")
 @RequiredArgsConstructor
-@PreAuthorize("hasAuthority('VER_VENTAS')")
+@PreAuthorize(Authz.VER_O_GESTIONAR_VENTAS)
 public class PrestamoCondicionalController {
 
     private final PrestamoCondicionalService prestamoCondicionalService;
 
     @PostMapping
+    @PreAuthorize(Authz.GESTIONAR_VENTAS)
     public ResponseEntity<PrestamoCondicionalResponse> crear(@RequestBody PrestamoCondicionalCreateRequest request) {
         PrestamoCondicionalResponse response = prestamoCondicionalService.crear(request);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
@@ -41,11 +43,13 @@ public class PrestamoCondicionalController {
     }
 
     @PostMapping("/{id}/devolver")
+    @PreAuthorize(Authz.GESTIONAR_VENTAS)
     public ResponseEntity<PrestamoCondicionalResponse> devolver(@PathVariable Long id) {
         return ResponseEntity.ok(prestamoCondicionalService.devolver(id));
     }
 
     @PostMapping("/{id}/devolver-detalles")
+    @PreAuthorize(Authz.GESTIONAR_VENTAS)
     public ResponseEntity<PrestamoCondicionalResponse> devolverDetalles(
             @PathVariable Long id,
             @RequestBody DevolverPrestamoDetallesRequest request) {
@@ -53,11 +57,13 @@ public class PrestamoCondicionalController {
     }
 
     @PostMapping("/{id}/confirmar")
+    @PreAuthorize(Authz.GESTIONAR_VENTAS)
     public ResponseEntity<PrestamoCondicionalResponse> confirmar(@PathVariable Long id, @RequestBody ConfirmarPrestamoRequest request) {
         return ResponseEntity.ok(prestamoCondicionalService.confirmarCompra(id, request));
     }
 
     @PostMapping("/{id}/confirmar-credito")
+    @PreAuthorize(Authz.GESTIONAR_VENTAS)
     public ResponseEntity<PrestamoCondicionalResponse> confirmarCredito(
             @PathVariable Long id,
             @RequestBody ConfirmarPrestamoCreditoRequest request) {

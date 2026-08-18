@@ -1,13 +1,23 @@
-# Perfil prod (activado con SPRING_PROFILES_ACTIVE=prod)
+# Perfil prod (SPRING_PROFILES_ACTIVE=prod).
+# Sin JWT_SECRET, LICENCIA_AES_KEY ni SPRING_DATASOURCE_PASSWORD el arranque falla.
 app:
+  jwt:
+    secret: ${JWT_SECRET}
   security:
     allow-public-register: false
   licencia:
     enabled: true
     multi-tenant: true
+    aes-key: ${LICENCIA_AES_KEY}
+    bloquear-si-invalida: ${LICENCIA_BLOQUEAR:true}
+    cache-minutos: ${LICENCIA_CACHE_MINUTOS:360}
+    gracia-dias: ${LICENCIA_GRACIA_DIAS:20}
 
 spring:
   datasource:
+    url: ${SPRING_DATASOURCE_URL}
+    username: ${SPRING_DATASOURCE_USERNAME}
+    password: ${SPRING_DATASOURCE_PASSWORD}
     hikari:
       maximum-pool-size: 8
       minimum-idle: 2
@@ -16,9 +26,9 @@ spring:
 
   jpa:
     hibernate:
-      # El schema de cada tenant lo crea TenantBootstrap al primer login.
-      # La DB bootstrap puede quedar mínima.
-      ddl-auto: update
+      # Schema de cada tenant: TenantBootstrap (hbm2ddl update al primer login).
+      # Índices extra: ArticuloTablaPerformanceMigration / PostgresPerformanceMigration.
+      ddl-auto: none
     open-in-view: false
     show-sql: false
     properties:
@@ -26,6 +36,7 @@ spring:
         dialect: org.hibernate.dialect.PostgreSQLDialect
 
 server:
+  address: ${SERVER_ADDRESS:0.0.0.0}
   tomcat:
     connection-timeout: 60s
     keep-alive-timeout: 30s
@@ -51,5 +62,5 @@ logging:
 afip:
   enabled: ${AFIP_ENABLED:true}
   homologacion: ${AFIP_HOMOLOGACION:true}
-  auto-facturar-en-venta: ${AFIP_AUTO_FACTURAR:true}
+  auto-facturar-en-venta: ${AFIP_AUTO_FACTURAR:false}
   validar-token-en-login: false

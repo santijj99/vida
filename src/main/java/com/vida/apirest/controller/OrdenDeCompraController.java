@@ -5,6 +5,7 @@ import com.vida.apirest.dto.pedido.OrdenCompraRequest;
 import com.vida.apirest.dto.pedido.OrdenCompraResponse;
 import com.vida.apirest.dto.pedido.OrdenCompraVarianteLookupResponse;
 import com.vida.apirest.dto.pedido.ResolverVariantesRequest;
+import com.vida.apirest.security.Authz;
 import com.vida.apirest.servicies.OrdenDeCompraService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -17,7 +18,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/ordenes-compra")
 @RequiredArgsConstructor
-@PreAuthorize("hasAuthority('VER_PEDIDOS')")
+@PreAuthorize(Authz.VER_O_GESTIONAR_PEDIDOS)
 public class OrdenDeCompraController {
 
     private final OrdenDeCompraService ordenDeCompraService;
@@ -49,22 +50,26 @@ public class OrdenDeCompraController {
     }
 
     @PostMapping
+    @PreAuthorize(Authz.GESTIONAR_PEDIDOS)
     public ResponseEntity<OrdenCompraResponse> crear(@RequestBody OrdenCompraRequest request) {
         OrdenCompraResponse response = ordenDeCompraService.crear(request);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
     @PutMapping("/{id:[0-9]+}")
+    @PreAuthorize(Authz.GESTIONAR_PEDIDOS)
     public ResponseEntity<OrdenCompraResponse> actualizar(@PathVariable Long id, @RequestBody OrdenCompraRequest request) {
         return ResponseEntity.ok(ordenDeCompraService.actualizar(id, request));
     }
 
     @PostMapping("/{id:[0-9]+}/confirmar")
+    @PreAuthorize(Authz.GESTIONAR_PEDIDOS)
     public ResponseEntity<OrdenCompraResponse> confirmar(@PathVariable Long id) {
         return ResponseEntity.ok(ordenDeCompraService.confirmar(id));
     }
 
     @PostMapping("/{id:[0-9]+}/cancelar")
+    @PreAuthorize(Authz.GESTIONAR_PEDIDOS)
     public ResponseEntity<OrdenCompraResponse> cancelar(@PathVariable Long id) {
         return ResponseEntity.ok(ordenDeCompraService.cancelar(id));
     }

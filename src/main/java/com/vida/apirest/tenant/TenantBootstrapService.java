@@ -5,6 +5,8 @@ import com.vida.apirest.config.CreditoSchemaSupport;
 import com.vida.apirest.config.RbacPermissionSyncSupport;
 import com.vida.apirest.config.SueldoSchemaSupport;
 import com.vida.apirest.config.TicketSchemaSupport;
+import com.vida.apirest.config.UsuarioSchemaSupport;
+import com.vida.apirest.config.VentaSchemaSupport;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.EntityManagerFactory;
 import lombok.RequiredArgsConstructor;
@@ -33,6 +35,9 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class TenantBootstrapService {
 
+    public static final String BOOTSTRAP_ADMIN_USER = "admin";
+    public static final String BOOTSTRAP_ADMIN_PASSWORD = "Admin123!";
+
     private final ObjectProvider<EntityManagerFactoryBuilder> entityManagerFactoryBuilder;
     private final PasswordEncoder passwordEncoder;
 
@@ -43,6 +48,7 @@ public class TenantBootstrapService {
                 log.info("Tenant {}: DB sin schema, aplicando hibernate ddl update...", codigoLicencia);
                 applySchema(dataSource);
             }
+            UsuarioSchemaSupport.apply(dataSource);
             if (!hasAnyUsuario(dataSource)) {
                 log.info("Tenant {}: DB sin usuarios, creando admin de bootstrap...", codigoLicencia);
                 seedMinimalAdmin(dataSource);
@@ -53,6 +59,7 @@ public class TenantBootstrapService {
             TicketSchemaSupport.apply(dataSource);
             CreditoSchemaSupport.apply(dataSource);
             AfipSchemaSupport.apply(dataSource);
+            VentaSchemaSupport.apply(dataSource);
         } catch (Exception ex) {
             log.error("Tenant {}: falló el bootstrap de schema/seed: {}", codigoLicencia, ex.getMessage(), ex);
             throw new IllegalStateException(
@@ -128,11 +135,12 @@ public class TenantBootstrapService {
                     .getSingleResult();
 
             com.vida.apirest.model.auth.Usuario admin = new com.vida.apirest.model.auth.Usuario();
-            admin.setUsuario("admin");
+            admin.setUsuario(BOOTSTRAP_ADMIN_USER);
             admin.setEmail("admin@tenant.local");
             admin.setCelular("0000000000");
-            admin.setPassword(passwordEncoder.encode("Admin123!"));
+            admin.setPassword(passwordEncoder.encode(BOOTSTRAP_ADMIN_PASSWORD));
             admin.setActivo(true);
+            admin.setDebeCambiarPassword(true);
             admin.setRolPrincipal(adminRole);
             em.persist(admin);
             em.flush();
@@ -144,7 +152,8 @@ public class TenantBootstrapService {
             seedPermisosBasicos(em, adminRole);
 
             em.getTransaction().commit();
-            log.info("Tenant bootstrap OK: usuario=admin password=Admin123!");
+            log.info("Tenant bootstrap OK: usuario={} con password temporal (debe cambiarse en el primer login)",
+                    BOOTSTRAP_ADMIN_USER);
         } catch (RuntimeException ex) {
             if (em.getTransaction().isActive()) {
                 em.getTransaction().rollback();

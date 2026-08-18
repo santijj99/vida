@@ -44,6 +44,23 @@ public interface VentaRepository extends JpaRepository<Venta, Long> {
                         LOWER(c.apellido) LIKE LOWER(CONCAT('%', :q, '%')) OR
                         LOWER(c.dni) LIKE LOWER(CONCAT('%', :q, '%'))
                     )
+                    AND (
+                        :facturadaArca IS NULL
+                        OR (
+                            :facturadaArca = TRUE AND EXISTS (
+                                SELECT 1 FROM FacturaAFIP f
+                                WHERE f.venta = v
+                                  AND (f.resultado = 'A' OR (f.cae IS NOT NULL AND f.cae <> ''))
+                            )
+                        )
+                        OR (
+                            :facturadaArca = FALSE AND NOT EXISTS (
+                                SELECT 1 FROM FacturaAFIP f
+                                WHERE f.venta = v
+                                  AND (f.resultado = 'A' OR (f.cae IS NOT NULL AND f.cae <> ''))
+                            )
+                        )
+                    )
                     ORDER BY v.fechaVenta DESC
                     """,
             countQuery = """
@@ -60,6 +77,23 @@ public interface VentaRepository extends JpaRepository<Venta, Long> {
                         LOWER(c.apellido) LIKE LOWER(CONCAT('%', :q, '%')) OR
                         LOWER(c.dni) LIKE LOWER(CONCAT('%', :q, '%'))
                     )
+                    AND (
+                        :facturadaArca IS NULL
+                        OR (
+                            :facturadaArca = TRUE AND EXISTS (
+                                SELECT 1 FROM FacturaAFIP f
+                                WHERE f.venta = v
+                                  AND (f.resultado = 'A' OR (f.cae IS NOT NULL AND f.cae <> ''))
+                            )
+                        )
+                        OR (
+                            :facturadaArca = FALSE AND NOT EXISTS (
+                                SELECT 1 FROM FacturaAFIP f
+                                WHERE f.venta = v
+                                  AND (f.resultado = 'A' OR (f.cae IS NOT NULL AND f.cae <> ''))
+                            )
+                        )
+                    )
                     """
     )
     Page<Venta> searchHistorial(
@@ -68,9 +102,12 @@ public interface VentaRepository extends JpaRepository<Venta, Long> {
             @Param("desde") LocalDateTime desde,
             @Param("hasta") LocalDateTime hasta,
             @Param("q") String q,
+            @Param("facturadaArca") Boolean facturadaArca,
             Pageable pageable
     );
 
     @Query("SELECT DISTINCT v.sucursal.id FROM Venta v WHERE v.empleado.id = :empleadoId")
     List<Long> findDistinctSucursalIdsByEmpleadoId(@Param("empleadoId") Long empleadoId);
+
+    Optional<Venta> findByClientRequestId(String clientRequestId);
 }

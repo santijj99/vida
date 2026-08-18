@@ -19,6 +19,14 @@ public interface TaxonArticuloRepository extends JpaRepository<TaxonArticulo, Lo
 
     List<TaxonArticulo> findByArticuloIdAndTipo(Long articuloId, TipoVinculo tipo);
 
-    @Modifying
-    void deleteByArticuloIdAndTipo(Long articuloId, TipoVinculo tipo);
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("DELETE FROM TaxonArticulo ta WHERE ta.articuloId = :articuloId AND ta.tipo = :tipo")
+    void deleteByArticuloIdAndTipo(@Param("articuloId") Long articuloId, @Param("tipo") TipoVinculo tipo);
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query(value = """
+            DELETE FROM taxon_articulo ta
+            WHERE NOT EXISTS (SELECT 1 FROM taxon t WHERE t.id = ta.taxon_id)
+            """, nativeQuery = true)
+    int deleteOrphanLinks();
 }
