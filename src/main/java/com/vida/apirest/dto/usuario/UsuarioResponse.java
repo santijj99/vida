@@ -21,6 +21,10 @@ public class UsuarioResponse {
 
     public String celular;
 
+    public Boolean debeCambiarPassword;
+    public Boolean esSoporte;
+    public java.time.Instant soporteExpiraAt;
+
     List<RoleDTO> roles;
     RoleDTO rolPrincipal;
     Set<String> permisosHeredados;

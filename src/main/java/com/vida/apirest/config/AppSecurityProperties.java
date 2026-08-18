@@ -10,5 +10,5 @@ import org.springframework.stereotype.Component;
 public class AppSecurityProperties {
 
     /** Si false, POST /auth/register responde 403 (recomendado en producción). */
-    private boolean allowPublicRegister = true;
+    private boolean allowPublicRegister = false;
 }

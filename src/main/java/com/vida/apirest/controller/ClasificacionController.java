@@ -2,6 +2,7 @@ package com.vida.apirest.controller;
 
 import com.vida.apirest.dto.ariticulo.ClasificacionResponse;
 import com.vida.apirest.dto.ariticulo.CreateClasificacionRequest;
+import com.vida.apirest.security.Authz;
 import com.vida.apirest.servicies.ClasificacionService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -18,7 +19,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/clasificaciones")
 @RequiredArgsConstructor
-@PreAuthorize("hasAuthority('VER_SUBCATEGORIAS')")
+@PreAuthorize(Authz.VER_O_GESTIONAR_SUBCATEGORIAS)
 public class ClasificacionController {
 
     private final ClasificacionService clasificacionService;
@@ -29,6 +30,7 @@ public class ClasificacionController {
     }
 
     @PostMapping
+    @PreAuthorize(Authz.GESTIONAR_SUBCATEGORIAS)
     public ResponseEntity<ClasificacionResponse> create(@RequestBody CreateClasificacionRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(clasificacionService.create(request));
     }

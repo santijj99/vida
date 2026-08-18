@@ -2,6 +2,7 @@ package com.vida.apirest.controller;
 
 import com.vida.apirest.dto.ariticulo.CreateSubCategoriaRequest;
 import com.vida.apirest.dto.ariticulo.SubCategoriaResponse;
+import com.vida.apirest.security.Authz;
 import com.vida.apirest.servicies.SubCategoriaService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -18,7 +19,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/sub-categorias")
 @RequiredArgsConstructor
-@PreAuthorize("hasAuthority('VER_SUBCATEGORIAS')")
+@PreAuthorize(Authz.VER_O_GESTIONAR_SUBCATEGORIAS)
 public class SubCategoriaController {
 
     private final SubCategoriaService subCategoriaService;
@@ -29,6 +30,7 @@ public class SubCategoriaController {
     }
 
     @PostMapping
+    @PreAuthorize(Authz.GESTIONAR_SUBCATEGORIAS)
     public ResponseEntity<SubCategoriaResponse> create(@RequestBody CreateSubCategoriaRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(subCategoriaService.create(request));
     }

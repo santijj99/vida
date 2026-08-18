@@ -8,6 +8,7 @@ import com.vida.apirest.dto.credito.PagoCuotasRequest;
 import com.vida.apirest.dto.credito.PagoCuotasResponse;
 import com.vida.apirest.dto.credito.TicketPagoCuotasRequest;
 import com.vida.apirest.dto.common.PageResponse;
+import com.vida.apirest.security.Authz;
 import com.vida.apirest.servicies.CreditoCuentaService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpHeaders;
@@ -23,7 +24,7 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/cuentas-credito")
 @RequiredArgsConstructor
-@PreAuthorize("hasAuthority('VER_CUENTAS')")
+@PreAuthorize(Authz.VER_O_GESTIONAR_CUENTAS)
 public class CreditoCuentaController {
 
     private final CreditoCuentaService creditoCuentaService;
@@ -100,11 +101,13 @@ public class CreditoCuentaController {
     }
 
     @PostMapping("/pagar-cuotas")
+    @PreAuthorize(Authz.GESTIONAR_CUENTAS)
     public ResponseEntity<PagoCuotasResponse> pagarCuotas(@RequestBody PagoCuotasRequest request) {
         return ResponseEntity.ok(creditoCuentaService.pagarCuotas(request));
     }
 
     @PostMapping("/pagos/{pagoId}/anular")
+    @PreAuthorize(Authz.GESTIONAR_CUENTAS)
     public ResponseEntity<PagoCuotaResponse> anularPago(
             @PathVariable Long pagoId,
             @RequestBody(required = false) AnularPagoCuotaRequest request) {

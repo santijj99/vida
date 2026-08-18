@@ -19,4 +19,6 @@ public class EmpresaAfipConfigResponse {
     private String inicioActividad;
     private String certificadosDirectorio;
     private boolean certificadosPresentes;
+    /** Hay password de certificado guardada (nunca se devuelve el valor). */
+    private boolean clavePrivadaPasswordConfigurada;
 }

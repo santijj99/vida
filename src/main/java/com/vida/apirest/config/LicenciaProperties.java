@@ -4,6 +4,8 @@ import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 
+import java.time.Duration;
+
 @Data
 @Component
 @ConfigurationProperties(prefix = "app.licencia")
@@ -28,7 +30,7 @@ public class LicenciaProperties {
      * Misma clave AES que app.encryption.aes-key del servidor licencias
      * (16, 24 o 32 bytes exactos).
      */
-    private String aesKey = "0123456789abcdef0123456789abcdef";
+    private String aesKey = "";
 
     /**
      * UUID estable de este servidor/instalación.
@@ -36,12 +38,24 @@ public class LicenciaProperties {
      */
     private String deviceUuid = "";
 
-    /** Minutos que se reutiliza el último resultado sin reconsultar el servidor (info/sistema). */
-    private int cacheMinutos = 28800; // 20 días
+    /** Minutos entre revalidaciones con el servidor online (S-11: no usar la gracia). */
+    private int cacheMinutos = 360;
 
-    /** Días entre revalidaciones obligatorias / gracia offline tras el último OK. */
+    /** Días de operación offline solo si el servidor de licencias está caído. */
     private int graciaDias = 20;
 
-    /** Si true, bloquea login y operaciones cuando la licencia no es válida. */
+    /** Si true, bloquea login cuando la licencia no es válida (single-tenant). En multi-tenant el pool se cierra igual. */
     private boolean bloquearSiInvalida = false;
+
+    public Duration revalidacionOnline() {
+        return Duration.ofMinutes(Math.max(1, cacheMinutos));
+    }
+
+    public Duration graciaOffline() {
+        return Duration.ofDays(Math.max(0, graciaDias));
+    }
+
+    public Duration reintentoSiServidorCaido() {
+        return Duration.ofHours(6);
+    }
 }

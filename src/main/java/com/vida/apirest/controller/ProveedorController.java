@@ -3,6 +3,7 @@ package com.vida.apirest.controller;
 import com.vida.apirest.dto.common.PageResponse;
 import com.vida.apirest.dto.proveedor.ProveedorRequest;
 import com.vida.apirest.dto.proveedor.ProveedorResponse;
+import com.vida.apirest.security.Authz;
 import com.vida.apirest.servicies.ProveedorService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -15,7 +16,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/proveedores")
 @RequiredArgsConstructor
-@PreAuthorize("hasAuthority('VER_PROVEEDORES')")
+@PreAuthorize(Authz.VER_O_GESTIONAR_PROVEEDORES)
 public class ProveedorController {
 
     private final ProveedorService proveedorService;
@@ -40,17 +41,20 @@ public class ProveedorController {
     }
 
     @PostMapping
+    @PreAuthorize(Authz.GESTIONAR_PROVEEDORES)
     public ResponseEntity<ProveedorResponse> crear(@RequestBody ProveedorRequest request) {
         ProveedorResponse response = proveedorService.create(request);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
     @PutMapping("/{id:[0-9]+}")
+    @PreAuthorize(Authz.GESTIONAR_PROVEEDORES)
     public ResponseEntity<ProveedorResponse> actualizar(@PathVariable Long id, @RequestBody ProveedorRequest request) {
         return ResponseEntity.ok(proveedorService.update(id, request));
     }
 
     @DeleteMapping("/{id:[0-9]+}")
+    @PreAuthorize(Authz.GESTIONAR_PROVEEDORES)
     public ResponseEntity<Void> desactivar(@PathVariable Long id) {
         proveedorService.desactivar(id);
         return ResponseEntity.noContent().build();

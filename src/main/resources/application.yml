@@ -1,6 +1,7 @@
 server:
   port: ${SERVER_PORT:3000}
-  address: 0.0.0.0
+  # POS en LAN: 0.0.0.0. Para solo esta máquina: SERVER_ADDRESS=127.0.0.1
+  address: ${SERVER_ADDRESS:0.0.0.0}
   compression:
     enabled: true
     mime-types: application/json,application/xml,text/html,text/plain
@@ -11,7 +12,7 @@ app:
     secret: ${JWT_SECRET:dev-only-change-me-before-production-min-32-chars}
     expiration-hours: ${JWT_EXPIRATION_HOURS:24}
   security:
-    allow-public-register: true
+    allow-public-register: ${APP_ALLOW_PUBLIC_REGISTER:false}
   licencia:
     enabled: ${LICENCIA_ENABLED:true}
     multi-tenant: ${LICENCIA_MULTI_TENANT:true}
@@ -19,7 +20,7 @@ app:
     codigo: ${LICENCIA_CODIGO:}
     aes-key: ${LICENCIA_AES_KEY:0123456789abcdef0123456789abcdef}
     device-uuid: ${LICENCIA_DEVICE_UUID:}
-    cache-minutos: ${LICENCIA_CACHE_MINUTOS:28800}
+    cache-minutos: ${LICENCIA_CACHE_MINUTOS:360}
     gracia-dias: ${LICENCIA_GRACIA_DIAS:20}
     bloquear-si-invalida: ${LICENCIA_BLOQUEAR:false}
 
@@ -70,5 +71,5 @@ afip:
   enabled: true
   homologacion: ${AFIP_HOMOLOGACION:true}
   certificados-base-dir: ${AFIP_CERT_BASE_DIR:./data/afip}
-  auto-facturar-en-venta: true
+  auto-facturar-en-venta: ${AFIP_AUTO_FACTURAR:false}
   validar-token-en-login: true

@@ -8,4 +8,5 @@ public class LoginResponse {
     private String token;
     private UsuarioResponse usuario;
     private TokenValidationResponse afipToken;
+    private boolean debeCambiarPassword;
 }

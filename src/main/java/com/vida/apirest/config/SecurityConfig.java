@@ -38,6 +38,8 @@ public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtFilter;
     private final TenantFilter tenantFilter;
+    private final PasswordChangeGateFilter passwordChangeGateFilter;
+    private final AuthRateLimitFilter authRateLimitFilter;
     private final JwtAuthenticationEntryPoint jwtAuthenticationEntryPoint;
     private final CustomAccessDeniedHandler customAccessDeniedHandler;
     private final AppSecurityProperties appSecurityProperties;
@@ -51,6 +53,7 @@ public class SecurityConfig {
                     auth.requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                             .requestMatchers("/actuator/health", "/actuator/info").permitAll()
                             .requestMatchers(HttpMethod.POST, "/auth/login").permitAll()
+                            .requestMatchers(HttpMethod.POST, "/auth/soporte").permitAll()
                             .requestMatchers(HttpMethod.POST, "/auth/forgot-password").permitAll()
                             .requestMatchers(HttpMethod.POST, "/auth/reset-password").permitAll();
                     if (appSecurityProperties.isAllowPublicRegister()) {
@@ -66,7 +69,9 @@ public class SecurityConfig {
                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
                 )
                 .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class)
-                .addFilterBefore(tenantFilter, JwtAuthenticationFilter.class);
+                .addFilterBefore(tenantFilter, JwtAuthenticationFilter.class)
+                .addFilterAfter(authRateLimitFilter, TenantFilter.class)
+                .addFilterAfter(passwordChangeGateFilter, JwtAuthenticationFilter.class);
 
         return http.build();
     }

@@ -6,6 +6,7 @@ import com.vida.apirest.model.empresa.Empresa;
 import com.vida.apirest.model.empresa.EmpresaAfipConfig;
 import com.vida.apirest.model.venta.Venta;
 import com.vida.apirest.repositories.EmpresaAfipConfigRepository;
+import com.vida.apirest.repositories.EmpresaRepository;
 import com.vida.apirest.repositories.SucursalRepository;
 import com.vida.apirest.repositories.UsuarioSucursalRepository;
 import com.vida.apirest.security.AppUserDetails;
@@ -27,8 +28,10 @@ public class AfipContextService {
 
     private final AfipProperties afipProperties;
     private final EmpresaAfipConfigRepository empresaAfipConfigRepository;
+    private final EmpresaRepository empresaRepository;
     private final SucursalRepository sucursalRepository;
     private final UsuarioSucursalRepository usuarioSucursalRepository;
+    private final AfipSecretCipher afipSecretCipher;
 
     @Transactional(readOnly = true)
     public AfipContext resolveForVenta(Venta venta) {
@@ -95,12 +98,20 @@ public class AfipContextService {
         Long usuarioId = details.getUsuario().getId();
 
         List<Long> sucursalIds = usuarioSucursalRepository.findSucursalIdsByUsuarioId(usuarioId);
-        if (sucursalIds.isEmpty()) {
-            return Optional.empty();
+        for (Long sucursalId : sucursalIds) {
+            Optional<Long> empresaId = sucursalRepository.findById(sucursalId)
+                    .map(Sucursal::getEmpresa)
+                    .map(Empresa::getId);
+            if (empresaId.isPresent()) {
+                return empresaId;
+            }
         }
 
-        return sucursalRepository.findById(sucursalIds.get(0))
-                .map(s -> s.getEmpresa().getId());
+        // Admin / usuario sin filas en usuario_sucursal: primera empresa del tenant.
+        return empresaRepository.findAll().stream()
+                .map(Empresa::getId)
+                .filter(id -> id != null)
+                .findFirst();
     }
 
     @Transactional(readOnly = true)
@@ -154,7 +165,7 @@ public class AfipContextService {
                 config.getCbteTipoDefault() != null ? config.getCbteTipoDefault() : 6,
                 config.isHomologacion(),
                 certDir,
-                config.getClavePrivadaPassword()
+                afipSecretCipher.decryptToPlain(config.getClavePrivadaPassword())
         );
     }
 

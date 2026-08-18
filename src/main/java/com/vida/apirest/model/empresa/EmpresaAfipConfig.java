@@ -52,7 +52,8 @@ public class EmpresaAfipConfig {
     @Column(name = "certificados_directorio", length = 500)
     private String certificadosDirectorio;
 
-    @Column(name = "clave_privada_password", length = 255)
+    /** Password PKCS#12/PEM cifrada ({@code AESGCM:} + payload). Legado: texto plano. */
+    @Column(name = "clave_privada_password", length = 512)
     private String clavePrivadaPassword;
 
     /**

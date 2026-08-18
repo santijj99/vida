@@ -2,6 +2,7 @@ package com.vida.apirest.controller;
 
 import com.vida.apirest.dto.finanzas.CreateTipoCambioRequest;
 import com.vida.apirest.dto.finanzas.TipoCambioResponse;
+import com.vida.apirest.security.Authz;
 import com.vida.apirest.servicies.TipoCambioService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -15,17 +16,19 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/tipo-cambio")
 @RequiredArgsConstructor
-@PreAuthorize("hasAuthority('VER_ORGANIZACION')")
+@PreAuthorize(Authz.VER_O_GESTIONAR_ORGANIZACION)
 public class TipoCambioController {
 
     private final TipoCambioService tipoCambioService;
 
     @PostMapping
+    @PreAuthorize(Authz.GESTIONAR_ORGANIZACION)
     public ResponseEntity<TipoCambioResponse> createTipoCambio(@RequestBody CreateTipoCambioRequest request) {
         return ResponseEntity.ok(tipoCambioService.createTipoCambio(request));
     }
 
     @PutMapping("/{id}")
+    @PreAuthorize(Authz.GESTIONAR_ORGANIZACION)
     public ResponseEntity<TipoCambioResponse> updateTipoCambio(
             @PathVariable Long id,
             @RequestBody CreateTipoCambioRequest request) {

@@ -30,12 +30,12 @@ public class AppUserDetails implements UserDetails {
 
     @Override
     public boolean isAccountNonExpired() {
-        return true;
+        return !usuario.soporteVencido();
     }
 
     @Override
     public boolean isAccountNonLocked() {
-        return true;
+        return usuario.isEnabled();
     }
 
     @Override
@@ -45,6 +45,6 @@ public class AppUserDetails implements UserDetails {
 
     @Override
     public boolean isEnabled() {
-        return usuario.isEnabled();
+        return usuario.isEnabled() && !usuario.soporteVencido();
     }
 }

@@ -69,19 +69,33 @@ public class RbacDataInitializer {
 
             catalogo.put(PermisoCodigo.VER_DASHBOARD, new PermisoSeed("Navegación", "Ver Dashboard", "Sección Dashboard del menú lateral"));
             catalogo.put(PermisoCodigo.VER_VENTAS, new PermisoSeed("Navegación", "Ver Ventas", "Sección Ventas del menú lateral"));
+            catalogo.put(PermisoCodigo.GESTIONAR_VENTAS, new PermisoSeed("Ventas", "Gestionar ventas", "Cobrar, crédito personal, carritos y préstamos"));
             catalogo.put(PermisoCodigo.VER_HISTORIAL_VENTAS, new PermisoSeed("Navegación", "Ver Historial de ventas", "Sección Historial del menú lateral"));
+            catalogo.put(PermisoCodigo.GESTIONAR_HISTORIAL_VENTAS, new PermisoSeed("Ventas", "Gestionar historial", "Cancelar ventas y cambiar artículos"));
             catalogo.put(PermisoCodigo.VER_CAJA, new PermisoSeed("Navegación", "Ver Caja", "Sección Caja del menú lateral"));
+            catalogo.put(PermisoCodigo.GESTIONAR_CAJA, new PermisoSeed("Caja", "Gestionar caja", "Abrir y cerrar sesiones de caja"));
             catalogo.put(PermisoCodigo.VER_ARTICULOS, new PermisoSeed("Navegación", "Ver Artículos", "Submenú Artículos en Productos"));
+            catalogo.put(PermisoCodigo.GESTIONAR_ARTICULOS, new PermisoSeed("Productos", "Gestionar artículos", "Alta, edición y archivo de artículos"));
             catalogo.put(PermisoCodigo.VER_CATEGORIAS, new PermisoSeed("Navegación", "Ver Categorías", "Submenú Categorías en Productos"));
+            catalogo.put(PermisoCodigo.GESTIONAR_CATEGORIAS, new PermisoSeed("Productos", "Gestionar categorías", "Alta de categorías"));
             catalogo.put(PermisoCodigo.VER_SUBCATEGORIAS, new PermisoSeed("Navegación", "Ver Subcategorías", "Submenú Subcategorías en Productos"));
+            catalogo.put(PermisoCodigo.GESTIONAR_SUBCATEGORIAS, new PermisoSeed("Productos", "Gestionar subcategorías", "Alta de subcategorías y clasificaciones"));
             catalogo.put(PermisoCodigo.VER_TALLES, new PermisoSeed("Navegación", "Ver Talles", "Submenú Talles en Productos"));
+            catalogo.put(PermisoCodigo.GESTIONAR_TALLES, new PermisoSeed("Productos", "Gestionar talles", "Alta de talles"));
             catalogo.put(PermisoCodigo.VER_COLORES, new PermisoSeed("Navegación", "Ver Colores", "Submenú Colores en Productos"));
+            catalogo.put(PermisoCodigo.GESTIONAR_COLORES, new PermisoSeed("Productos", "Gestionar colores", "Alta de colores"));
             catalogo.put(PermisoCodigo.VER_GENEROS, new PermisoSeed("Navegación", "Ver Géneros", "Submenú Géneros en Productos"));
+            catalogo.put(PermisoCodigo.GESTIONAR_GENEROS, new PermisoSeed("Productos", "Gestionar géneros", "Alta de géneros"));
             catalogo.put(PermisoCodigo.VER_PROMOCIONES, new PermisoSeed("Navegación", "Ver Promociones", "Submenú Promociones en Productos"));
+            catalogo.put(PermisoCodigo.GESTIONAR_PROMOCIONES, new PermisoSeed("Productos", "Gestionar promociones", "Alta, edición y baja de promociones"));
             catalogo.put(PermisoCodigo.VER_CLIENTES, new PermisoSeed("Navegación", "Ver Clientes", "Sección Clientes del menú lateral"));
+            catalogo.put(PermisoCodigo.GESTIONAR_CLIENTES, new PermisoSeed("Clientes", "Gestionar clientes", "Alta, edición y baja de clientes"));
             catalogo.put(PermisoCodigo.VER_PROVEEDORES, new PermisoSeed("Navegación", "Ver Proveedores", "Submenú Proveedores"));
+            catalogo.put(PermisoCodigo.GESTIONAR_PROVEEDORES, new PermisoSeed("Compras", "Gestionar proveedores", "Alta, edición y baja de proveedores"));
             catalogo.put(PermisoCodigo.VER_PEDIDOS, new PermisoSeed("Navegación", "Ver Pedidos", "Submenú Pedidos en Proveedores"));
+            catalogo.put(PermisoCodigo.GESTIONAR_PEDIDOS, new PermisoSeed("Compras", "Gestionar pedidos", "Crear, confirmar y cancelar órdenes de compra"));
             catalogo.put(PermisoCodigo.VER_CUENTAS, new PermisoSeed("Navegación", "Ver Cuentas", "Sección Cuentas del menú lateral"));
+            catalogo.put(PermisoCodigo.GESTIONAR_CUENTAS, new PermisoSeed("Créditos", "Gestionar cuentas", "Cobrar y anular pagos de cuotas"));
             catalogo.put(PermisoCodigo.CONFIGURAR_CREDITOS, new PermisoSeed("Créditos", "Configurar créditos", "Política de mora, gracia y vencimientos"));
             catalogo.put(PermisoCodigo.EDITAR_CREDITOS, new PermisoSeed("Créditos", "Editar créditos", "Refinanciar y modificar cuotas"));
             catalogo.put(PermisoCodigo.CANCELAR_CREDITOS, new PermisoSeed("Créditos", "Cancelar créditos", "Anular un crédito activo (solo administrador)"));
@@ -89,8 +103,11 @@ public class RbacDataInitializer {
             catalogo.put(PermisoCodigo.VER_GASTOS, new PermisoSeed("Finanzas", "Ver gastos", "Listar gastos (GET /api/gastos)"));
             catalogo.put(PermisoCodigo.GESTIONAR_GASTOS, new PermisoSeed("Finanzas", "Gestionar gastos", "Alta, pago y cancelación de gastos"));
             catalogo.put(PermisoCodigo.VER_ORGANIZACION, new PermisoSeed("Navegación", "Ver Organización", "Empresas, sucursales, depósitos, cajas y monedas"));
+            catalogo.put(PermisoCodigo.GESTIONAR_ORGANIZACION, new PermisoSeed("Organización", "Gestionar organización", "Alta y edición de empresas, sucursales, depósitos y monedas"));
             catalogo.put(PermisoCodigo.VER_EMPLEADOS, new PermisoSeed("Navegación", "Ver Empleados", "Sección Empleados del menú lateral"));
+            catalogo.put(PermisoCodigo.GESTIONAR_EMPLEADOS, new PermisoSeed("RR.HH.", "Gestionar empleados", "Alta, edición y baja de empleados"));
             catalogo.put(PermisoCodigo.VER_ARCA, new PermisoSeed("Navegación", "Ver ARCA", "Sección ARCA del menú lateral"));
+            catalogo.put(PermisoCodigo.GESTIONAR_ARCA, new PermisoSeed("ARCA", "Gestionar ARCA", "Emitir facturas y cambiar ambiente AFIP"));
             catalogo.put(PermisoCodigo.VER_SUELDOS, new PermisoSeed("Finanzas", "Ver sueldos", "Liquidaciones y comisiones de empleados"));
             catalogo.put(PermisoCodigo.GESTIONAR_SUELDOS, new PermisoSeed("Finanzas", "Gestionar sueldos", "Configurar, liquidar y pagar sueldos/comisiones"));
 
@@ -136,11 +153,15 @@ public class RbacDataInitializer {
                         PermisoCodigo.LEER_USUARIOS,
                         PermisoCodigo.VER_DASHBOARD,
                         PermisoCodigo.VER_VENTAS,
+                        PermisoCodigo.GESTIONAR_VENTAS,
                         PermisoCodigo.VER_HISTORIAL_VENTAS,
                         PermisoCodigo.VER_CAJA,
+                        PermisoCodigo.GESTIONAR_CAJA,
                         PermisoCodigo.VER_ARTICULOS,
                         PermisoCodigo.VER_CLIENTES,
+                        PermisoCodigo.GESTIONAR_CLIENTES,
                         PermisoCodigo.VER_CUENTAS,
+                        PermisoCodigo.GESTIONAR_CUENTAS,
                         PermisoCodigo.EDITAR_CREDITOS,
                         PermisoCodigo.VER_GASTOS,
                         PermisoCodigo.GESTIONAR_GASTOS

@@ -1,0 +1,13 @@
+{
+  "codigoLicencia" : "152769",
+  "deviceUuid" : "385c12b1-2085-4e3c-a175-3c365ae24168",
+  "ultimoExitoEpochMs" : 1786803004614,
+  "host" : "localhost",
+  "puerto" : 5432,
+  "databaseName" : "db_punto",
+  "username" : "postgres",
+  "passwordEncriptada" : "yUYPZzvOwXSoZb5HHLe5A9/mTwNLh5x/lIZEXJyyheE=",
+  "ssl" : false,
+  "empresaNombre" : "NAZA",
+  "planNombre" : "Enterprise"
+}
