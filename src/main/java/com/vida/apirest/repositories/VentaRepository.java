@@ -108,4 +108,6 @@ public interface VentaRepository extends JpaRepository<Venta, Long> {
 
     @Query("SELECT DISTINCT v.sucursal.id FROM Venta v WHERE v.empleado.id = :empleadoId")
     List<Long> findDistinctSucursalIdsByEmpleadoId(@Param("empleadoId") Long empleadoId);
+
+    Optional<Venta> findByClientRequestId(String clientRequestId);
 }

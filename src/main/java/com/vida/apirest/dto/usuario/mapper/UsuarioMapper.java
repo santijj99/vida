@@ -30,6 +30,9 @@ public class UsuarioMapper {
         usuarioResponse.setUsuario(usuario.getUsuario());
         usuarioResponse.setCelular(usuario.getCelular());
         usuarioResponse.setEmail(usuario.getEmail());
+        usuarioResponse.setDebeCambiarPassword(usuario.debeCambiarPassword());
+        usuarioResponse.setEsSoporte(usuario.esSoporte());
+        usuarioResponse.setSoporteExpiraAt(usuario.getSoporteExpiraAt());
         usuarioResponse.setRoles(roleDTOS);
 
         if (permissions != null) {

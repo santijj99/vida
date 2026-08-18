@@ -93,6 +93,7 @@ public class EmpleadoService {
         empleado.setActivo(false);
         if (empleado.getUsuario() != null) {
             empleado.getUsuario().setActivo(false);
+            empleado.getUsuario().invalidarTokens();
             usuarioRepository.save(empleado.getUsuario());
         }
 

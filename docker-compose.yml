@@ -26,7 +26,7 @@ services:
 
       AFIP_ENABLED: ${AFIP_ENABLED:-true}
       AFIP_HOMOLOGACION: ${AFIP_HOMOLOGACION:-true}
-      AFIP_AUTO_FACTURAR: ${AFIP_AUTO_FACTURAR:-true}
+      AFIP_AUTO_FACTURAR: ${AFIP_AUTO_FACTURAR:-false}
       AFIP_CERT_BASE_DIR: ${AFIP_CERT_BASE_DIR:-/app/data/afip}
       # Evita que /actuator/health marque DOWN por falta de SMTP
       MANAGEMENT_HEALTH_MAIL_ENABLED: "false"

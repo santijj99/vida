@@ -107,6 +107,9 @@ public class GlobalExceptionHandler {
         if (lower.contains("(usuario)=") || (lower.contains("usuario") && lower.contains("unique"))) {
             return "El nombre de usuario ya está en uso";
         }
+        if (lower.contains("uk_venta_client_request_id") || lower.contains("client_request_id")) {
+            return "La venta ya fue registrada (idempotencia)";
+        }
         return "No se pudo guardar: datos inconsistentes";
     }
 

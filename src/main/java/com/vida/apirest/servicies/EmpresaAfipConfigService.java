@@ -7,6 +7,7 @@ import com.vida.apirest.model.empresa.EmpresaAfipConfig;
 import com.vida.apirest.repositories.EmpresaAfipConfigRepository;
 import com.vida.apirest.repositories.EmpresaRepository;
 import com.vida.apirest.servicies.afip.AfipContextService;
+import com.vida.apirest.servicies.afip.AfipSecretCipher;
 import com.vida.apirest.utils.AfipCertificateLoader;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -16,7 +17,6 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.util.Locale;
 
 @Service
@@ -26,6 +26,7 @@ public class EmpresaAfipConfigService {
     private final EmpresaRepository empresaRepository;
     private final EmpresaAfipConfigRepository empresaAfipConfigRepository;
     private final AfipContextService afipContextService;
+    private final AfipSecretCipher afipSecretCipher;
 
     @Transactional
     public EmpresaAfipConfigResponse obtener(Long empresaId) {
@@ -34,6 +35,9 @@ public class EmpresaAfipConfigService {
         EmpresaAfipConfig config = empresaAfipConfigRepository.findByEmpresaId(empresaId)
                 .orElseGet(() -> configPorDefecto(empresa));
         if (sanearRutaCertificadosSiCorresponde(config) && config.getId() != null) {
+            config = empresaAfipConfigRepository.save(config);
+        }
+        if (cifrarPasswordSiEstaEnClaro(config) && config.getId() != null) {
             config = empresaAfipConfigRepository.save(config);
         }
         return toResponse(empresa, config);
@@ -80,7 +84,9 @@ public class EmpresaAfipConfigService {
         if (request.getClavePrivadaPassword() != null) {
             config.setClavePrivadaPassword(request.getClavePrivadaPassword().isBlank()
                     ? null
-                    : request.getClavePrivadaPassword());
+                    : afipSecretCipher.encryptForStorage(request.getClavePrivadaPassword()));
+        } else {
+            cifrarPasswordSiEstaEnClaro(config);
         }
 
         sanearRutaCertificadosSiCorresponde(config);
@@ -126,36 +132,43 @@ public class EmpresaAfipConfigService {
                 });
 
         Path certDir = afipContextService.defaultCertificadosDir(empresaId);
+        String passwordPlana = (clavePrivadaPassword != null && !clavePrivadaPassword.isBlank())
+                ? clavePrivadaPassword
+                : afipSecretCipher.decryptToPlain(config.getClavePrivadaPassword());
         try {
             Files.createDirectories(certDir);
             if (tieneP12) {
-                Path destino = certDir.resolve("certificado.p12");
-                try (var in = pkcs12.getInputStream()) {
-                    Files.copy(in, destino, StandardCopyOption.REPLACE_EXISTING);
-                }
+                byte[] raw = pkcs12.getBytes();
+                AfipCertificateLoader.validarContenidoPkcs12(raw, passwordPlana);
+                Files.write(certDir.resolve("certificado.p12"), raw);
             } else {
-                Path destCrt = certDir.resolve("certificado.crt");
-                Path destKey = certDir.resolve("MiClavePrivada.key");
-                try (var in = certificado.getInputStream()) {
-                    Files.copy(in, destCrt, StandardCopyOption.REPLACE_EXISTING);
-                }
-                try (var in = clavePrivada.getInputStream()) {
-                    Files.copy(in, destKey, StandardCopyOption.REPLACE_EXISTING);
-                }
+                byte[] crt = certificado.getBytes();
+                byte[] key = clavePrivada.getBytes();
+                AfipCertificateLoader.validarContenidoCertificado(crt);
+                AfipCertificateLoader.validarContenidoClavePrivada(key, passwordPlana);
+                Files.write(certDir.resolve("certificado.crt"), crt);
+                Files.write(certDir.resolve("MiClavePrivada.key"), key);
             }
+        } catch (IllegalArgumentException e) {
+            throw e;
         } catch (IOException e) {
             throw new IllegalStateException(
                     "No se pudieron guardar los certificados en el servidor: " + e.getMessage(), e);
+        } catch (Exception e) {
+            throw new IllegalArgumentException(
+                    "Los archivos no son un certificado AFIP válido: " + e.getMessage(), e);
         }
 
         // Siempre usar la carpeta canónica del volumen (ignora paths locales del cliente).
         config.setCertificadosDirectorio(null);
         if (clavePrivadaPassword != null && !clavePrivadaPassword.isBlank()) {
-            config.setClavePrivadaPassword(clavePrivadaPassword);
+            config.setClavePrivadaPassword(afipSecretCipher.encryptForStorage(clavePrivadaPassword));
+        } else {
+            cifrarPasswordSiEstaEnClaro(config);
         }
 
         try {
-            AfipCertificateLoader.resolve(certDir, config.getClavePrivadaPassword());
+            AfipCertificateLoader.resolve(certDir, passwordPlana);
         } catch (Exception e) {
             throw new IllegalArgumentException(
                     "Los archivos se guardaron pero no se pudieron leer como certificados AFIP: "
@@ -220,7 +233,20 @@ public class EmpresaAfipConfigService {
                 .inicioActividad(config.getInicioActividad())
                 .certificadosDirectorio(certDir.toString())
                 .certificadosPresentes(certsOk)
+                .clavePrivadaPasswordConfigurada(
+                        config.getClavePrivadaPassword() != null
+                                && !config.getClavePrivadaPassword().isBlank())
                 .build();
+    }
+
+    /** @return true si se cifro un valor que estaba en claro. */
+    private boolean cifrarPasswordSiEstaEnClaro(EmpresaAfipConfig config) {
+        String stored = config.getClavePrivadaPassword();
+        if (stored == null || stored.isBlank() || afipSecretCipher.isWrapped(stored)) {
+            return false;
+        }
+        config.setClavePrivadaPassword(afipSecretCipher.encryptForStorage(stored));
+        return true;
     }
 
     private boolean certificadosPresentesEn(Path certDir) {

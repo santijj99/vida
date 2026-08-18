@@ -2,6 +2,7 @@ package com.vida.apirest.controller;
 
 import com.vida.apirest.dto.almacen.DepositoCreateRequest;
 import com.vida.apirest.dto.almacen.DepositoResponse;
+import com.vida.apirest.security.Authz;
 import com.vida.apirest.servicies.DepositoService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -14,17 +15,19 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/depositos")
 @RequiredArgsConstructor
-@PreAuthorize("hasAuthority('VER_ORGANIZACION')")
+@PreAuthorize(Authz.VER_O_GESTIONAR_ORGANIZACION)
 public class DepositoController {
 
     private final DepositoService depositoService;
 
     @PostMapping
+    @PreAuthorize(Authz.GESTIONAR_ORGANIZACION)
     public ResponseEntity<DepositoResponse> createDeposito(@RequestBody DepositoCreateRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(depositoService.create(request));
     }
 
     @PutMapping("/{id}")
+    @PreAuthorize(Authz.GESTIONAR_ORGANIZACION)
     public ResponseEntity<DepositoResponse> updateDeposito(
             @PathVariable Long id,
             @RequestBody DepositoCreateRequest request) {

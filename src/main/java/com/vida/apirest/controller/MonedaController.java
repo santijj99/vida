@@ -2,6 +2,7 @@ package com.vida.apirest.controller;
 
 import com.vida.apirest.dto.finanzas.CreateMonedaRequest;
 import com.vida.apirest.dto.finanzas.MonedaResponse;
+import com.vida.apirest.security.Authz;
 import com.vida.apirest.servicies.MonedaService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -14,17 +15,19 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/monedas")
 @RequiredArgsConstructor
-@PreAuthorize("hasAuthority('VER_ORGANIZACION')")
+@PreAuthorize(Authz.VER_O_GESTIONAR_ORGANIZACION)
 public class MonedaController {
 
     private final MonedaService monedaService;
 
     @PostMapping
+    @PreAuthorize(Authz.GESTIONAR_ORGANIZACION)
     public ResponseEntity<MonedaResponse> createMoneda(@RequestBody CreateMonedaRequest request) {
         return ResponseEntity.ok(monedaService.createMoneda(request));
     }
 
     @PutMapping("/{codigo}/tasa-cambio")
+    @PreAuthorize(Authz.GESTIONAR_ORGANIZACION)
     public ResponseEntity<MonedaResponse> updateTasaCambio(
             @PathVariable String codigo,
             @RequestParam BigDecimal tasa) {

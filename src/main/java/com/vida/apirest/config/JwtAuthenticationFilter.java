@@ -1,6 +1,7 @@
 package com.vida.apirest.config;
 
 import com.vida.apirest.servicies.CustomUserDetailService;
+import com.vida.apirest.tenant.TenantContext;
 import com.vida.apirest.utils.JwtUtil;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -10,6 +11,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
@@ -20,28 +22,36 @@ import java.io.IOException;
 @RequiredArgsConstructor
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private final JwtUtil jwtUtil;
-    private  final CustomUserDetailService customUserDetailService;
-
+    private final CustomUserDetailService customUserDetailService;
 
     @Override
-    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain) throws ServletException, IOException {
-        String authHeadre = request.getHeader("Authorization");
-        if (authHeadre ==null || !authHeadre.startsWith("Bearer ")){
+    protected void doFilterInternal(
+            HttpServletRequest request,
+            HttpServletResponse response,
+            FilterChain filterChain
+    ) throws ServletException, IOException {
+        String authHeader = request.getHeader("Authorization");
+        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
             filterChain.doFilter(request, response);
             return;
         }
-        String token = authHeadre.substring(7);
-        String usuario = jwtUtil.extractNombreDeUsuario(token);
-
-        if (usuario != null && SecurityContextHolder.getContext().getAuthentication()==null) {
-            UserDetails userDetails = customUserDetailService.loadUserByUsername(usuario);
-
-        if(jwtUtil.isTokenValid(token,userDetails)){
-            UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(userDetails,null,userDetails.getAuthorities());
-            authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-            SecurityContextHolder.getContext().setAuthentication(authToken);
+        String token = authHeader.substring(7);
+        try {
+            String usuario = jwtUtil.extractNombreDeUsuario(token);
+            if (usuario != null && SecurityContextHolder.getContext().getAuthentication() == null) {
+                UserDetails userDetails = customUserDetailService.loadUserByUsername(usuario);
+                if (jwtUtil.isTokenValid(token, userDetails, TenantContext.getCodigoLicencia())
+                        && userDetails.isEnabled()
+                        && userDetails.isAccountNonExpired()) {
+                    UsernamePasswordAuthenticationToken authToken =
+                            new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities());
+                    authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+                    SecurityContextHolder.getContext().setAuthentication(authToken);
+                }
+            }
+        } catch (UsernameNotFoundException | io.jsonwebtoken.JwtException | IllegalArgumentException ignored) {
+            // Token inválido o usuario inexistente en este tenant: seguir sin autenticar (401 en rutas protegidas).
         }
-        }
-        filterChain.doFilter(request,response);
+        filterChain.doFilter(request, response);
     }
 }

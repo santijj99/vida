@@ -49,6 +49,17 @@ public class TenantConnectionCacheStore {
         }
     }
 
+    public void delete(String codigoLicencia) {
+        if (codigoLicencia == null || codigoLicencia.isBlank()) {
+            return;
+        }
+        try {
+            Files.deleteIfExists(fileFor(codigoLicencia));
+        } catch (Exception ex) {
+            log.warn("No se pudo borrar caché de tenant {}: {}", codigoLicencia, ex.getMessage());
+        }
+    }
+
     private Path fileFor(String codigo) {
         // Evita path traversal / caracteres raros en el nombre de archivo.
         String safe = codigo.trim().replaceAll("[^a-zA-Z0-9._-]", "_");

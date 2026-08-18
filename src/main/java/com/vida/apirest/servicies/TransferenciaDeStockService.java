@@ -14,6 +14,7 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -26,6 +27,7 @@ public class TransferenciaDeStockService {
     private final TransferenciaStockQueryRepository transferenciaStockQueryRepository;
     private final DepositoRepository depositoRepository;
     private final StockRepository stockRepository;
+    private final StockOperacionesService stockOperacionesService;
     private final StockMovimientoRepository stockMovimientoRepository;
     private final ArticuloRepository articuloRepository;
     private final VarianteArticuloRepository varianteArticuloRepository;
@@ -96,9 +98,21 @@ public class TransferenciaDeStockService {
                     .findByDepositoIdAndArticuloIdAndVarianteId(origen.getId(), articulo.getId(), variante.getId())
                     .orElseThrow(() -> new RuntimeException(
                             "Sin stock en depósito origen para variante " + variante.getId()));
+            Stock stockDestinoExistente = stockRepository
+                    .findByDepositoIdAndArticuloIdAndVarianteId(destino.getId(), articulo.getId(), variante.getId())
+                    .orElse(null);
+
+            List<Long> lockIds = new ArrayList<>();
+            lockIds.add(stockOrigen.getId());
+            if (stockDestinoExistente != null) {
+                lockIds.add(stockDestinoExistente.getId());
+            }
+            Map<Long, Stock> locked = stockOperacionesService.lockAllById(lockIds);
+            stockOrigen = locked.get(stockOrigen.getId());
 
             descontarOrigen(stockOrigen, detReq.getCantidad(), transferencia.getNumero());
-            incrementarDestino(destino, articulo, variante, detReq.getCantidad(), transferencia.getNumero());
+            incrementarDestino(destino, articulo, variante, detReq.getCantidad(), transferencia.getNumero(),
+                    stockDestinoExistente != null ? locked.get(stockDestinoExistente.getId()) : null);
 
             TransferenciaDetalleStock detalle = new TransferenciaDetalleStock();
             detalle.setTransferencia(transferencia);
@@ -160,11 +174,16 @@ public class TransferenciaDeStockService {
             Articulo articulo,
             VarianteArticulo variante,
             int cantidad,
-            String referencia
+            String referencia,
+            Stock stockDestinoLockeado
     ) {
-        Stock stockDestino = stockRepository
-                .findByDepositoIdAndArticuloIdAndVarianteId(depositoDestino.getId(), articulo.getId(), variante.getId())
-                .orElseGet(() -> crearStockDestino(depositoDestino, articulo, variante));
+        Stock stockDestino = stockDestinoLockeado;
+        if (stockDestino == null) {
+            stockDestino = stockRepository
+                    .findByDepositoIdAndArticuloIdAndVarianteId(depositoDestino.getId(), articulo.getId(), variante.getId())
+                    .map(stockOperacionesService::lock)
+                    .orElseGet(() -> crearStockDestino(depositoDestino, articulo, variante));
+        }
 
         int disponible = stockDestino.getCantidadDisponible() != null ? stockDestino.getCantidadDisponible() : 0;
         int actual = stockDestino.getCantidadActual() != null ? stockDestino.getCantidadActual() : 0;

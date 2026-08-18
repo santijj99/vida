@@ -1,7 +1,7 @@
 {
   "codigoLicencia" : "844391",
   "deviceUuid" : "158f0d71-7e0e-48f0-8b2a-87fa69125977",
-  "ultimoExitoEpochMs" : 1786156394894,
+  "ultimoExitoEpochMs" : 1787066267307,
   "host" : "localhost",
   "puerto" : 5432,
   "databaseName" : "empresa",

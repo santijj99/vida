@@ -4,6 +4,7 @@ import com.vida.apirest.dto.finanzas.CreateCuentaFinancieraRequest;
 import com.vida.apirest.dto.finanzas.CuentaFinancieraResponse;
 import com.vida.apirest.dto.finanzas.TransferenciaCuentaRequest;
 import com.vida.apirest.dto.finanzas.TransferenciaCuentaResponse;
+import com.vida.apirest.security.Authz;
 import com.vida.apirest.servicies.CuentaFinancieraService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -16,19 +17,20 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/cuenta-financiera")
 @RequiredArgsConstructor
-@PreAuthorize("hasAuthority('VER_ORGANIZACION') or hasAuthority('VER_CAJA')")
+@PreAuthorize(Authz.VER_O_GESTIONAR_ORG_O_CAJA)
 public class CuentaFinancieraController {
 
     private final CuentaFinancieraService cuentaFinancieraService;
 
     @PostMapping
-    @PreAuthorize("hasAuthority('VER_ORGANIZACION')")
+    @PreAuthorize(Authz.GESTIONAR_ORGANIZACION)
     public ResponseEntity<CuentaFinancieraResponse> create(@RequestBody CreateCuentaFinancieraRequest request) {
         CuentaFinancieraResponse response = cuentaFinancieraService.createCuentaFinanciera(request);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
     @PostMapping("/transferir")
+    @PreAuthorize(Authz.GESTIONAR_CAJA_O_ORGANIZACION)
     public ResponseEntity<TransferenciaCuentaResponse> transferir(@RequestBody TransferenciaCuentaRequest request) {
         return ResponseEntity.ok(cuentaFinancieraService.transferir(request));
     }

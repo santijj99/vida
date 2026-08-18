@@ -196,7 +196,8 @@ public class TicketConfigService {
             return empresaId;
         }
         return afipContextService.resolveEmpresaIdForCurrentUser()
-                .orElseThrow(() -> new RuntimeException("No se pudo determinar la empresa"));
+                .orElseThrow(() -> new RuntimeException(
+                        "No hay empresas en esta cuenta. Creá una en Organización → Empresas."));
     }
 
     private FormatoTicketPdf parseFormato(String valor) {

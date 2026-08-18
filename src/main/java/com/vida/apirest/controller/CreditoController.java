@@ -5,6 +5,7 @@ import com.vida.apirest.dto.credito.CreditoClienteResponse;
 import com.vida.apirest.dto.credito.CreditoHistorialResponse;
 import com.vida.apirest.dto.credito.EditarCreditoRequest;
 import com.vida.apirest.dto.credito.QuitarRecargoRequest;
+import com.vida.apirest.security.Authz;
 import com.vida.apirest.servicies.CreditoHistorialService;
 import com.vida.apirest.servicies.CreditoRefinanciacionService;
 import lombok.RequiredArgsConstructor;
@@ -18,7 +19,7 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/creditos")
 @RequiredArgsConstructor
-@PreAuthorize("hasAuthority('VER_CUENTAS')")
+@PreAuthorize(Authz.VER_O_GESTIONAR_CUENTAS)
 public class CreditoController {
 
     private final CreditoRefinanciacionService refinanciacionService;

@@ -139,6 +139,7 @@ public class RbacService {
             }
         }
 
+        usuario.invalidarTokens();
         usuarioRepository.save(usuario);
         return obtenerPermisosUsuario(usuarioId);
     }

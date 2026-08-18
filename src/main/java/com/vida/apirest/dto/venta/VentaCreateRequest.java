@@ -19,4 +19,9 @@ public class VentaCreateRequest {
     private List<PagoVentaRequest> pagos;
     /** Datos de facturación ARCA/AFIP cuando el pago lo requiere. */
     private EmitirFacturaAFIPRequest facturaAfip;
+    /**
+     * Id estable del cliente (p. ej. UUID local del outbox offline).
+     * Si se reenvía el mismo valor, se devuelve la venta ya creada sin duplicar stock/caja.
+     */
+    private String clientRequestId;
 }

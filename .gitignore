@@ -1,6 +1,13 @@
+.env
+.env.local
+.env.docker
+!.env.example
+!.env.docker.example
+
 HELP.md
 CONTEXTO.md
 SUELDOS_FIXES.md
+AUDITORIA_ARREGLOS.md
 target/
 .mvn/wrapper/maven-wrapper.jar
 !**/src/main/**/target/
@@ -33,3 +40,9 @@ build/
 
 ### VS Code ###
 .vscode/
+
+### AFIP — certificados, PKCS#12 y TA.xml de cada empresa
+data/afip/
+*.p12
+*.pfx
+

@@ -1,6 +1,7 @@
 package com.vida.apirest.controller;
 
 import com.vida.apirest.dto.carrito.*;
+import com.vida.apirest.security.Authz;
 import com.vida.apirest.servicies.CarritoPendienteService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -13,12 +14,13 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/carritos-pendientes")
 @RequiredArgsConstructor
-@PreAuthorize("hasAuthority('VER_VENTAS')")
+@PreAuthorize(Authz.VER_O_GESTIONAR_VENTAS)
 public class CarritoPendienteController {
 
     private final CarritoPendienteService carritoPendienteService;
 
     @PostMapping
+    @PreAuthorize(Authz.GESTIONAR_VENTAS)
     public ResponseEntity<CarritoPendienteResponse> crear(@RequestBody CarritoPendienteCreateRequest request) {
         CarritoPendienteResponse response = carritoPendienteService.crear(request);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
@@ -37,16 +39,19 @@ public class CarritoPendienteController {
     }
 
     @PostMapping("/{id}/cancelar")
+    @PreAuthorize(Authz.GESTIONAR_VENTAS)
     public ResponseEntity<CarritoPendienteResponse> cancelar(@PathVariable Long id) {
         return ResponseEntity.ok(carritoPendienteService.cancelar(id));
     }
 
     @PostMapping("/{id}/confirmar")
+    @PreAuthorize(Authz.GESTIONAR_VENTAS)
     public ResponseEntity<CarritoPendienteResponse> confirmar(@PathVariable Long id, @RequestBody ConfirmarCarritoPendienteRequest request) {
         return ResponseEntity.ok(carritoPendienteService.confirmar(id, request));
     }
 
     @PostMapping("/{id}/confirmar-credito")
+    @PreAuthorize(Authz.GESTIONAR_VENTAS)
     public ResponseEntity<CarritoPendienteResponse> confirmarCredito(
             @PathVariable Long id,
             @RequestBody ConfirmarCarritoPendienteCreditoRequest request) {

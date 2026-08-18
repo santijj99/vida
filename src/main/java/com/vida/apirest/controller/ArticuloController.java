@@ -26,6 +26,7 @@ import com.vida.apirest.dto.ariticulo.ArticuloUpdateRequest;
 import com.vida.apirest.dto.ariticulo.VariantCreateRequest;
 import com.vida.apirest.dto.ariticulo.VarianteCompactResponse;
 import com.vida.apirest.dto.common.PageResponse;
+import com.vida.apirest.security.Authz;
 import com.vida.apirest.servicies.ArticuloService;
 
 import lombok.RequiredArgsConstructor;
@@ -33,7 +34,7 @@ import lombok.RequiredArgsConstructor;
 @RestController
 @RequestMapping("/api/articulos")
 @RequiredArgsConstructor
-@PreAuthorize("hasAuthority('VER_ARTICULOS')")
+@PreAuthorize(Authz.VER_O_GESTIONAR_ARTICULOS)
 public class ArticuloController {
 
     private final ArticuloService articuloService;
@@ -93,6 +94,7 @@ public class ArticuloController {
     }
 
     @PostMapping
+    @PreAuthorize(Authz.GESTIONAR_ARTICULOS)
     public ResponseEntity<ArticuloCompactResponse> createArticulo(@RequestBody ArticuloCreateRequest request) {
         var articulo = articuloService.createArticulo(request);
         return ResponseEntity.status(HttpStatus.CREATED).body(
@@ -100,6 +102,7 @@ public class ArticuloController {
     }
 
     @PutMapping("/{id:[0-9]+}")
+    @PreAuthorize(Authz.GESTIONAR_ARTICULOS)
     public ResponseEntity<ArticuloCompactResponse> updateArticulo(
             @PathVariable Long id,
             @RequestBody ArticuloUpdateRequest request
@@ -109,6 +112,7 @@ public class ArticuloController {
     }
 
     @PutMapping("/{articuloId:[0-9]+}/variantes/{varianteId:[0-9]+}")
+    @PreAuthorize(Authz.GESTIONAR_ARTICULOS)
     public ResponseEntity<VarianteCompactResponse> actualizarVarianteUnica(
             @PathVariable Long articuloId,
             @PathVariable Long varianteId,
@@ -119,12 +123,14 @@ public class ArticuloController {
     }
 
     @PutMapping("/{id:[0-9]+}/archivar")
+    @PreAuthorize(Authz.GESTIONAR_ARTICULOS)
     public ResponseEntity<Map<String, String>> softDeleteArticulo(@PathVariable Long id) {
         articuloService.softDeleteArticulo(id);
         return ResponseEntity.ok(Map.of("message", "Artículo archivado correctamente"));
     }
 
     @DeleteMapping("/{articuloId:[0-9]+}/variantes/{varianteId:[0-9]+}")
+    @PreAuthorize(Authz.GESTIONAR_ARTICULOS)
     public ResponseEntity<Map<String, String>> softDeleteVariante(
             @PathVariable Long articuloId,
             @PathVariable Long varianteId
@@ -139,6 +145,7 @@ public class ArticuloController {
     }
 
     @PostMapping("/{id:[0-9]+}/variantes")
+    @PreAuthorize(Authz.GESTIONAR_ARTICULOS)
     public ResponseEntity<VarianteCompactResponse> agregarVariante(
             @PathVariable Long id,
             @RequestBody VariantCreateRequest request,
@@ -156,6 +163,7 @@ public class ArticuloController {
     }
 
     @PutMapping("/{id:[0-9]+}/restaurar")
+    @PreAuthorize(Authz.GESTIONAR_ARTICULOS)
     public ResponseEntity<Map<String, String>> restaurarArticulo(@PathVariable Long id) {
         articuloService.restaurarArticulo(id);
         return ResponseEntity.ok(Map.of("message", "Artículo restaurado correctamente"));
@@ -167,6 +175,7 @@ public class ArticuloController {
     }
 
     @PutMapping("/{articuloId:[0-9]+}/variantes/{varianteId:[0-9]+}/restaurar")
+    @PreAuthorize(Authz.GESTIONAR_ARTICULOS)
     public ResponseEntity<Map<String, String>> restaurarVariante(
             @PathVariable Long articuloId,
             @PathVariable Long varianteId

@@ -2,6 +2,7 @@ package com.vida.apirest.controller;
 
 import com.vida.apirest.dto.ariticulo.ColorResponse;
 import com.vida.apirest.dto.ariticulo.CreateColorRequest;
+import com.vida.apirest.security.Authz;
 import com.vida.apirest.servicies.ColorService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -18,7 +19,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/colores")
 @RequiredArgsConstructor
-@PreAuthorize("hasAuthority('VER_COLORES')")
+@PreAuthorize(Authz.VER_O_GESTIONAR_COLORES)
 public class ColorController {
 
     private final ColorService colorService;
@@ -29,6 +30,7 @@ public class ColorController {
     }
 
     @PostMapping
+    @PreAuthorize(Authz.GESTIONAR_COLORES)
     public ResponseEntity<ColorResponse> create(@RequestBody CreateColorRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(colorService.create(request));
     }

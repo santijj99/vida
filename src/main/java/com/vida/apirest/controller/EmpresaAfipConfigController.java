@@ -2,6 +2,7 @@ package com.vida.apirest.controller;
 
 import com.vida.apirest.dto.empresa.EmpresaAfipConfigRequest;
 import com.vida.apirest.dto.empresa.EmpresaAfipConfigResponse;
+import com.vida.apirest.security.Authz;
 import com.vida.apirest.servicies.EmpresaAfipConfigService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
@@ -13,7 +14,7 @@ import org.springframework.web.multipart.MultipartFile;
 @RestController
 @RequestMapping("/api/empresas/{empresaId}/afip-config")
 @RequiredArgsConstructor
-@PreAuthorize("hasAuthority('VER_ORGANIZACION')")
+@PreAuthorize(Authz.VER_O_GESTIONAR_ORGANIZACION)
 public class EmpresaAfipConfigController {
 
     private final EmpresaAfipConfigService empresaAfipConfigService;
@@ -24,6 +25,7 @@ public class EmpresaAfipConfigController {
     }
 
     @PutMapping
+    @PreAuthorize(Authz.GESTIONAR_ORGANIZACION)
     public ResponseEntity<EmpresaAfipConfigResponse> guardar(
             @PathVariable Long empresaId,
             @RequestBody EmpresaAfipConfigRequest request) {
@@ -31,6 +33,7 @@ public class EmpresaAfipConfigController {
     }
 
     @PostMapping(value = "/certificados", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize(Authz.GESTIONAR_ORGANIZACION)
     public ResponseEntity<EmpresaAfipConfigResponse> subirCertificados(
             @PathVariable Long empresaId,
             @RequestParam(value = "certificado", required = false) MultipartFile certificado,
