@@ -1,6 +1,7 @@
 package com.vida.apirest.servicies;
 
 import com.vida.apirest.dto.venta.AbrirCajaRequest;
+import com.vida.apirest.dto.venta.AjusteCajaRequest;
 import com.vida.apirest.dto.venta.CajaMovimientoResponse;
 import com.vida.apirest.dto.venta.CajaSesionResponse;
 import com.vida.apirest.dto.venta.CerrarCajaRequest;
@@ -29,6 +30,7 @@ public class CajaSesionService {
     private final CajaSesionRepository cajaSesionRepository;
     private final FinanzasCuentaFinancieraRepository cuentaFinancieraRepository;
     private final MovimientoFinancieroRepository movimientoFinancieroRepository;
+    private final CajaMovimientoService cajaMovimientoService;
 
     @Transactional(readOnly = true)
     public CajaSesionResponse obtenerSesionActiva(Long cuentaId) {
@@ -136,6 +138,26 @@ public class CajaSesionService {
         return mapResponse(sesion, false);
     }
 
+    @Transactional
+    public CajaMovimientoResponse ajustarCaja(AjusteCajaRequest request) {
+        if (request.getCuentaId() == null) {
+            throw new RuntimeException("Debe indicar la caja");
+        }
+        cajaSesionRepository
+                .findAbiertaByCuentaId(request.getCuentaId(), CajaSesion.EstadoSesion.ABIERTA)
+                .orElseThrow(() -> new RuntimeException(
+                        "No hay una caja abierta para registrar ajustes. Abrí el turno primero."));
+
+        MovimientoFinanciero movimiento = cajaMovimientoService.registrarAjuste(
+                request.getCuentaId(),
+                request.getSentido(),
+                request.getMonto(),
+                request.getMotivo(),
+                usuarioActual()
+        );
+        return mapMovimiento(movimiento);
+    }
+
     private CajaSesionResponse mapResponse(CajaSesion sesion, boolean recalcularSiAbierta) {
         CajaSesionResponse r = new CajaSesionResponse();
         r.setId(sesion.getId());
@@ -214,7 +236,16 @@ public class CajaSesionService {
             switch (m.getTipo()) {
                 case INGRESO, TRANSFERENCIA_RECIBIDA -> ingresos = ingresos.add(m.getMonto());
                 case EGRESO, TRANSFERENCIA_ENVIADA -> egresos = egresos.add(m.getMonto());
-                default -> { /* AJUSTE / transferencias no aplican al arqueo de efectivo del turno */ }
+                case AJUSTE -> {
+                    BigDecimal anterior = m.getSaldoAnterior() != null ? m.getSaldoAnterior() : BigDecimal.ZERO;
+                    BigDecimal nuevo = m.getSaldoNuevo() != null ? m.getSaldoNuevo() : anterior;
+                    if (nuevo.compareTo(anterior) > 0) {
+                        ingresos = ingresos.add(m.getMonto());
+                    } else {
+                        egresos = egresos.add(m.getMonto());
+                    }
+                }
+                default -> { /* otros tipos no aplican al arqueo del turno */ }
             }
         }
         BigDecimal esperado = montoApertura.add(ingresos).subtract(egresos);
