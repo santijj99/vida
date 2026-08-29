@@ -2,6 +2,7 @@ package com.vida.apirest.controller;
 
 import com.vida.apirest.dto.common.PageResponse;
 import com.vida.apirest.dto.venta.AbrirCajaRequest;
+import com.vida.apirest.dto.venta.AjusteCajaRequest;
 import com.vida.apirest.dto.venta.CajaCuentaResponse;
 import com.vida.apirest.dto.venta.CajaMovimientoResponse;
 import com.vida.apirest.dto.venta.CajaSesionResponse;
@@ -176,5 +177,11 @@ public class VentaController {
     @PreAuthorize(Authz.GESTIONAR_CAJA)
     public ResponseEntity<CajaSesionResponse> cerrarCaja(@PathVariable Long id, @RequestBody CerrarCajaRequest request) {
         return ResponseEntity.ok(cajaSesionService.cerrarCaja(id, request));
+    }
+
+    @PostMapping("/caja/ajuste")
+    @PreAuthorize(Authz.GESTIONAR_CAJA)
+    public ResponseEntity<CajaMovimientoResponse> ajustarCaja(@RequestBody AjusteCajaRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(cajaSesionService.ajustarCaja(request));
     }
 }

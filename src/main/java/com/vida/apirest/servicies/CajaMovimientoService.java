@@ -61,6 +61,83 @@ public class CajaMovimientoService {
         return persistir(cuenta, MovimientoFinanciero.TipoMovimiento.EGRESO, monto, descripcion, null);
     }
 
+  /**
+   * Registra un ajuste de caja (faltante o sobrante de efectivo).
+   * El monto se guarda siempre positivo; el sentido se refleja en saldoNuevo vs saldoAnterior.
+   */
+    @Transactional
+    public MovimientoFinanciero registrarAjuste(
+            Long cuentaId,
+            String sentido,
+            BigDecimal monto,
+            String motivo,
+            String responsable
+    ) {
+        if (cuentaId == null) {
+            throw new BadRequestException("Debe indicar la caja");
+        }
+        if (sentido == null || sentido.isBlank()) {
+            throw new BadRequestException("Indicá el sentido del ajuste (FALTANTE o SOBRANTE)");
+        }
+        String sentidoNorm = sentido.trim().toUpperCase();
+        if (!sentidoNorm.equals("FALTANTE") && !sentidoNorm.equals("SOBRANTE")) {
+            throw new BadRequestException("Sentido inválido. Use FALTANTE o SOBRANTE");
+        }
+        if (monto == null || monto.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new BadRequestException("El monto del ajuste debe ser mayor a cero");
+        }
+        if (motivo == null || motivo.isBlank()) {
+            throw new BadRequestException("Indicá el motivo del ajuste");
+        }
+
+        CuentaFinanciera cuenta = EntityLookup.require(
+                cuentaRepository.findById(cuentaId),
+                "Cuenta financiera no encontrada");
+        if (cuenta.getTipo() != CuentaFinanciera.TipoCuenta.CAJA) {
+            throw new BadRequestException("Solo se pueden registrar ajustes en cuentas tipo CAJA");
+        }
+        if (!Boolean.TRUE.equals(cuenta.getActivo())) {
+            throw new BadRequestException("La caja no está activa");
+        }
+
+        CuentaFinanciera locked = cuentaRepository.findByIdForUpdate(cuenta.getId())
+                .orElseThrow(() -> new ResourceNotFoundException("Cuenta financiera no encontrada"));
+
+        BigDecimal saldoAnterior = saldoActual(locked);
+        BigDecimal saldoNuevo;
+        if (sentidoNorm.equals("SOBRANTE")) {
+            saldoNuevo = saldoAnterior.add(monto);
+        } else {
+            if (saldoAnterior.compareTo(monto) < 0) {
+                throw new BadRequestException(
+                        "Saldo insuficiente en la caja \"" + locked.getNombre() + "\". "
+                                + "Disponible: " + saldoAnterior + ", requerido: " + monto);
+            }
+            saldoNuevo = saldoAnterior.subtract(monto);
+        }
+
+        locked.setSaldoActual(saldoNuevo);
+        cuentaRepository.save(locked);
+
+        String etiqueta = sentidoNorm.equals("SOBRANTE")
+                ? "Entrada de efectivo (ajuste)"
+                : "Salida de efectivo (ajuste)";
+        String descripcion = etiqueta + ": " + motivo.trim();
+        String user = (responsable == null || responsable.isBlank()) ? "sistema" : responsable.trim();
+
+        MovimientoFinanciero movimiento = new MovimientoFinanciero();
+        movimiento.setCuenta(locked);
+        movimiento.setNumero(generarNumero());
+        movimiento.setTipo(MovimientoFinanciero.TipoMovimiento.AJUSTE);
+        movimiento.setMonto(monto);
+        movimiento.setSaldoAnterior(saldoAnterior);
+        movimiento.setSaldoNuevo(saldoNuevo);
+        movimiento.setDescripcion(descripcion);
+        movimiento.setReferencia("AJ-" + UUID.randomUUID().toString().replace("-", "").substring(0, 10).toUpperCase());
+        movimiento.setResponsable(user);
+        return movimientoFinancieroRepository.save(movimiento);
+    }
+
     private CuentaFinanciera resolverCuentaIngreso(Long cuentaFinancieraId) {
         if (cuentaFinancieraId != null) {
             return EntityLookup.require(
